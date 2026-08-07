@@ -1,0 +1,26 @@
+.analysis/
+
+# Dépendances et builds
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Configuration locale et secrets
+.env
+.env.*
+!.env.example
+*.key
+*.p12
+*.pfx
+**/rootCA-key.pem
+age-identity.txt
+
+# Données d'exécution locales
+data/
+backups/
+logs/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
