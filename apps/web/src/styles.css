@@ -354,7 +354,6 @@ input:focus-visible {
 }
 
 .task-copy small,
-.diagnostic-card span,
 .quick-form p,
 .centered p {
   color: var(--muted);
@@ -392,26 +391,49 @@ input:focus-visible {
   color: var(--muted);
 }
 
-.diagnostic-card {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1px;
-  overflow: hidden;
-  background: var(--line);
-}
-
-.diagnostic-card > div {
-  min-height: 100px;
+.conflict-notice {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-  padding: 18px;
-  background: var(--surface);
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgb(255 139 139 / 28%);
+  border-radius: 16px;
+  padding: 13px 14px 13px 16px;
+  background: var(--danger-surface);
 }
 
-.diagnostic-card strong {
-  color: var(--text);
+.conflict-notice > div {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 3px;
+}
+
+.conflict-notice strong {
+  color: #ffd2d2;
+  font-size: 0.86rem;
+}
+
+.conflict-notice span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.conflict-notice button {
+  min-height: 44px;
+  border: 0;
+  padding: 0 6px;
+  color: var(--danger);
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.last-sync-note {
+  margin: 2px 0 0;
+  color: var(--faint);
+  font-size: 0.68rem;
+  letter-spacing: 0.01em;
+  text-align: center;
 }
 
 .quick-form {
@@ -637,10 +659,6 @@ input:focus-visible {
 
   .status-pill {
     max-width: 66%;
-  }
-
-  .diagnostic-card {
-    grid-template-columns: 1fr;
   }
 
   .input-row {

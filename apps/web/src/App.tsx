@@ -12,16 +12,11 @@ import { cancelActiveSync, syncNow } from './sync/sync-client.js';
 
 type Destination = 'today' | 'home' | 'watch';
 
-interface StorageStatus {
-  persisted: boolean;
-  usageLabel: string;
-}
-
 const TASK_SYNC_LABELS: Record<LocalTask['syncState'], string> = {
   pending: 'À synchroniser',
   sent: 'Synchronisation en cours',
   acknowledged: 'Synchronisée avec le foyer',
-  conflict: 'Conflit de synchronisation',
+  conflict: 'À vérifier',
 };
 
 export function App() {
@@ -37,7 +32,6 @@ export function App() {
   const [message, setMessage] = useState('Chargement des données locales…');
   const [syncing, setSyncing] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [storage, setStorage] = useState<StorageStatus | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const reloadLocalState = useCallback(async () => {
@@ -81,15 +75,7 @@ export function App() {
       void reloadLocalState();
       void synchronize();
     });
-    void (async () => {
-      if (!navigator.storage?.estimate) return;
-      const persisted = navigator.storage.persist
-        ? await navigator.storage.persist()
-        : false;
-      const estimate = await navigator.storage.estimate();
-      const usageMb = ((estimate.usage ?? 0) / 1024 / 1024).toFixed(1);
-      setStorage({ persisted, usageLabel: `${usageMb} Mo utilisés` });
-    })();
+    if (navigator.storage?.persist) void navigator.storage.persist();
   }, [reloadLocalState, synchronize]);
 
   useEffect(() => {
@@ -229,32 +215,34 @@ export function App() {
               <TaskList tasks={activeTasks.slice(0, 4)} />
             </section>
 
-            <section className="diagnostic-card" aria-label="Diagnostic local">
-              <div>
-                <strong>
-                  {!online
-                    ? 'Réseau indisponible'
-                    : lastSync
-                      ? 'Hub synchronisé'
-                      : 'Connexion au hub non confirmée'}
-                </strong>
-                <span>
-                  {lastSync
-                    ? `Dernière synchro ${new Date(lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
-                    : 'Aucune synchro dans cette session'}
-                </span>
-              </div>
-              <div>
-                <strong>
-                  {conflicts} conflit{conflicts === 1 ? '' : 's'}
-                </strong>
-                <span>
-                  {storage
-                    ? `${storage.persisted ? 'Stockage persistant' : 'Persistance non garantie'} · ${storage.usageLabel}`
-                    : 'Mesure du stockage…'}
-                </span>
-              </div>
-            </section>
+            {conflicts > 0 ? (
+              <aside className="conflict-notice" aria-live="polite">
+                <div>
+                  <strong>
+                    {conflicts} modification{conflicts > 1 ? 's' : ''} à
+                    vérifier
+                  </strong>
+                  <span>
+                    {conflicts === 1
+                      ? 'Une tâche a changé sur plusieurs appareils.'
+                      : 'Des tâches ont changé sur plusieurs appareils.'}
+                  </span>
+                </div>
+                <button type="button" onClick={() => setDestination('home')}>
+                  Voir
+                </button>
+              </aside>
+            ) : null}
+
+            {lastSync ? (
+              <p className="last-sync-note">
+                Dernière synchro à{' '}
+                {new Date(lastSync).toLocaleTimeString('fr-FR', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </p>
+            ) : null}
           </section>
         )}
 
