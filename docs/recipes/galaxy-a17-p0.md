@@ -4,7 +4,7 @@ Statut : **en cours**
 Appareil : Samsung Galaxy A17
 Objectif : prouver NFR-OFF-01, NFR-OFF-02 et NFR-SYNC-01 sur matériel réel.
 
-État observé le 8 août 2026 : accès LAN en HTTPS de confiance opérationnel, création et synchronisation visibles sur l'A17, puis modification et suppression locales testées après coupure du Wi-Fi. La porte complète reste ouverte tant que la persistance après fermeture forcée/redémarrage et l'absence de doublon après convergence ne sont pas consignées dans la matrice ci-dessous.
+État observé le 8 août 2026 : accès LAN en HTTPS de confiance opérationnel, création et synchronisation visibles sur l'A17, puis modification et suppression locales testées après coupure du Wi-Fi. L'arrêt du hub en conservant le Wi-Fi actif laisse également l'interface et l'écriture locale opérationnelles. La porte complète reste ouverte tant que la persistance après fermeture forcée/redémarrage et l'absence de doublon après convergence ne sont pas consignées dans la matrice ci-dessous.
 
 ## Préconditions utilisateur
 
@@ -57,15 +57,15 @@ Ouvrir `https://192.168.1.14:8443` dans Chrome sur l'A17 et ajouter Friday à l'
 
 ## Matrice à signer
 
-| Étape | Action                                                    | Résultat attendu                                 | Résultat/date |
-| ----: | --------------------------------------------------------- | ------------------------------------------------ | ------------- |
-|     1 | ouvrir Friday avec hub et Wi-Fi actifs                    | app shell et statut synchronisé                  |               |
-|     2 | arrêter le service, garder le Wi-Fi et rouvrir Friday     | interface disponible, hub indiqué indisponible   |               |
-|     3 | créer une tâche avec le service toujours arrêté           | message local et une modification en attente     |               |
-|     4 | forcer l'arrêt de la PWA puis redémarrer l'A17            | tâche et modification toujours présentes         |               |
-|     5 | lancer le service puis rouvrir Friday                     | attente à 0 et tâche partagée                    |               |
-|     6 | provoquer un nouveau cycle de synchronisation             | une seule occurrence de la tâche                 |               |
-|     7 | couper le Wi-Fi puis fermer et rouvrir Friday deux fois   | interface disponible deux fois sans réseau       |               |
-|     8 | rétablir le Wi-Fi puis installer une nouvelle version PWA | convergence, activation proposée et aucune perte |               |
+| Étape | Action                                                    | Résultat attendu                                 | Résultat/date       |
+| ----: | --------------------------------------------------------- | ------------------------------------------------ | ------------------- |
+|     1 | ouvrir Friday avec hub et Wi-Fi actifs                    | app shell et statut synchronisé                  |                     |
+|     2 | arrêter le service, garder le Wi-Fi et rouvrir Friday     | interface disponible, hub indiqué indisponible   | OK A17 — 08/08/2026 |
+|     3 | créer une tâche avec le service toujours arrêté           | message local et une modification en attente     | OK A17 — 08/08/2026 |
+|     4 | forcer l'arrêt de la PWA puis redémarrer l'A17            | tâche et modification toujours présentes         |                     |
+|     5 | lancer le service puis rouvrir Friday                     | attente à 0 et tâche partagée                    |                     |
+|     6 | provoquer un nouveau cycle de synchronisation             | une seule occurrence de la tâche                 |                     |
+|     7 | couper le Wi-Fi puis fermer et rouvrir Friday deux fois   | interface disponible deux fois sans réseau       |                     |
+|     8 | rétablir le Wi-Fi puis installer une nouvelle version PWA | convergence, activation proposée et aucune perte |                     |
 
 Consigner la version, l'heure, le nombre d'opérations en attente, la dernière synchronisation et toute friction tactile. Ne pas déclarer la persistance A17 validée sans cette table remplie.

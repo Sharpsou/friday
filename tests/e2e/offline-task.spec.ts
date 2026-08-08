@@ -39,7 +39,10 @@ test('a new offline task stays pending while an older task remains shared', asyn
   ).toContainText('À synchroniser');
 
   await context.setOffline(false);
-  await page.getByRole('button', { name: /en attente|synchronisé/iu }).click();
+  await page
+    .getByRole('button', { name: /Connecté|Hub indisponible/u })
+    .click();
+  await expect(page.getByRole('button', { name: 'Connecté' })).toBeVisible();
   await expect(
     page.getByRole('listitem').filter({ hasText: offlineTitle }),
   ).toContainText('Synchronisée avec le foyer');
@@ -67,16 +70,19 @@ test('edit mode deletes a task offline without confirmation', async ({
 
   await expect(page.getByText(title)).toHaveCount(0);
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(
-    page.getByRole('button', { name: /Hors ligne — 1 en attente/iu }),
-  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Hors ligne' })).toBeVisible();
+  await page.getByRole('button', { name: 'Aujourd’hui' }).click();
+  await expect(page.getByText('1 modification en attente')).toBeVisible();
 
   await page.reload();
   await page.getByRole('button', { name: 'Maison', exact: true }).click();
   await expect(page.getByText(title)).toHaveCount(0);
 
   await context.setOffline(false);
-  await page.getByRole('button', { name: /en attente|synchronisé/iu }).click();
+  await page
+    .getByRole('button', { name: /Connecté|Hub indisponible/u })
+    .click();
+  await expect(page.getByRole('button', { name: 'Connecté' })).toBeVisible();
   await expect(page.getByText(title)).toHaveCount(0);
 });
 
@@ -109,7 +115,7 @@ test('local deletion stays available while the hub request is stalled', async ({
   });
 
   try {
-    await page.getByRole('button', { name: 'Synchronisé' }).click();
+    await page.getByRole('button', { name: 'Connecté' }).click();
     await pullStarted;
     await page.getByRole('button', { name: 'Modifier' }).click();
 

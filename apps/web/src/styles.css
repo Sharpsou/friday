@@ -165,6 +165,16 @@ input:focus-visible {
   box-shadow: 0 0 14px rgb(102 245 196 / 55%);
 }
 
+.status-pill.is-unavailable > span {
+  background: var(--danger);
+  box-shadow: 0 0 12px rgb(255 139 139 / 44%);
+}
+
+.status-pill.is-offline > span {
+  background: var(--faint);
+  box-shadow: none;
+}
+
 .screen {
   display: grid;
   gap: 14px;
@@ -175,8 +185,9 @@ input:focus-visible {
   position: relative;
   min-height: 226px;
   display: flex;
+  align-items: center;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: center;
   overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: 26px;
@@ -186,6 +197,7 @@ input:focus-visible {
     linear-gradient(145deg, rgb(102 245 196 / 9%), transparent 52%),
     rgb(13 28 25 / 88%);
   box-shadow: 0 22px 60px rgb(0 0 0 / 22%);
+  text-align: center;
 }
 
 .hero-card::before,
@@ -428,12 +440,20 @@ input:focus-visible {
   font-weight: 800;
 }
 
-.last-sync-note {
+.sync-summary {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px;
   margin: 2px 0 0;
   color: var(--faint);
   font-size: 0.68rem;
   letter-spacing: 0.01em;
   text-align: center;
+}
+
+.pending-summary {
+  color: var(--amber);
 }
 
 .quick-form {

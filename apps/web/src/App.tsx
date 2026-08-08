@@ -28,8 +28,9 @@ export function App() {
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
+  const [hubReachable, setHubReachable] = useState<boolean | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const [message, setMessage] = useState('Chargement des données locales…');
+  const [message, setMessage] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,30 +46,33 @@ export function App() {
     return localTasks;
   }, []);
 
-  const synchronize = useCallback(async () => {
-    if (!navigator.onLine) {
-      setMessage('Hors ligne — les changements restent sur ce téléphone');
-      await reloadLocalState();
-      return;
-    }
+  const synchronize = useCallback(
+    async (forceAttempt = false) => {
+      if (!forceAttempt && !navigator.onLine) {
+        setHubReachable(false);
+        await reloadLocalState();
+        return;
+      }
 
-    setSyncing(true);
-    try {
-      const result = await syncNow();
-      setLastSync(result.syncedAt);
-      setMessage(
-        result.pending === 0
-          ? 'Toutes les modifications sont synchronisées'
-          : `${result.pending} modification${result.pending > 1 ? 's' : ''} en attente de synchronisation`,
-      );
-      await reloadLocalState();
-    } catch {
-      setMessage('Hub indisponible — changements conservés localement');
-      await reloadLocalState();
-    } finally {
-      setSyncing(false);
-    }
-  }, [reloadLocalState]);
+      setSyncing(true);
+      try {
+        const result = await syncNow();
+        setHubReachable(true);
+        setLastSync(result.syncedAt);
+        await reloadLocalState();
+      } catch (error) {
+        const cancelled =
+          error instanceof DOMException && error.name === 'AbortError';
+        if (!cancelled) {
+          setHubReachable(false);
+          await reloadLocalState();
+        }
+      } finally {
+        setSyncing(false);
+      }
+    },
+    [reloadLocalState],
+  );
 
   useEffect(() => {
     window.queueMicrotask(() => {
@@ -79,17 +83,18 @@ export function App() {
   }, [reloadLocalState, synchronize]);
 
   useEffect(() => {
+    let onlineSyncTimer: number | undefined;
     const onOnline = () => {
       setOnline(true);
-      void synchronize();
+      setHubReachable(null);
+      window.clearTimeout(onlineSyncTimer);
+      onlineSyncTimer = window.setTimeout(() => void synchronize(true), 300);
     };
     const onOffline = () => {
       void cancelActiveSync();
       setOnline(false);
+      setHubReachable(false);
       setSyncing(false);
-      setMessage(
-        'Hors ligne — les modifications seront synchronisées plus tard',
-      );
     };
     const onVisibility = () => {
       if (document.visibilityState === 'visible') void synchronize();
@@ -109,6 +114,7 @@ export function App() {
       window.removeEventListener('offline', onOffline);
       window.removeEventListener('friday:update-available', onUpdate);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.clearTimeout(onlineSyncTimer);
       window.clearInterval(timer);
     };
   }, [synchronize]);
@@ -123,7 +129,7 @@ export function App() {
     try {
       await createLocalTask(title);
       setTitle('');
-      setMessage('Enregistré sur ce téléphone');
+      setMessage('Tâche enregistrée sur ce téléphone.');
       await reloadLocalState();
       void synchronize();
     } catch (error) {
@@ -141,8 +147,8 @@ export function App() {
       await deleteLocalTask(taskId);
       setMessage(
         navigator.onLine
-          ? 'Suppression enregistrée — synchronisation en cours'
-          : 'Tâche supprimée sur ce téléphone — synchronisation en attente',
+          ? 'Tâche supprimée.'
+          : 'Tâche supprimée sur ce téléphone.',
       );
       const remainingTasks = await reloadLocalState();
       if (remainingTasks.length === 0) setEditingTasks(false);
@@ -162,26 +168,33 @@ export function App() {
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }
 
-  const syncLabel = online
-    ? pending > 0
-      ? `${pending} changement${pending > 1 ? 's' : ''} en attente`
-      : lastSync
-        ? 'Synchronisé'
-        : 'Connexion au hub'
-    : `Hors ligne — ${pending} en attente`;
+  const connectionLabel = !online
+    ? 'Hors ligne'
+    : syncing || hubReachable === null
+      ? 'Connexion…'
+      : hubReachable
+        ? 'Connecté'
+        : 'Hub indisponible';
+  const connectionTone = !online
+    ? 'is-offline'
+    : syncing || hubReachable === null
+      ? 'is-connecting'
+      : hubReachable
+        ? 'is-online'
+        : 'is-unavailable';
 
   return (
     <div className="app-shell">
       <header className="topbar">
         <h1>Friday</h1>
         <button
-          className={`status-pill ${online ? 'is-online' : 'is-offline'}`}
+          className={`status-pill ${connectionTone}`}
           type="button"
           onClick={() => void synchronize()}
           disabled={syncing}
         >
           <span aria-hidden="true" />
-          {syncing ? 'Synchronisation…' : syncLabel}
+          {connectionLabel}
         </button>
       </header>
 
@@ -195,7 +208,12 @@ export function App() {
                   ? 'Aucune tâche en cours.'
                   : `${activeTasks.length} tâche${activeTasks.length > 1 ? 's' : ''} en cours.`}
               </h2>
-              <p>{message}</p>
+              <p>
+                {message ??
+                  (activeTasks.length === 0
+                    ? 'Ajoutez une tâche depuis Maison.'
+                    : 'Consultez ou modifiez la liste dans Maison.')}
+              </p>
             </div>
 
             <section className="panel" aria-labelledby="tasks-summary-title">
@@ -234,13 +252,25 @@ export function App() {
               </aside>
             ) : null}
 
-            {lastSync ? (
-              <p className="last-sync-note">
-                Dernière synchro à{' '}
-                {new Date(lastSync).toLocaleTimeString('fr-FR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+            {pending > 0 || lastSync ? (
+              <p className="sync-summary" aria-live="polite">
+                {pending > 0 ? (
+                  <span className="pending-summary">
+                    {pending} modification{pending > 1 ? 's' : ''} en attente
+                  </span>
+                ) : null}
+                {pending > 0 && lastSync ? (
+                  <span aria-hidden="true">·</span>
+                ) : null}
+                {lastSync ? (
+                  <span>
+                    Dernière synchro à{' '}
+                    {new Date(lastSync).toLocaleTimeString('fr-FR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                ) : null}
               </p>
             ) : null}
           </section>
