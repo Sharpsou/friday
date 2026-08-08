@@ -1,10 +1,10 @@
 # Recette P0 — Galaxy A17
 
-Statut : **en cours**
+Statut : **porte go/no-go validée — contrôles de confiance restants**
 Appareil : Samsung Galaxy A17
 Objectif : prouver NFR-OFF-01, NFR-OFF-02 et NFR-SYNC-01 sur matériel réel.
 
-État observé le 8 août 2026 : accès LAN en HTTPS de confiance opérationnel, création et synchronisation visibles sur l'A17, puis modification et suppression locales testées après coupure du Wi-Fi. L'arrêt du hub en conservant le Wi-Fi actif laisse également l'interface et l'écriture locale opérationnelles. La sortie de l'état bloqué `Connexion…` a été observée sur l'A17 ; le libellé a ensuite été simplifié en `Hors ligne` et ce libellé courant est couvert par le test Chrome mobile. La porte complète reste ouverte tant que la persistance après fermeture forcée/redémarrage et l'absence de doublon après convergence ne sont pas consignées dans la matrice ci-dessous.
+État observé le 8 août 2026 : accès LAN en HTTPS de confiance opérationnel, création, modification et suppression locales testées, puis sortie de l’état bloqué `Connexion…` observée sur l’A17. L’utilisateur confirme qu’une tâche et sa modification en attente ont survécu à la fermeture forcée et au redémarrage complet hors réseau ; au retour du hub, l’attente est revenue à zéro et une seule occurrence de la tâche a convergé. Cette preuve ferme la porte critique du Lot 0B. Les lignes 7 et 8 restent des contrôles de confiance non bloquants pendant le Lot 1A.
 
 ## Préconditions utilisateur
 
@@ -69,25 +69,20 @@ Ouvrir `https://192.168.1.14:8443` dans Chrome sur l'A17 et ajouter Friday à l'
 |     1 | ouvrir Friday avec hub et Wi-Fi actifs                    | app shell et statut `Connecté`                   | OK A17 — 08/08/2026 |
 |     2 | arrêter le service, garder le Wi-Fi et rouvrir Friday     | interface disponible puis statut `Hors ligne`    | OK A17 — 08/08/2026 |
 |     3 | créer une tâche avec le service toujours arrêté           | message local et une modification en attente     | OK A17 — 08/08/2026 |
-|     4 | forcer l'arrêt de la PWA puis redémarrer l'A17            | tâche et modification toujours présentes         |                     |
-|     5 | lancer le service puis rouvrir Friday                     | attente à 0 et tâche partagée                    |                     |
-|     6 | provoquer un nouveau cycle de synchronisation             | une seule occurrence de la tâche                 |                     |
+|     4 | forcer l'arrêt de la PWA puis redémarrer l'A17            | tâche et modification toujours présentes         | OK A17 — 08/08/2026 |
+|     5 | lancer le service puis rouvrir Friday                     | attente à 0 et tâche partagée                    | OK A17 — 08/08/2026 |
+|     6 | provoquer un nouveau cycle de synchronisation             | une seule occurrence de la tâche                 | OK A17 — 08/08/2026 |
 |     7 | couper le Wi-Fi puis fermer et rouvrir Friday deux fois   | interface disponible deux fois sans réseau       |                     |
 |     8 | rétablir le Wi-Fi puis installer une nouvelle version PWA | convergence, activation proposée et aucune perte |                     |
 
-Consigner la version, l'heure, le nombre d'opérations en attente, la dernière synchronisation et toute friction tactile. Ne pas déclarer la persistance A17 validée sans cette table remplie.
+Consigner la version, l'heure, le nombre d'opérations en attente, la dernière synchronisation et toute friction tactile. Les lignes 1 à 6 constituent la porte critique désormais validée ; les lignes 7 et 8 prolongent la confiance pendant la suite du développement.
 
-## Prochaine session de recette
+## Contrôles de confiance restants
 
-Reprendre directement à l’étape 4 :
+Ces contrôles ne bloquent plus le démarrage du Lot 1A :
 
-1. ouvrir Friday avec le hub actif ; si la bannière de mise à jour apparaît, toucher `Installer`, vérifier qu’aucune donnée ne disparaît et consigner l’étape 8 ;
-2. cliquer sur `Friday - Arreter le service` ;
-3. passer l’A17 en mode avion et créer une tâche au titre unique, par exemple `RECETTE A17 REDÉMARRAGE` ;
-4. vérifier qu’une modification est en attente, forcer la fermeture de Friday puis redémarrer complètement l’A17 ;
-5. rouvrir Friday sans réseau et vérifier que la tâche et l’attente sont toujours présentes ;
-6. désactiver le mode avion, cliquer sur `Friday - Lancer ou redemarrer` sur le PC et rouvrir Friday ;
-7. vérifier le statut `Connecté`, zéro modification en attente et une seule occurrence de la tâche ;
-8. fermer et rouvrir Friday, toucher le statut pour provoquer une nouvelle synchronisation, vérifier une seconde fois l’absence de doublon puis renseigner les lignes 4 à 7 ; ne valider la ligne 8 que si une mise à jour PWA a réellement été installée.
+1. pendant une prochaine période hors réseau, fermer et rouvrir Friday deux fois puis renseigner la ligne 7 ;
+2. lors de la prochaine bannière de mise à jour PWA, toucher `Installer`, vérifier qu’aucune tâche ne disparaît puis renseigner la ligne 8 ;
+3. rejouer ponctuellement un cycle arrêt/redémarrage du hub pendant le développement du Lot 1A.
 
-Après validation de ces huit lignes, le Lot 0B peut être fermé et le développement reprend sur l’état terminé/rouvert d’une tâche, puis sa date et son heure.
+La prochaine implémentation active est l’état terminé/rouvert d’une tâche, suivie de sa date et de son heure.

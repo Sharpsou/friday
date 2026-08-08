@@ -76,6 +76,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-Fr
 
 L'installateur place également sur le Bureau `Friday - Lancer ou redemarrer`, qui exécute cette commande sans navigateur ni terminal visible et confirme son résultat, ainsi que `Friday - Arreter le service`, qui coupe uniquement le hub Friday pour la recette hors ligne.
 
-La preuve automatisée exécutée dans Google Chrome ne remplace pas la recette physique. Le checkpoint utilisateur actuel commence à l’étape 4 de la matrice Galaxy A17 : persistance après fermeture forcée/redémarrage, puis convergence sans doublon. Après cette porte, l’ordre de développement est : terminer/rouvrir une tâche, date/heure, responsable, récurrence et note, puis courses partagées.
+La porte go/no-go offline/synchronisation du Lot 0B est validée sur le Galaxy A17 : persistance après redémarrage hors réseau et convergence sans doublon confirmées. Le développement actif passe au Lot 1A dans cet ordre : terminer/rouvrir une tâche, date/heure, responsable, récurrence et note, puis courses partagées. Les lignes 7 et 8 de la recette A17 restent des contrôles de confiance non bloquants.
 
 Pour reprendre dans un nouveau chat, ouvrir `D:\prog\friday` et utiliser le prompt fourni dans le document 00. Le fichier `AGENTS.md` protège les décisions essentielles et les projets sources.

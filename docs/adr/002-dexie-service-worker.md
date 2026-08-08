@@ -1,7 +1,7 @@
 # ADR-002 — Dexie/IndexedDB et service worker injectManifest
 
 Date : 8 août 2026
-Statut : accepté sous réserve du spike A17
+Statut : accepté — porte A17 du Lot 0B validée
 
 ## Contexte
 
@@ -24,7 +24,7 @@ Toute écriture doit être transactionnelle dans IndexedDB. Le service worker re
 
 ## Preuve
 
-NFR-OFF-01, NFR-OFF-02, NFR-MIG-01 et la matrice A17 doivent passer, notamment après fermeture forcée et redémarrage.
+Le 8 août 2026, l’utilisateur a confirmé sur le Galaxy A17 qu’une tâche et son opération en attente survivent à la fermeture forcée et au redémarrage complet hors réseau. Après retour du hub, l’attente revient à zéro et une seule occurrence converge. Les scénarios Chrome mobile couvrent également création, suppression et expiration d’une synchronisation bloquée. Les migrations et l’activation d’une nouvelle version du service worker restent vérifiées à chaque évolution.
 
 ## Retour arrière
 
@@ -32,4 +32,4 @@ Si une limite structurelle non corrigeable empêche la porte P0, réévaluer un 
 
 ## Révision
 
-À la porte go/no-go du Lot 0B.
+Décision confirmée à la porte go/no-go du Lot 0B le 8 août 2026. Réviser uniquement si les contrôles prolongés révèlent une perte locale, une éviction de stockage ou une migration non récupérable.

@@ -761,7 +761,7 @@ Porte go/no-go :
 
 Stopper et réévaluer un client natif Android si cette porte échoue à cause d’une limite structurelle non corrigeable après un cycle de diagnostic ciblé.
 
-État d’exécution au 8 août 2026 : le vertical slice, HTTPS A17, le cache local chiffré, l’outbox, push/pull idempotent, la suppression offline, les états `Connecté`/`Connexion…`/`Hors ligne` et les raccourcis d’exploitation Windows sont implémentés. Les étapes physiques restantes sont la persistance après fermeture forcée/redémarrage de l’A17, puis la convergence sans doublon. Le détail et les preuves sont suivis dans [`recipes/galaxy-a17-p0.md`](recipes/galaxy-a17-p0.md).
+État d’exécution au 8 août 2026 : **porte go/no-go validée sur le Galaxy A17**. Le vertical slice, HTTPS A17, le cache local chiffré, l’outbox, push/pull idempotent, la suppression offline, les états `Connecté`/`Connexion…`/`Hors ligne` et les raccourcis d’exploitation Windows sont implémentés. Une tâche et son attente ont survécu au redémarrage complet hors réseau, puis ont convergé une seule fois au retour du hub. Les contrôles de confiance non bloquants restent suivis dans [`recipes/galaxy-a17-p0.md`](recipes/galaxy-a17-p0.md).
 
 ### Lot 1A — comptes, tâches et courses (1 à 3 heures)
 
@@ -888,7 +888,7 @@ Ne pas commencer en parallèle le design complet, le RAG, l’import bancaire ou
 | ADR | Décision | État |
 |---|---|---|
 | ADR-001 | monorepo TypeScript, React/Vite et Fastify | accepté par ce document |
-| ADR-002 | Dexie/IndexedDB et service worker `injectManifest` | à confirmer par spike A17 |
+| ADR-002 | Dexie/IndexedDB et service worker `injectManifest` | confirmé par la porte A17 du 08/08/2026 |
 | ADR-003 | journal d’opérations, idempotence et conflits | accepté ; détails validés par tests P0 |
 | ADR-004 | SQLite `better-sqlite3`, WAL et migrations SQL numérotées | accepté |
 | ADR-005 | Better Auth, inscription fermée et liaison appareil | à valider par threat model |

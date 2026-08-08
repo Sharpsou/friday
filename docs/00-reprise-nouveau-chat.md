@@ -12,7 +12,7 @@ Le projet est en cours d’implémentation et peut être repris directement dans
 
 Les décisions produit, métier et techniques sont maintenant consolidées. Il reste volontairement quelques décisions de mise en place qui doivent être tranchées au moment où elles deviennent utiles ; elles ont toutes une valeur par défaut et un checkpoint défini.
 
-Le code Friday et son historique Git doivent être préservés. Le prochain chat doit reprendre le Lot 0B à son état courant, pas recommencer le cadrage, réinitialiser le dépôt ou tenter de reprendre la branche Flutter de Home Mind.
+Le code Friday et son historique Git doivent être préservés. Le prochain chat doit commencer le Lot 1A à partir de l’état courant, pas recommencer le cadrage, réinitialiser le dépôt ou tenter de reprendre la branche Flutter de Home Mind.
 
 ## 2. Ordre de lecture et autorité documentaire
 
@@ -51,6 +51,7 @@ Chemin : `D:\prog\friday`
 - accès HTTPS depuis le Galaxy A17 configuré sur `https://192.168.1.14:8443`, certificat approuvé et IP réservée dans la Livebox ;
 - création, modification et suppression locales testées sur l’A17 lorsque le hub est arrêté ou le Wi-Fi coupé ;
 - états de connexion stabilisés : une tentative ne reste plus bloquée sur `Connexion…` et aboutit en cinq secondes au plus à `Connecté` ou `Hors ligne` ;
+- porte go/no-go du Lot 0B validée sur l’A17 le 8 août 2026 : après redémarrage complet hors réseau, la tâche et l’attente étaient présentes ; au retour du hub, l’attente est revenue à zéro et une seule occurrence a convergé ;
 - dernier contrôle complet au commit `b262f74` : 10 tests unitaires/intégration et 4 scénarios Chrome mobile réussis ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
@@ -230,13 +231,12 @@ Le nouveau chat doit :
 
 1. lire `AGENTS.md`, ce document, les documents 09 et 10 ;
 2. constater l’état Git existant avec `git status -sb` et `git remote -v`, sans réinitialiser le dépôt ;
-3. reprendre le Lot 0B à l’étape 4 de `docs/recipes/galaxy-a17-p0.md` et exécuter `pnpm verify` avant de déclarer une évolution terminée ;
-4. avec le hub arrêté et l’A17 hors réseau, créer une tâche de recette, forcer la fermeture de Friday, redémarrer l’A17 puis confirmer que la tâche et la modification en attente sont toujours présentes ;
-5. relancer le hub, attendre le retour à zéro de l’attente, rouvrir Friday et confirmer qu’une seule occurrence de la tâche existe ;
-6. consigner les étapes 4 à 8 dans la matrice A17 ; cette preuve ferme la porte Lot 0B ;
-7. poursuivre alors le Lot 1A dans cet ordre : terminer/rouvrir une tâche, ajouter date/heure, responsable, récurrence et note, puis les courses partagées ;
-8. traiter l’authentification/appairage du Lot 1A avant toute donnée réelle ou utilisation à deux ;
-9. reconstruire et redémarrer le hub après une évolution du runtime, sans ouvrir l’interface sur le PC, avec la commande documentée dans `infra/windows/README.md`.
+3. commencer le Lot 1A par le statut terminé/rouvert d’une tâche : l’action écrit d’abord localement, reste disponible hors ligne, se synchronise sans doublon et sépare clairement les tâches actives des tâches terminées ;
+4. couvrir le parcours par tests unitaires/intégration et Chrome mobile, exécuter `pnpm verify`, redémarrer le runtime sans navigateur puis demander une recette A17 courte ;
+5. poursuivre ensuite avec date/heure, responsable, récurrence et note, puis les courses partagées ;
+6. traiter l’authentification/appairage du Lot 1A avant toute donnée réelle ou utilisation à deux ;
+7. conserver les lignes 7 et 8 de `docs/recipes/galaxy-a17-p0.md` comme contrôles de confiance non bloquants ;
+8. reconstruire et redémarrer le hub après une évolution du runtime, sans ouvrir l’interface sur le PC, avec la commande documentée dans `infra/windows/README.md`.
 
 Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directement : commit sur la branche active puis `git push origin main`. Ne pas considérer l’absence de `gh` comme un blocage au commit ou au push.
 
@@ -247,13 +247,13 @@ Lis entièrement AGENTS.md, docs/00-reprise-nouveau-chat.md,
 docs/09-decision-finale-pwa-mvp.md et
 docs/10-feuille-de-route-technique-implementation.md.
 
-Reprends Friday au Lot 0B à partir du dépôt Git et du monorepo existants. Ne
+Reprends Friday au Lot 1A à partir du dépôt Git et du monorepo existants. Ne
 réinitialise pas Git, ne recrée pas le projet, ne refais pas le cadrage général
 et ne modifie aucun projet source dans D:\prog. Vérifie d’abord l’état courant,
-puis termine la porte physique offline/synchronisation sur le Galaxy A17. Une
-fois cette porte validée, poursuis le Lot 1A. Exécute `pnpm verify`, documente
-chaque preuve et utilise Git directement pour les commits et les pushes ;
-l’absence éventuelle de GitHub CLI ne bloque pas ces opérations.
+puis implémente terminer/rouvrir une tâche avec la même voie locale/outbox en
+ligne et hors ligne. Exécute `pnpm verify`, redémarre le hub sans navigateur,
+documente chaque preuve et utilise Git directement pour les commits et les
+pushes ; l’absence éventuelle de GitHub CLI ne bloque pas ces opérations.
 ```
 
 ## 11. Checklist de reprise
@@ -286,7 +286,7 @@ Contrôles automatiques réussis le 8 août 2026, actualisés au commit `b262f74
 
 Ce que cet audit ne prétend pas avoir validé :
 
-- persistance complète après fermeture forcée/redémarrage et convergence sans doublon sur le Galaxy A17 ;
+- répétition des ouvertures hors ligne sur plusieurs cycles et plusieurs jours ;
 - activation d’une nouvelle version du service worker sur l’A17 sans perte de données ;
 - création ou autorisations du compte Google Maison ;
 - configuration Google Drive Desktop ou BitLocker ;

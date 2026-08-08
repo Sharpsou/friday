@@ -65,10 +65,12 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 
 ## Prochaine cible d’implémentation
 
-1. terminer la porte Lot 0B sur le Galaxy A17 : avec le hub arrêté et le téléphone hors réseau, créer une tâche repérable, forcer la fermeture de Friday, redémarrer l’A17 et vérifier que la tâche et l’attente persistent ;
-2. relancer le hub, vérifier que l’attente revient à zéro puis provoquer une nouvelle synchronisation et confirmer qu’il n’existe qu’une occurrence de la tâche ;
-3. conserver une preuve automatisée avec `pnpm verify` pour chaque évolution ;
-4. une fois la porte franchie, poursuivre le Lot 1A dans cet ordre : terminer/rouvrir une tâche, date/heure, responsable, récurrence et note, puis courses partagées ;
+La porte go/no-go du Lot 0B est validée sur le Galaxy A17 : persistance après redémarrage hors réseau, retour de l’attente à zéro et convergence sans doublon confirmés par l’utilisateur le 8 août 2026.
+
+1. commencer le Lot 1A par terminer et rouvrir une tâche, avec la même voie locale/outbox en ligne et hors ligne ;
+2. conserver une preuve automatisée avec `pnpm verify`, puis demander une recette A17 courte du nouveau parcours ;
+3. poursuivre ensuite avec date/heure, responsable, récurrence et note, puis courses partagées ;
+4. traiter l’authentification fermée et l’appairage avant toute donnée réelle ou utilisation à deux ;
 5. après une évolution du runtime, reconstruire et redémarrer le hub sans ouvrir Chrome avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
 
-Ne pas commencer le budget, Calendar, la veille ou l’assistant avant validation complète de la preuve offline/sync du Lot 0B.
+Ne pas commencer le budget, Calendar, la veille ou l’assistant avant la sortie technique du Lot 1A.
