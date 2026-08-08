@@ -123,7 +123,10 @@ export async function createLocalTask(titleInput: string): Promise<TaskRecord> {
   return task;
 }
 
-export async function deleteLocalTask(taskId: string): Promise<void> {
+async function queueLocalTaskUpdate(
+  taskId: string,
+  update: (task: TaskRecord, updatedAt: string) => TaskRecord | null,
+): Promise<TaskRecord> {
   const { deviceId, key } = await getDeviceContext();
   const row = await fridayDb.tasks.get(taskId);
   if (!row) {
@@ -137,8 +140,6 @@ export async function deleteLocalTask(taskId: string): Promise<void> {
       taskAad(row.id, deviceId),
     ),
   );
-  if (task.deletedAt) return;
-
   const queuedOperations = await fridayDb.outbox
     .where('entityId')
     .equals(taskId)
@@ -151,13 +152,15 @@ export async function deleteLocalTask(taskId: string): Promise<void> {
   const now = new Date(
     Math.max(Date.now(), latestQueuedTimestamp + 1),
   ).toISOString();
-  const baseRevision = task.revision + queuedOperations.length;
-  const deletedTask = TaskRecordSchema.parse({
-    ...task,
+  const changedTask = update(task, now);
+  if (!changedTask) return task;
+  const baseRevision = task.revision + (queuedOperations.length > 0 ? 1 : 0);
+  const updatedTask = TaskRecordSchema.parse({
+    ...changedTask,
     revision: baseRevision,
-    deletedAt: now,
     updatedAt: now,
     updatedByProfileId: PROFILE_ID,
+    deviceId,
   });
   const operation = TaskOperationSchema.parse({
     protocolVersion: 1,
@@ -169,10 +172,10 @@ export async function deleteLocalTask(taskId: string): Promise<void> {
     operation: 'upsert',
     baseRevision,
     clientCreatedAt: now,
-    payload: deletedTask,
+    payload: updatedTask,
   });
   const [encryptedTask, encryptedOperation] = await Promise.all([
-    encryptJson(key, deletedTask, taskAad(task.id, deviceId)),
+    encryptJson(key, updatedTask, taskAad(task.id, deviceId)),
     encryptJson(key, operation, outboxAad(operation.operationId, deviceId)),
   ]);
 
@@ -183,10 +186,10 @@ export async function deleteLocalTask(taskId: string): Promise<void> {
     async () => {
       await fridayDb.tasks.put({
         encrypted: encryptedTask,
-        id: deletedTask.id,
-        revision: deletedTask.revision,
+        id: updatedTask.id,
+        revision: updatedTask.revision,
         syncState: 'pending',
-        updatedAt: deletedTask.updatedAt,
+        updatedAt: updatedTask.updatedAt,
       });
       await fridayDb.outbox.put({
         createdAt: operation.clientCreatedAt,
@@ -197,6 +200,28 @@ export async function deleteLocalTask(taskId: string): Promise<void> {
       });
     },
   );
+
+  return updatedTask;
+}
+
+export async function setLocalTaskStatus(
+  taskId: string,
+  status: TaskRecord['status'],
+): Promise<TaskRecord> {
+  return queueLocalTaskUpdate(taskId, (task) => {
+    if (task.deletedAt) {
+      throw new Error('Tâche introuvable.');
+    }
+    if (task.status === status) return null;
+    return { ...task, status };
+  });
+}
+
+export async function deleteLocalTask(taskId: string): Promise<void> {
+  await queueLocalTaskUpdate(taskId, (task, updatedAt) => {
+    if (task.deletedAt) return null;
+    return { ...task, deletedAt: updatedAt };
+  });
 }
 
 export async function listTasks(): Promise<LocalTask[]> {

@@ -82,6 +82,75 @@ test('edit mode deletes a task offline without confirmation', async ({
   await expect(page.getByText(title)).toHaveCount(0);
 });
 
+test('a task can be finished and reopened online and offline without duplication', async ({
+  context,
+  page,
+}) => {
+  const title = `Tâche à terminer ${crypto.randomUUID()}`;
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+
+  await page.getByLabel('Nouvelle tâche').fill(title);
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: title }),
+  ).toContainText('Synchronisée avec le foyer');
+
+  await page.getByRole('button', { name: `Terminer ${title}` }).click();
+  await expect(
+    page.getByRole('region', { name: 'Tâches terminées' }),
+  ).toContainText(title);
+  await expect(
+    page.getByRole('listitem').filter({ hasText: title }),
+  ).toContainText('Synchronisée avec le foyer');
+
+  await page.getByRole('button', { name: `Rouvrir ${title}` }).click();
+  await expect(
+    page.getByRole('region', { name: 'Tâches en cours' }),
+  ).toContainText(title);
+  await expect(
+    page.getByRole('listitem').filter({ hasText: title }),
+  ).toContainText('Synchronisée avec le foyer');
+
+  await context.setOffline(true);
+  await page.getByRole('button', { name: `Terminer ${title}` }).click();
+  await expect(
+    page.getByRole('region', { name: 'Tâches terminées' }),
+  ).toContainText(title);
+  await expect(
+    page.getByRole('listitem').filter({ hasText: title }),
+  ).toContainText('À synchroniser');
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await expect(
+    page.getByRole('region', { name: 'Tâches terminées' }),
+  ).toContainText(title);
+
+  await page.getByRole('button', { name: `Rouvrir ${title}` }).click();
+  await expect(
+    page.getByRole('region', { name: 'Tâches en cours' }),
+  ).toContainText(title);
+  await expect(
+    page.getByRole('region', { name: 'Tâches terminées' }),
+  ).not.toContainText(title);
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await expect(
+    page.getByRole('region', { name: 'Tâches en cours' }),
+  ).toContainText(title);
+
+  await context.setOffline(false);
+  await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
+  await expect(page.getByRole('button', { name: 'Connecté' })).toBeVisible();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: title }),
+  ).toContainText('Synchronisée avec le foyer');
+  await expect(page.getByText(title)).toHaveCount(1);
+});
+
 test('local deletion stays available while the hub request is stalled', async ({
   page,
 }) => {

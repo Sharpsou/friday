@@ -10,6 +10,7 @@ import {
   listTasks,
   readPendingOperations,
   resetDatabaseForTests,
+  setLocalTaskStatus,
 } from './task-repository.js';
 
 beforeEach(async () => {
@@ -60,6 +61,42 @@ describe('local task repository', () => {
     expect(JSON.stringify(rawTask?.encrypted)).not.toContain(
       'Rapporter le colis',
     );
+  });
+
+  it('queues finishing and reopening through the same local transaction', async () => {
+    const task = await createLocalTask('Étendre le linge');
+
+    await setLocalTaskStatus(task.id, 'done');
+
+    const [finishedTask] = await listTasks();
+    const operationsAfterFinish = await readPendingOperations();
+    expect(finishedTask).toMatchObject({
+      id: task.id,
+      status: 'done',
+      syncState: 'pending',
+    });
+    expect(operationsAfterFinish).toHaveLength(2);
+    expect(operationsAfterFinish.at(-1)).toMatchObject({
+      baseRevision: 1,
+      entityId: task.id,
+      payload: { status: 'done' },
+    });
+
+    await setLocalTaskStatus(task.id, 'todo');
+
+    const [reopenedTask] = await listTasks();
+    const operationsAfterReopen = await readPendingOperations();
+    expect(reopenedTask).toMatchObject({
+      id: task.id,
+      status: 'todo',
+      syncState: 'pending',
+    });
+    expect(operationsAfterReopen).toHaveLength(3);
+    expect(operationsAfterReopen.at(-1)).toMatchObject({
+      baseRevision: 2,
+      entityId: task.id,
+      payload: { status: 'todo' },
+    });
   });
 
   it('stores the acknowledged server revision before the next pull', async () => {

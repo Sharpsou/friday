@@ -91,6 +91,64 @@ describe('Friday hub', () => {
     expect(pull.json().changes).toHaveLength(1);
   });
 
+  it('converges a finish and reopen cycle without duplicate changes', async () => {
+    const app = await buildHub({ databasePath: ':memory:' });
+    apps.push(app);
+    const created = operation();
+    const finished: TaskOperation = {
+      ...created,
+      operationId: '5a72afdd-bd91-4c53-a2b1-af342922896a',
+      baseRevision: 1,
+      payload: {
+        ...created.payload,
+        revision: 1,
+        status: 'done',
+        updatedAt: '2026-08-08T12:01:00.000Z',
+      },
+    };
+    const reopened: TaskOperation = {
+      ...finished,
+      operationId: 'cedb1468-16fe-4b58-b634-7a5c48d53bc9',
+      baseRevision: 2,
+      payload: {
+        ...finished.payload,
+        revision: 2,
+        status: 'todo',
+        updatedAt: '2026-08-08T12:02:00.000Z',
+      },
+    };
+
+    for (const taskOperation of [
+      created,
+      finished,
+      finished,
+      reopened,
+      reopened,
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/sync/push',
+        payload: { operations: [taskOperation] },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().acks[0].status).toBe('applied');
+    }
+
+    const pull = await app.inject({
+      method: 'GET',
+      url: '/api/sync/pull?after=0',
+    });
+
+    expect(pull.json().changes).toHaveLength(3);
+    expect(
+      pull
+        .json()
+        .changes.map(
+          (change: { payload: { status: string } }) => change.payload.status,
+        ),
+    ).toEqual(['todo', 'done', 'todo']);
+  });
+
   it('returns a stable conflict for a stale base revision', async () => {
     const app = await buildHub({ databasePath: ':memory:' });
     apps.push(app);

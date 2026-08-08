@@ -1,4 +1,5 @@
 :root {
+  font-size: 75%;
   color: #effcf7;
   background: #07110f;
   font-family:
@@ -95,15 +96,15 @@ input:focus-visible {
   width: min(100%, 760px);
   min-height: 100vh;
   margin: 0 auto;
-  padding: 0 18px 132px;
+  padding: 0 18px 100px;
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 26px 4px 20px;
+  gap: 12px;
+  padding: 20px 3px 15px;
 }
 
 .topbar h1,
@@ -134,10 +135,10 @@ input:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 10px 14px;
+  padding: 8px 11px;
   color: #b8d2c9;
   background: rgb(13 28 25 / 74%);
   box-shadow: inset 0 1px rgb(255 255 255 / 3%);
@@ -172,26 +173,26 @@ input:focus-visible {
 
 .screen {
   display: grid;
-  gap: 14px;
+  gap: 11px;
   animation: arrive 180ms ease-out;
 }
 
 .hero-card {
   position: relative;
-  min-height: 226px;
+  min-height: 170px;
   display: flex;
   align-items: center;
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
   border: 1px solid var(--line-strong);
-  border-radius: 26px;
-  padding: 26px;
+  border-radius: 20px;
+  padding: 20px;
   color: var(--text);
   background:
     linear-gradient(145deg, rgb(102 245 196 / 9%), transparent 52%),
     rgb(13 28 25 / 88%);
-  box-shadow: 0 22px 60px rgb(0 0 0 / 22%);
+  box-shadow: 0 17px 45px rgb(0 0 0 / 22%);
   text-align: center;
 }
 
@@ -205,17 +206,17 @@ input:focus-visible {
 }
 
 .hero-card::before {
-  top: -116px;
-  right: -90px;
-  width: 260px;
-  height: 260px;
+  top: -87px;
+  right: -68px;
+  width: 195px;
+  height: 195px;
 }
 
 .hero-card::after {
-  top: -65px;
-  right: -39px;
-  width: 158px;
-  height: 158px;
+  top: -49px;
+  right: -29px;
+  width: 119px;
+  height: 119px;
 }
 
 .hero-card > * {
@@ -225,13 +226,13 @@ input:focus-visible {
 
 .hero-card h2 {
   max-width: 560px;
-  font-size: clamp(2rem, 8vw, 3.1rem);
+  font-size: clamp(2rem, 6vw, 3.1rem);
   font-weight: 650;
   line-height: 0.98;
 }
 
 .hero-card p {
-  margin: 18px 0 0;
+  margin: 14px 0 0;
   color: var(--muted);
 }
 
@@ -240,22 +241,22 @@ input:focus-visible {
 .quick-form,
 .edit-notice {
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: 17px;
   background: rgb(13 28 25 / 78%);
   box-shadow: inset 0 1px rgb(255 255 255 / 3%);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(14px);
 }
 
 .panel {
-  padding: 22px;
+  padding: 17px;
 }
 
 .section-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
 .section-heading h3 {
@@ -263,7 +264,7 @@ input:focus-visible {
 }
 
 .page-heading {
-  margin: 12px 4px 6px;
+  margin: 9px 3px 5px;
 }
 
 .page-heading h2 {
@@ -274,14 +275,14 @@ input:focus-visible {
 .page-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .edit-toggle {
   min-height: 44px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
-  padding: 0 14px;
+  padding: 0 11px;
   color: var(--text);
   background: rgb(16 35 31 / 88%);
   font-weight: 800;
@@ -310,11 +311,29 @@ input:focus-visible {
   list-style: none;
 }
 
-.task-list li {
-  min-height: 70px;
+.task-section-heading {
+  min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  gap: 9px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 9px;
+}
+
+.task-section-heading h3 {
+  font-size: 1.05rem;
+}
+
+.completed-task-panel {
+  background: rgb(10 23 20 / 68%);
+}
+
+.task-list li {
+  min-height: 53px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -322,20 +341,11 @@ input:focus-visible {
   border-bottom: 0;
 }
 
-.task-check {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 auto;
-  border: 1px solid #5e8a7c;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 4px rgb(7 17 15 / 72%);
-}
-
 .task-copy {
   min-width: 0;
   flex: 1;
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .task-copy strong {
@@ -344,12 +354,41 @@ input:focus-visible {
   font-size: 0.98rem;
 }
 
+.task-list li.is-done .task-copy strong {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--faint);
+}
+
+.task-status-button {
+  min-width: 57px;
+  min-height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 0 8px;
+  color: var(--mint);
+  background: var(--mint-deep);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.task-status-button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.task-list li.is-done .task-status-button {
+  color: var(--text);
+  background: rgb(16 35 31 / 88%);
+}
+
 .delete-task-button {
   min-height: 44px;
   flex: 0 0 auto;
   border: 1px solid rgb(255 139 139 / 34%);
-  border-radius: 13px;
-  padding: 0 12px;
+  border-radius: 10px;
+  padding: 0 9px;
   color: var(--danger);
   background: var(--danger-surface);
   font-weight: 800;
@@ -370,7 +409,7 @@ input:focus-visible {
 .task-sync {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   font-weight: 700;
 }
 
@@ -394,17 +433,17 @@ input:focus-visible {
 }
 
 .empty-state {
-  margin: 24px 0 8px;
+  margin: 18px 0 6px;
   color: var(--muted);
 }
 
 .conflict-notice {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 11px;
   border: 1px solid rgb(255 139 139 / 28%);
-  border-radius: 16px;
-  padding: 13px 14px 13px 16px;
+  border-radius: 12px;
+  padding: 10px 11px 10px 12px;
   background: var(--danger-surface);
 }
 
@@ -439,7 +478,7 @@ input:focus-visible {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
   margin: 2px 0 0;
   color: var(--faint);
   font-size: 0.68rem;
@@ -453,14 +492,14 @@ input:focus-visible {
 
 .quick-form {
   display: grid;
-  gap: 12px;
-  padding: 22px;
+  gap: 9px;
+  padding: 17px;
 }
 
 .edit-notice {
   display: grid;
-  gap: 5px;
-  padding: 18px 22px;
+  gap: 4px;
+  padding: 14px 17px;
   border-color: rgb(255 139 139 / 26%);
   background: var(--danger-surface);
 }
@@ -482,15 +521,15 @@ input:focus-visible {
 .input-row {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 10px;
+  gap: 8px;
 }
 
 .input-row input {
   min-width: 0;
-  min-height: 52px;
+  min-height: 44px;
   border: 1px solid var(--line-strong);
-  border-radius: 15px;
-  padding: 0 16px;
+  border-radius: 11px;
+  padding: 0 12px;
   color: var(--text);
   background: rgb(7 17 15 / 72%);
 }
@@ -501,10 +540,10 @@ input:focus-visible {
 
 .input-row button,
 .update-banner button {
-  min-height: 48px;
+  min-height: 44px;
   border: 0;
-  border-radius: 15px;
-  padding: 0 18px;
+  border-radius: 11px;
+  padding: 0 14px;
   color: #07110f;
   background: var(--mint);
   font-weight: 900;
@@ -520,8 +559,8 @@ input:focus-visible {
 }
 
 .count-badge {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 34px;
+  min-height: 34px;
   display: grid;
   place-items: center;
   border: 1px solid var(--mint);
@@ -552,8 +591,8 @@ input:focus-visible {
 }
 
 .placeholder-mark {
-  width: 88px;
-  height: 88px;
+  width: 66px;
+  height: 66px;
   display: grid;
   place-items: center;
   border: 1px solid var(--mint);
@@ -561,8 +600,8 @@ input:focus-visible {
   color: var(--mint);
   background: rgb(102 245 196 / 8%);
   box-shadow:
-    inset 0 0 28px rgb(102 245 196 / 8%),
-    0 0 28px rgb(102 245 196 / 8%);
+    inset 0 0 21px rgb(102 245 196 / 8%),
+    0 0 21px rgb(102 245 196 / 8%);
   font-size: 2rem;
   font-weight: 600;
 }
@@ -570,27 +609,27 @@ input:focus-visible {
 .bottom-nav {
   position: fixed;
   z-index: 10;
-  bottom: 16px;
+  bottom: 12px;
   left: 50%;
-  width: min(calc(100% - 28px), 640px);
-  min-height: 72px;
+  width: min(calc(100% - 28px), 480px);
+  min-height: 54px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   transform: translateX(-50%);
   overflow: hidden;
   border: 1px solid var(--line-strong);
-  border-radius: 22px;
-  padding: 7px 64px 7px 7px;
+  border-radius: 17px;
+  padding: 5px 60px 5px 5px;
   background: rgb(9 22 19 / 94%);
-  box-shadow: 0 18px 48px rgb(0 0 0 / 38%);
-  backdrop-filter: blur(20px);
+  box-shadow: 0 14px 36px rgb(0 0 0 / 38%);
+  backdrop-filter: blur(15px);
 }
 
 .bottom-nav button {
   position: relative;
-  min-height: 56px;
+  min-height: 44px;
   border: 0;
-  border-radius: 15px;
+  border-radius: 11px;
   color: #729186;
   background: transparent;
   font-size: 0.72rem;
@@ -600,7 +639,7 @@ input:focus-visible {
 .bottom-nav button::after {
   position: absolute;
   right: 25%;
-  bottom: 7px;
+  bottom: 5px;
   left: 25%;
   height: 2px;
   border-radius: 999px;
@@ -622,14 +661,14 @@ input:focus-visible {
   position: fixed;
   z-index: 11;
   right: max(22px, calc((100vw - 602px) / 2));
-  bottom: 28px;
+  bottom: 15px;
   width: 48px;
   height: 48px;
   border: 0;
   border-radius: 50%;
   color: #07110f;
   background: var(--mint);
-  box-shadow: 0 0 24px rgb(102 245 196 / 24%);
+  box-shadow: 0 0 18px rgb(102 245 196 / 24%);
   font-size: 1.8rem;
   line-height: 1;
 }
@@ -637,22 +676,22 @@ input:focus-visible {
 .update-banner {
   position: fixed;
   z-index: 20;
-  top: 14px;
+  top: 11px;
   left: 50%;
-  width: min(calc(100% - 28px), 560px);
-  min-height: 64px;
+  width: min(calc(100% - 28px), 420px);
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   transform: translateX(-50%);
   border: 1px solid var(--line-strong);
-  border-radius: 18px;
-  padding: 10px 12px 10px 18px;
+  border-radius: 14px;
+  padding: 8px 9px 8px 14px;
   color: var(--text);
   background: rgb(16 35 31 / 96%);
-  box-shadow: 0 18px 44px rgb(0 0 0 / 42%);
-  backdrop-filter: blur(20px);
+  box-shadow: 0 14px 33px rgb(0 0 0 / 42%);
+  backdrop-filter: blur(15px);
   font-weight: 800;
 }
 
@@ -681,7 +720,7 @@ input:focus-visible {
   }
 
   .input-row button {
-    min-height: 48px;
+    min-height: 44px;
   }
 
   .bottom-nav {

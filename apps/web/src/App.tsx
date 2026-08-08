@@ -5,6 +5,7 @@ import {
   deleteLocalTask,
   getOutboxCounts,
   listTasks,
+  setLocalTaskStatus,
   type LocalTask,
 } from './db/task-repository.js';
 import { updateServiceWorker } from './pwa.js';
@@ -24,6 +25,9 @@ export function App() {
   const [tasks, setTasks] = useState<LocalTask[]>([]);
   const [editingTasks, setEditingTasks] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [changingStatusTaskId, setChangingStatusTaskId] = useState<
+    string | null
+  >(null);
   const [title, setTitle] = useState('');
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState(0);
@@ -122,10 +126,15 @@ export function App() {
     };
   }, [synchronize]);
 
-  const activeTasks = useMemo(
-    () => tasks.filter((task) => task.status === 'todo'),
-    [tasks],
-  );
+  const { activeTasks, completedTasks } = useMemo(() => {
+    const active: LocalTask[] = [];
+    const completed: LocalTask[] = [];
+    for (const task of tasks) {
+      if (task.status === 'done') completed.push(task);
+      else active.push(task);
+    }
+    return { activeTasks: active, completedTasks: completed };
+  }, [tasks]);
 
   async function submitTask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -162,6 +171,28 @@ export function App() {
       );
     } finally {
       setDeletingTaskId(null);
+    }
+  }
+
+  async function changeTaskStatus(taskId: string, status: LocalTask['status']) {
+    setChangingStatusTaskId(taskId);
+    try {
+      await cancelActiveSync();
+      setSyncing(false);
+      await setLocalTaskStatus(taskId, status);
+      setMessage(
+        status === 'done'
+          ? 'Tâche terminée sur ce téléphone.'
+          : 'Tâche rouverte sur ce téléphone.',
+      );
+      await reloadLocalState();
+      void synchronize();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : 'Modification impossible',
+      );
+    } finally {
+      setChangingStatusTaskId(null);
     }
   }
 
@@ -233,7 +264,14 @@ export function App() {
                   Ajouter
                 </button>
               </div>
-              <TaskList tasks={activeTasks.slice(0, 4)} />
+              <TaskList
+                tasks={activeTasks.slice(0, 4)}
+                changingStatusTaskId={changingStatusTaskId}
+                actionsDisabled={changingStatusTaskId !== null}
+                onStatusChange={(taskId, status) =>
+                  void changeTaskStatus(taskId, status)
+                }
+              />
             </section>
 
             {conflicts > 0 ? (
@@ -339,14 +377,49 @@ export function App() {
 
             <section
               className="panel task-panel"
-              aria-label="Tâches enregistrées"
+              aria-labelledby="active-tasks-title"
             >
+              <div className="task-section-heading">
+                <h3 id="active-tasks-title">Tâches en cours</h3>
+                <span className="count-badge">{activeTasks.length}</span>
+              </div>
               <TaskList
-                tasks={tasks}
+                tasks={activeTasks}
                 editing={editingTasks}
                 deletingTaskId={deletingTaskId}
-                actionsDisabled={deletingTaskId !== null}
+                changingStatusTaskId={changingStatusTaskId}
+                actionsDisabled={
+                  deletingTaskId !== null || changingStatusTaskId !== null
+                }
                 onDelete={(taskId) => void deleteTask(taskId)}
+                onStatusChange={(taskId, status) =>
+                  void changeTaskStatus(taskId, status)
+                }
+                emptyMessage="Aucune tâche en cours."
+              />
+            </section>
+
+            <section
+              className="panel task-panel completed-task-panel"
+              aria-labelledby="completed-tasks-title"
+            >
+              <div className="task-section-heading">
+                <h3 id="completed-tasks-title">Tâches terminées</h3>
+                <span className="count-badge">{completedTasks.length}</span>
+              </div>
+              <TaskList
+                tasks={completedTasks}
+                editing={editingTasks}
+                deletingTaskId={deletingTaskId}
+                changingStatusTaskId={changingStatusTaskId}
+                actionsDisabled={
+                  deletingTaskId !== null || changingStatusTaskId !== null
+                }
+                onDelete={(taskId) => void deleteTask(taskId)}
+                onStatusChange={(taskId, status) =>
+                  void changeTaskStatus(taskId, status)
+                }
+                emptyMessage="Aucune tâche terminée."
               />
             </section>
           </section>
@@ -408,30 +481,55 @@ function TaskList({
   tasks,
   editing = false,
   deletingTaskId = null,
+  changingStatusTaskId = null,
   actionsDisabled = false,
+  emptyMessage = 'Aucune tâche enregistrée.',
   onDelete,
+  onStatusChange,
 }: {
   tasks: readonly LocalTask[];
   editing?: boolean;
   deletingTaskId?: string | null;
+  changingStatusTaskId?: string | null;
   actionsDisabled?: boolean;
+  emptyMessage?: string;
   onDelete?: (taskId: string) => void;
+  onStatusChange?: (taskId: string, status: LocalTask['status']) => void;
 }) {
   if (tasks.length === 0) {
-    return <p className="empty-state">Aucune tâche enregistrée.</p>;
+    return <p className="empty-state">{emptyMessage}</p>;
   }
 
   return (
     <ul className="task-list">
       {tasks.map((task) => (
-        <li key={task.id}>
-          <span className="task-check" aria-hidden="true" />
+        <li className={task.status === 'done' ? 'is-done' : ''} key={task.id}>
           <span className="task-copy">
             <strong>{task.title}</strong>
             <small className={`task-sync is-${task.syncState}`}>
               {TASK_SYNC_LABELS[task.syncState]}
             </small>
           </span>
+          {!editing && onStatusChange ? (
+            <button
+              className="task-status-button"
+              type="button"
+              aria-label={`${task.status === 'done' ? 'Rouvrir' : 'Terminer'} ${task.title}`}
+              disabled={actionsDisabled}
+              onClick={() =>
+                onStatusChange(
+                  task.id,
+                  task.status === 'done' ? 'todo' : 'done',
+                )
+              }
+            >
+              {changingStatusTaskId === task.id
+                ? 'En cours…'
+                : task.status === 'done'
+                  ? 'Rouvrir'
+                  : 'Terminer'}
+            </button>
+          ) : null}
           {editing && onDelete ? (
             <button
               className="delete-task-button"
