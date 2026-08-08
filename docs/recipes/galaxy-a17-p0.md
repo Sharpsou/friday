@@ -37,6 +37,8 @@ Après préparation du certificat, exécuter une fois le raccourci `Friday - Con
 
 Le raccourci `Friday - Lancer et recetter` du Bureau exécute ensuite automatiquement la construction, le démarrage et l’ouverture de Chrome. Il affiche également l’URL HTTPS à ouvrir sur le Galaxy A17.
 
+Pour simuler un hub indisponible sans couper le Wi-Fi Maison, utiliser `Friday - Arreter le service`. Pour rétablir le hub sans ouvrir Chrome ni terminal, utiliser `Friday - Lancer ou redemarrer`.
+
 Équivalent manuel :
 
 ```powershell
@@ -55,14 +57,15 @@ Ouvrir `https://192.168.1.14:8443` dans Chrome sur l'A17 et ajouter Friday à l'
 
 ## Matrice à signer
 
-| Étape | Action                                            | Résultat attendu                                    | Résultat/date |
-| ----: | ------------------------------------------------- | --------------------------------------------------- | ------------- |
-|     1 | ouvrir Friday avec PC et Wi-Fi actifs             | app shell, health et statut à jour                  |               |
-|     2 | fermer Friday, couper le Wi-Fi, rouvrir deux fois | l'interface démarre deux fois hors ligne            |               |
-|     3 | PC arrêté et mode avion, créer une tâche          | message « Enregistré sur ce téléphone », outbox à 1 |               |
-|     4 | forcer l'arrêt de la PWA, redémarrer l'A17        | tâche et outbox toujours présentes                  |               |
-|     5 | rallumer PC et Wi-Fi, rouvrir Friday              | outbox revient à 0 et tâche devient partagée        |               |
-|     6 | provoquer un nouveau cycle de sync                | une seule occurrence de la tâche                    |               |
-|     7 | installer une nouvelle version PWA                | activation proposée, aucune perte locale            |               |
+| Étape | Action                                                    | Résultat attendu                                 | Résultat/date |
+| ----: | --------------------------------------------------------- | ------------------------------------------------ | ------------- |
+|     1 | ouvrir Friday avec hub et Wi-Fi actifs                    | app shell et statut synchronisé                  |               |
+|     2 | arrêter le service, garder le Wi-Fi et rouvrir Friday     | interface disponible, hub indiqué indisponible   |               |
+|     3 | créer une tâche avec le service toujours arrêté           | message local et une modification en attente     |               |
+|     4 | forcer l'arrêt de la PWA puis redémarrer l'A17            | tâche et modification toujours présentes         |               |
+|     5 | lancer le service puis rouvrir Friday                     | attente à 0 et tâche partagée                    |               |
+|     6 | provoquer un nouveau cycle de synchronisation             | une seule occurrence de la tâche                 |               |
+|     7 | couper le Wi-Fi puis fermer et rouvrir Friday deux fois   | interface disponible deux fois sans réseau       |               |
+|     8 | rétablir le Wi-Fi puis installer une nouvelle version PWA | convergence, activation proposée et aucune perte |               |
 
 Consigner la version, l'heure, le nombre d'opérations en attente, la dernière synchronisation et toute friction tactile. Ne pas déclarer la persistance A17 validée sans cette table remplie.

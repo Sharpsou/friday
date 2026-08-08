@@ -8,9 +8,13 @@ $ErrorActionPreference = 'Stop'
 
 $workspacePath = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $launcherPath = Join-Path $PSScriptRoot 'Start-FridayRecipe.ps1'
+$stopLauncherPath = Join-Path $PSScriptRoot 'Stop-Friday.ps1'
 $lanConfigurationPath = Join-Path $PSScriptRoot 'Configure-FridayLan.ps1'
 if (-not (Test-Path -LiteralPath $launcherPath)) {
   throw "Lanceur Friday introuvable : $launcherPath"
+}
+if (-not (Test-Path -LiteralPath $stopLauncherPath)) {
+  throw "Arret Friday introuvable : $stopLauncherPath"
 }
 if (-not (Test-Path -LiteralPath $lanConfigurationPath)) {
   throw "Configuration LAN Friday introuvable : $lanConfigurationPath"
@@ -45,6 +49,19 @@ $backgroundShortcut.IconLocation = "$powershellPath,0"
 $backgroundShortcut.WindowStyle = 7
 $backgroundShortcut.Save()
 
+$stopShortcutPath = Join-Path $DesktopPath 'Friday - Arreter le service.lnk'
+$stopShortcut = $shell.CreateShortcut($stopShortcutPath)
+$stopShortcut.TargetPath = $powershellPath
+$stopShortcut.Arguments = (
+  "-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass " +
+  "-File `"$stopLauncherPath`""
+)
+$stopShortcut.WorkingDirectory = $workspacePath
+$stopShortcut.Description = 'Arreter Friday pour tester le mode hors ligne'
+$stopShortcut.IconLocation = "$powershellPath,0"
+$stopShortcut.WindowStyle = 7
+$stopShortcut.Save()
+
 $networkConfiguration = Get-NetIPConfiguration |
   Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' } |
   Select-Object -First 1
@@ -70,4 +87,5 @@ $lanShortcut.Save()
 
 Write-Output "SHORTCUT_PATH=$shortcutPath"
 Write-Output "BACKGROUND_SHORTCUT_PATH=$backgroundShortcutPath"
+Write-Output "STOP_SHORTCUT_PATH=$stopShortcutPath"
 Write-Output "LAN_SHORTCUT_PATH=$lanShortcutPath"
