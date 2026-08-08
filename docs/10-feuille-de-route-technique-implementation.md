@@ -788,6 +788,8 @@ Ordre d’exécution après fermeture du Lot 0B :
 4. implémenter l’authentification fermée et l’appairage avant les données réelles ou l’usage à deux ;
 5. ajouter les courses partagées, puis finaliser conflits et tombstones.
 
+État d’exécution au commit `16819f5` du 8 août 2026 : les points 1 et 2 sont implémentés avec la même voie locale/outbox, y compris heure et durée facultatives, migration SQLite N−1 et affichages `Liste`/`Semaine`/`Mois` dans `Maison > Agenda`. `pnpm verify` réussit avec 20 tests unitaires/intégration et 7 scénarios Chrome mobile. Le candidat est déployé sur l’origine HTTPS A17 ; les recettes physiques courtes de [`recipes/galaxy-a17-lot-1a-tasks.md`](recipes/galaxy-a17-lot-1a-tasks.md) et [`recipes/galaxy-a17-lot-1a-schedule.md`](recipes/galaxy-a17-lot-1a-schedule.md) restent le checkpoint immédiat. Après validation, la prochaine cible d’implémentation est le point 3 : responsable, récurrence simple et note.
+
 ### Lot 1B — budget et agenda (1 à 3 heures)
 
 Travaux :

@@ -67,10 +67,12 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 
 La porte go/no-go du Lot 0B est validée sur le Galaxy A17 : persistance après redémarrage hors réseau, retour de l’attente à zéro et convergence sans doublon confirmés par l’utilisateur le 8 août 2026.
 
-1. commencer le Lot 1A par terminer et rouvrir une tâche, avec la même voie locale/outbox en ligne et hors ligne ;
-2. conserver une preuve automatisée avec `pnpm verify`, puis demander une recette A17 courte du nouveau parcours ;
-3. poursuivre ensuite avec date/heure, responsable, récurrence et note, puis courses partagées ;
-4. traiter l’authentification fermée et l’appairage avant toute donnée réelle ou utilisation à deux ;
+Le commit `16819f5` implémente terminer/rouvrir, date/heure/durée et les vues `Liste`/`Semaine`/`Mois` dans `Maison > Agenda`. `pnpm verify` réussit avec 20 tests unitaires/intégration et 7 scénarios Chrome mobile, et le candidat est déployé sur l’origine HTTPS A17.
+
+1. faire confirmer les recettes physiques `docs/recipes/galaxy-a17-lot-1a-tasks.md` et `docs/recipes/galaxy-a17-lot-1a-schedule.md` ;
+2. après ce checkpoint, ajouter responsable, récurrence simple et note par la même voie locale/outbox en ligne et hors ligne ;
+3. traiter l’authentification fermée et l’appairage avant toute donnée réelle ou utilisation à deux ;
+4. ajouter ensuite les courses partagées, puis finaliser conflits et tombstones ;
 5. après une évolution du runtime, reconstruire et redémarrer le hub sans ouvrir Chrome avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
 
 Ne pas commencer le budget, Calendar, la veille ou l’assistant avant la sortie technique du Lot 1A.

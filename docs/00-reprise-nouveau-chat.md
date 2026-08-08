@@ -52,7 +52,9 @@ Chemin : `D:\prog\friday`
 - création, modification et suppression locales testées sur l’A17 lorsque le hub est arrêté ou le Wi-Fi coupé ;
 - états de connexion stabilisés : une tentative ne reste plus bloquée sur `Connexion…` et aboutit en cinq secondes au plus à `Connecté` ou `Hors ligne` ;
 - porte go/no-go du Lot 0B validée sur l’A17 le 8 août 2026 : après redémarrage complet hors réseau, la tâche et l’attente étaient présentes ; au retour du hub, l’attente est revenue à zéro et une seule occurrence a convergé ;
-- dernier contrôle complet au commit `b262f74` : 10 tests unitaires/intégration et 4 scénarios Chrome mobile réussis ;
+- Lot 1A en cours : terminer/rouvrir, date facultative, rendez-vous avec heure/durée et vues `Liste`/`Semaine`/`Mois` dans la page `Agenda` de `Maison` sont implémentés par la voie locale/outbox ;
+- dernier contrôle complet au commit `16819f5` : 20 tests unitaires/intégration et 7 scénarios Chrome mobile réussis ;
+- le candidat `16819f5` est déployé sur l’origine HTTPS A17 ; les recettes physiques terminer/rouvrir et date/agenda restent à confirmer par l’utilisateur ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
 - `.gitignore` ignore `.analysis/`.
@@ -231,12 +233,12 @@ Le nouveau chat doit :
 
 1. lire `AGENTS.md`, ce document, les documents 09 et 10 ;
 2. constater l’état Git existant avec `git status -sb` et `git remote -v`, sans réinitialiser le dépôt ;
-3. commencer le Lot 1A par le statut terminé/rouvert d’une tâche : l’action écrit d’abord localement, reste disponible hors ligne, se synchronise sans doublon et sépare clairement les tâches actives des tâches terminées ;
-4. couvrir le parcours par tests unitaires/intégration et Chrome mobile, exécuter `pnpm verify`, redémarrer le runtime sans navigateur puis demander une recette A17 courte ;
-5. poursuivre ensuite avec date/heure, responsable, récurrence et note, puis les courses partagées ;
-6. traiter l’authentification/appairage du Lot 1A avant toute donnée réelle ou utilisation à deux ;
-7. conserver les lignes 7 et 8 de `docs/recipes/galaxy-a17-p0.md` comme contrôles de confiance non bloquants ;
-8. reconstruire et redémarrer le hub après une évolution du runtime, sans ouvrir l’interface sur le PC, avec la commande documentée dans `infra/windows/README.md`.
+3. faire confirmer sur l’A17 les parcours courts de `docs/recipes/galaxy-a17-lot-1a-tasks.md` et `docs/recipes/galaxy-a17-lot-1a-schedule.md`, sans déclarer le comportement physique validé avant le retour utilisateur ;
+4. après ce checkpoint, compléter la tâche avec responsable, récurrence simple et note, toujours par la même écriture locale/outbox en ligne et hors ligne ;
+5. traiter l’authentification/appairage du Lot 1A avant toute donnée réelle ou utilisation à deux ;
+6. ajouter ensuite les courses partagées, puis finaliser conflits et tombstones ;
+7. couvrir chaque nouveau parcours par tests unitaires/intégration et Chrome mobile, exécuter `pnpm verify`, puis redémarrer le runtime sans navigateur ;
+8. conserver les lignes 7 et 8 de `docs/recipes/galaxy-a17-p0.md` comme contrôles de confiance non bloquants.
 
 Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directement : commit sur la branche active puis `git push origin main`. Ne pas considérer l’absence de `gh` comme un blocage au commit ou au push.
 
@@ -250,10 +252,12 @@ docs/10-feuille-de-route-technique-implementation.md.
 Reprends Friday au Lot 1A à partir du dépôt Git et du monorepo existants. Ne
 réinitialise pas Git, ne recrée pas le projet, ne refais pas le cadrage général
 et ne modifie aucun projet source dans D:\prog. Vérifie d’abord l’état courant,
-puis implémente terminer/rouvrir une tâche avec la même voie locale/outbox en
-ligne et hors ligne. Exécute `pnpm verify`, redémarre le hub sans navigateur,
-documente chaque preuve et utilise Git directement pour les commits et les
-pushes ; l’absence éventuelle de GitHub CLI ne bloque pas ces opérations.
+puis pars du commit `16819f5`. Demande d’abord la recette A17 courte des parcours
+terminer/rouvrir et date/agenda déjà déployés. Après ce checkpoint, implémente
+responsable, récurrence simple et note avec la même voie locale/outbox en ligne
+et hors ligne. Exécute `pnpm verify`, redémarre le hub sans navigateur, documente
+chaque preuve et utilise Git directement pour les commits et les pushes ;
+l’absence éventuelle de GitHub CLI ne bloque pas ces opérations.
 ```
 
 ## 11. Checklist de reprise
@@ -271,7 +275,7 @@ pushes ; l’absence éventuelle de GitHub CLI ne bloque pas ces opérations.
 
 ## 12. Contrôles réalisés et limites
 
-Contrôles automatiques réussis le 8 août 2026, actualisés au commit `b262f74` :
+Contrôles automatiques réussis le 8 août 2026, actualisés au commit `16819f5` :
 
 - documentation active, README et instructions agent contrôlés ;
 - aucun lien Markdown local manquant ;
@@ -281,13 +285,14 @@ Contrôles automatiques réussis le 8 août 2026, actualisés au commit `b262f74
 - aucune signature évidente de clé privée, token OpenAI ou clé Google dans les documents ;
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
 - présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
-- `pnpm verify` réussi avec 10 tests unitaires/intégration, le build PWA/hub et 4 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi avec 20 tests unitaires/intégration, le build PWA/hub et 7 scénarios E2E Google Chrome mobile ;
 - health checks local et LAN réussis après redémarrage sans navigateur.
 
 Ce que cet audit ne prétend pas avoir validé :
 
 - répétition des ouvertures hors ligne sur plusieurs cycles et plusieurs jours ;
 - activation d’une nouvelle version du service worker sur l’A17 sans perte de données ;
+- parcours physiques A17 du Lot 1A pour terminer/rouvrir, date/heure/durée et vues semaine/mois ;
 - création ou autorisations du compte Google Maison ;
 - configuration Google Drive Desktop ou BitLocker ;
 - sécurité complète du code au-delà des contrôles et documents déjà présents ;
