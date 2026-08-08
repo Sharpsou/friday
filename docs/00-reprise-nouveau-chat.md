@@ -4,15 +4,15 @@ Date de l’audit : 8 août 2026
 
 Statut : **point d’entrée canonique**
 
-But : permettre à un nouveau chat de commencer l’implémentation sans dépendre de l’historique de conversation.
+But : permettre à un nouveau chat de reprendre l’implémentation existante sans dépendre de l’historique de conversation.
 
 ## 1. Verdict de l’audit
 
-Le projet est prêt à être repris dans un nouveau chat pour démarrer l’implémentation.
+Le projet est en cours d’implémentation et peut être repris directement dans un nouveau chat.
 
 Les décisions produit, métier et techniques sont maintenant consolidées. Il reste volontairement quelques décisions de mise en place qui doivent être tranchées au moment où elles deviennent utiles ; elles ont toutes une valeur par défaut et un checkpoint défini.
 
-Il n’existe encore aucun code Friday à préserver. Le prochain chat doit construire le Lot 0, pas recommencer le cadrage ni tenter de reprendre la branche Flutter de Home Mind.
+Le code Friday et son historique Git doivent être préservés. Le prochain chat doit reprendre le Lot 0B à son état courant, pas recommencer le cadrage, réinitialiser le dépôt ou tenter de reprendre la branche Flutter de Home Mind.
 
 ## 2. Ordre de lecture et autorité documentaire
 
@@ -42,10 +42,13 @@ En cas de contradiction, le document au rang le plus élevé prévaut.
 
 Chemin : `D:\prog\friday`
 
-- aucun code applicatif ;
-- 11 documents Markdown après cet audit, plus `README.md` et `AGENTS.md` ;
-- aucun `package.json`, aucune base et aucun secret ;
-- répertoire **pas encore initialisé avec Git** ;
+- monorepo pnpm TypeScript avec une PWA React/Vite, un hub Fastify/SQLite, des contrats Zod partagés et des tests automatisés ;
+- dépôt Git déjà initialisé sur `main` ;
+- remote `origin` déjà configuré vers `https://github.com/Sharpsou/friday.git` ;
+- `git commit` et `git push` fonctionnent sans GitHub CLI ; `gh` n’est requis que pour des opérations GitHub supplémentaires comme la création d’une pull request ;
+- commande de contrôle globale : `pnpm verify` ;
+- vertical slice tâche locale chiffrée, outbox et synchronisation idempotente implémenté ;
+- accès HTTPS depuis le Galaxy A17 configuré, avec recette physique offline/synchronisation en cours ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
 - `.gitignore` ignore `.analysis/`.
 
@@ -210,16 +213,13 @@ Pack minimal proposé avant Lot 0 :
 Le nouveau chat doit :
 
 1. lire `AGENTS.md`, ce document, les documents 09 et 10 ;
-2. confirmer brièvement qu’il reprend Lot 0A, sans refaire l’audit ;
-3. présenter le pack P0 final et demander l’accord uniquement si l’installation n’a pas déjà été approuvée ;
-4. initialiser Git dans `D:\prog\friday` ;
-5. créer le monorepo, la commande `pnpm verify` et les ADR initiales ;
-6. poursuivre jusqu’à une PWA + hub automatisés ;
-7. construire la tâche locale chiffrée, l’outbox et la convergence idempotente ;
-8. exécuter les tests ;
-9. seulement ensuite demander la recette physique A17.
+2. constater l’état Git existant avec `git status -sb` et `git remote -v`, sans réinitialiser le dépôt ;
+3. reprendre le Lot 0B et exécuter `pnpm verify` avant de déclarer une évolution terminée ;
+4. terminer avec l’utilisateur la porte physique A17 : une tâche créée hors ligne survit à la fermeture forcée et au redémarrage, puis converge une seule fois après retour du hub ;
+5. après validation de cette porte, poursuivre le Lot 1A avec l’état terminé puis la date/heure, le responsable, la récurrence et la note ;
+6. reconstruire et redémarrer le hub après une évolution du runtime, sans ouvrir l’interface sur le PC, avec la commande documentée dans `infra/windows/README.md`.
 
-Première porte : une tâche créée hors ligne sur l’A17 survit à la fermeture forcée et au redémarrage, puis converge une seule fois après retour du hub.
+Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directement : commit sur la branche active puis `git push origin main`. Ne pas considérer l’absence de `gh` comme un blocage au commit ou au push.
 
 ## 10. Prompt prêt à copier dans un nouveau chat
 
@@ -228,12 +228,13 @@ Lis entièrement AGENTS.md, docs/00-reprise-nouveau-chat.md,
 docs/09-decision-finale-pwa-mvp.md et
 docs/10-feuille-de-route-technique-implementation.md.
 
-Reprends Friday au Lot 0A. Ne refais pas le cadrage général et ne modifie aucun
-projet source dans D:\prog. Commence par le gate des skills P0 s’il n’est pas
-encore validé, puis implémente de façon autonome le socle et le vertical slice
-offline/synchronisation. Ne me sollicite qu’au premier test physique nécessaire
-sur le Galaxy A17 ou si une décision change réellement le produit. Exécute les
-tests et documente chaque preuve avant de déclarer une étape terminée.
+Reprends Friday au Lot 0B à partir du dépôt Git et du monorepo existants. Ne
+réinitialise pas Git, ne recrée pas le projet, ne refais pas le cadrage général
+et ne modifie aucun projet source dans D:\prog. Vérifie d’abord l’état courant,
+puis termine la porte physique offline/synchronisation sur le Galaxy A17. Une
+fois cette porte validée, poursuis le Lot 1A. Exécute `pnpm verify`, documente
+chaque preuve et utilise Git directement pour les commits et les pushes ;
+l’absence éventuelle de GitHub CLI ne bloque pas ces opérations.
 ```
 
 ## 11. Checklist de reprise
@@ -260,16 +261,15 @@ Contrôles automatiques réussis le 8 août 2026 :
 - aucune ancienne estimation en jours dans les références actives ;
 - aucune signature évidente de clé privée, token OpenAI ou clé Google dans les documents ;
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
-- absence de code, de Git et de `package.json` confirmée comme état initial attendu.
+- présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
 
 Ce que cet audit ne prétend pas avoir validé :
 
-- installation et persistance réelles de la PWA sur le Galaxy A17 ;
-- certificat, DHCP, pare-feu et comportement du routeur ;
+- persistance complète après fermeture forcée/redémarrage et convergence sans doublon sur le Galaxy A17 ;
+- robustesse du certificat, du DHCP, du pare-feu et du routeur au-delà de la recette LAN actuelle ;
 - création ou autorisations du compte Google Maison ;
 - configuration Google Drive Desktop ou BitLocker ;
-- compatibilité exacte des versions npm qui seront verrouillées ;
-- threat model et sécurité du code, puisqu’il n’existe pas encore ;
+- sécurité complète du code au-delà des contrôles et documents déjà présents ;
 - comportement iPhone, explicitement différé.
 
 Ces limites sont des tâches de Lot 0/P1, pas des informations perdues.

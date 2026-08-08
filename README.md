@@ -51,6 +51,28 @@ La construction est pilotée en temps agentique : environ **8 à 16 heures cumul
 
 ## État du workspace
 
-Le répertoire contient pour l’instant le cadrage de Friday et n’est pas encore initialisé avec Git. Aucun code des projets sources n’a été copié. La prochaine étape est le Lot 0A puis le spike PWA/offline : monorepo, HTTPS local, installation sur le Galaxy A17, stockage chiffré, outbox et convergence après une coupure complète.
+Le dépôt Git est initialisé sur `main` avec `origin` configuré vers `https://github.com/Sharpsou/friday.git`. Un commit et un push ordinaires utilisent Git directement ; GitHub CLI (`gh`) n’est pas requis, sauf pour des opérations GitHub supplémentaires comme la création d’une pull request. Le Lot 0 contient maintenant le monorepo pnpm, la PWA React, le hub Fastify/SQLite, les contrats Zod et le premier vertical slice tâche/outbox/synchronisation. Aucun code des projets sources n’a été copié.
+
+Commandes principales :
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm verify
+pnpm dev
+```
+
+Sous Windows, le raccourci de recette s’installe avec :
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Install-DesktopShortcut.ps1
+```
+
+Après une évolution du runtime, reconstruire et redémarrer le hub en arrière-plan, sans ouvrir Chrome :
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning
+```
+
+La preuve automatisée exécutée dans Google Chrome ne remplace pas la recette physique. Le prochain checkpoint utilisateur est l’installation HTTPS et la matrice offline sur le Galaxy A17, uniquement après une vérification complète du dépôt.
 
 Pour reprendre dans un nouveau chat, ouvrir `D:\prog\friday` et utiliser le prompt fourni dans le document 00. Le fichier `AGENTS.md` protège les décisions essentielles et les projets sources.

@@ -1,0 +1,37 @@
+{
+  "name": "friday",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.16.0",
+  "engines": {
+    "node": ">=24.0.0 <25",
+    "pnpm": ">=11.16.0 <12"
+  },
+  "scripts": {
+    "build": "pnpm --filter @friday/contracts build && pnpm --filter @friday/domain build && pnpm --filter @friday/web build && pnpm --filter @friday/hub build",
+    "dev": "concurrently -k -n HUB,WEB -c blue,green \"pnpm --filter @friday/hub dev\" \"pnpm --filter @friday/web dev\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "preview": "pnpm --filter @friday/hub start",
+    "test": "pnpm -r --if-present test",
+    "test:e2e": "playwright test",
+    "typecheck": "pnpm -r typecheck",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.62.1",
+    "@types/node": "24.13.3",
+    "concurrently": "10.0.4",
+    "eslint": "10.8.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.3",
+    "globals": "17.9.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.66.0",
+    "vitest": "4.1.10"
+  }
+}

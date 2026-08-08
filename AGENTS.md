@@ -14,8 +14,12 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 
 ## État du workspace au 8 août 2026
 
-- Friday ne contient encore aucun code applicatif.
-- `D:\prog\friday` n’est pas encore un dépôt Git.
+- Friday contient un monorepo pnpm TypeScript avec la PWA React/Vite, le hub Fastify/SQLite, les contrats partagés et les tests automatisés.
+- `D:\prog\friday` est déjà un dépôt Git sur la branche `main`.
+- Le remote `origin` est déjà configuré vers `https://github.com/Sharpsou/friday.git`.
+- Un commit et un push simples se font avec Git. GitHub CLI (`gh`) n’est pas requis ; il ne devient utile que pour les opérations GitHub supplémentaires, par exemple créer une pull request.
+- La commande de contrôle globale est `pnpm verify`.
+- La PWA est accessible en HTTPS depuis le Galaxy A17. La recette physique offline/synchronisation reste l’autorité pour valider les comportements du téléphone.
 - `.analysis/` contient des artefacts temporaires et est ignoré.
 - Les projets sources sont externes au workspace Friday.
 - `D:\prog\Home_mind` est fortement modifié et ne doit jamais être édité, nettoyé, déplacé ou réinitialisé depuis Friday.
@@ -40,7 +44,8 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 ## Façon de travailler
 
 - Ne pas refaire un audit général avant de démarrer : le handoff `00` est prévu pour cela.
-- Commencer par le Lot 0A, puis continuer de façon autonome jusqu’à un vrai checkpoint utilisateur.
+- Reprendre l’état d’implémentation existant ; ne pas réinitialiser Git et ne pas recréer le monorepo.
+- Continuer de façon autonome jusqu’au prochain vrai checkpoint utilisateur.
 - Ne solliciter l’utilisateur que pour une action physique, un secret/compte, un choix qui change le produit ou une validation UX sur une version fonctionnelle.
 - La construction est estimée en heures de travail agentique, pas en jours humains.
 - Les périodes de 7/14 jours sont de l’observation, pas du temps de développement ni une raison d’attendre avant de coder la suite.
@@ -55,14 +60,11 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 - Enregistrer toute installation future dans `docs/skills-register.md`.
 - Aucun skill tiers spécifique à Friday n’est installé à ce jour.
 
-## Première cible d’implémentation
+## Prochaine cible d’implémentation
 
-1. proposer le pack minimal P0 si l’utilisateur ne l’a pas encore approuvé ;
-2. initialiser Git et le monorepo pnpm TypeScript ;
-3. créer `pnpm verify` ;
-4. servir une PWA et `/api/health` sur la même origine ;
-5. implémenter une tâche locale chiffrée + outbox + push/pull idempotent ;
-6. exécuter les tests automatisés ;
-7. demander uniquement alors la recette physique sur Galaxy A17.
+1. terminer la porte Lot 0B sur le Galaxy A17 : persistance après fermeture/redémarrage et convergence sans doublon après retour du réseau ;
+2. conserver une preuve automatisée avec `pnpm verify` pour chaque évolution ;
+3. une fois la porte franchie, poursuivre les tâches du Lot 1A, notamment état terminé puis date/heure, responsable, récurrence et note ;
+4. après une évolution du runtime, reconstruire et redémarrer le hub sans ouvrir Chrome avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
 
-Ne pas commencer le budget, Calendar, la veille ou l’assistant avant que la preuve offline/sync du Lot 0B soit exécutable.
+Ne pas commencer le budget, Calendar, la veille ou l’assistant avant validation complète de la preuve offline/sync du Lot 0B.
