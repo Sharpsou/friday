@@ -5,6 +5,7 @@ param(
   [switch]$ExitAfterHealthCheck,
   [switch]$RestartExisting,
   [switch]$KeepHubRunning,
+  [switch]$ShowStatusPopup,
   [ValidateRange(5, 120)]
   [int]$HealthTimeoutSeconds = 45
 )
@@ -12,13 +13,32 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Show-FridayMessage {
+  param(
+    [Parameter(Mandatory = $true)][string]$Message,
+    [int]$TimeoutSeconds = 5,
+    [int]$Icon = 64
+  )
+
+  $shell = New-Object -ComObject WScript.Shell
+  $null = $shell.Popup($Message, $TimeoutSeconds, 'Friday', $Icon)
+}
+
 trap {
-  Write-Host ''
-  Write-Host 'Friday n’a pas pu démarrer.' -ForegroundColor Red
-  Write-Host $_.Exception.Message -ForegroundColor Red
-  Write-Host "Lanceur : $PSCommandPath"
-  if (-not $ExitAfterHealthCheck) {
-    Read-Host 'Appuyez sur Entrée pour fermer cette fenêtre' | Out-Null
+  if ($ShowStatusPopup) {
+    Show-FridayMessage `
+      -Message "Friday n'a pas pu demarrer. Utilise 'Lancer et recetter' pour afficher le detail." `
+      -TimeoutSeconds 8 `
+      -Icon 16
+  }
+  else {
+    Write-Host ''
+    Write-Host 'Friday n’a pas pu démarrer.' -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host "Lanceur : $PSCommandPath"
+    if (-not $ExitAfterHealthCheck) {
+      Read-Host 'Appuyez sur Entrée pour fermer cette fenêtre' | Out-Null
+    }
   }
   exit 1
 }
@@ -147,6 +167,12 @@ Push-Location $workspacePath
 $hubProcess = $null
 $hubReady = $false
 try {
+  if ($ShowStatusPopup) {
+    Show-FridayMessage `
+      -Message 'Friday demarre. Cela peut prendre quelques secondes.' `
+      -TimeoutSeconds 2
+  }
+
   Write-Host ''
   Write-Host 'Friday - lancement du candidat de recette' -ForegroundColor Cyan
   Write-Host "Données : $dataDirectory"
@@ -242,6 +268,16 @@ try {
   }
   Write-Host "Recette détaillée : $recipePath"
   Write-Host 'Mini-recette : créer une tâche, recharger hors ligne, puis rétablir le réseau et vérifier la synchronisation.'
+
+  if ($ShowStatusPopup) {
+    $availableMessage = if ($phoneUrl) {
+      "Friday est disponible sur ton mobile.`n$phoneUrl"
+    }
+    else {
+      "Friday est disponible sur ce PC.`n$localUrl"
+    }
+    Show-FridayMessage -Message $availableMessage
+  }
 
   if (-not $NoBrowser -and $chromePath) {
     Start-Process -FilePath $chromePath -ArgumentList @('--new-window', $localUrl)

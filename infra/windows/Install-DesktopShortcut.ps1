@@ -41,7 +41,7 @@ $backgroundShortcut.TargetPath = $powershellPath
 $backgroundShortcut.Arguments = (
   "-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass " +
   "-File `"$launcherPath`" -NoBrowser -ExitAfterHealthCheck " +
-  '-RestartExisting -KeepHubRunning'
+  '-RestartExisting -KeepHubRunning -ShowStatusPopup'
 )
 $backgroundShortcut.WorkingDirectory = $workspacePath
 $backgroundShortcut.Description = 'Construire puis lancer ou redemarrer Friday en arriere-plan'

@@ -73,7 +73,7 @@ Après une évolution du runtime, reconstruire et redémarrer le hub en arrière
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning
 ```
 
-L'installateur place également sur le Bureau `Friday - Lancer ou redemarrer`, qui exécute cette commande sans navigateur ni terminal visible, et `Friday - Arreter le service`, qui coupe uniquement le hub Friday pour la recette hors ligne.
+L'installateur place également sur le Bureau `Friday - Lancer ou redemarrer`, qui exécute cette commande sans navigateur ni terminal visible et confirme son résultat, ainsi que `Friday - Arreter le service`, qui coupe uniquement le hub Friday pour la recette hors ligne.
 
 La preuve automatisée exécutée dans Google Chrome ne remplace pas la recette physique. Le checkpoint utilisateur actuel est la matrice de persistance et de convergence offline sur le Galaxy A17.
 

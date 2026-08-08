@@ -10,7 +10,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Install-
 
 `Friday - Lancer et recetter` construit la version courante, démarre le hub, attend le health check, ouvre Google Chrome et rappelle la recette. Le terminal visible appartient uniquement au mode recette : appuyer sur Entrée à la fin pour arrêter proprement le hub.
 
-`Friday - Lancer ou redemarrer` construit la version courante puis lance le hub s'il est arrêté, ou redémarre uniquement le processus Friday qui écoute déjà sur le port `8443`. Il reste en arrière-plan et n'ouvre ni Chrome ni terminal visible.
+`Friday - Lancer ou redemarrer` construit la version courante puis lance le hub s'il est arrêté, ou redémarre uniquement le processus Friday qui écoute déjà sur le port `8443`. Il reste en arrière-plan et n'ouvre ni Chrome ni terminal visible. Une première confirmation indique que le démarrage est en cours, puis une seconde confirme que Friday est disponible sur le mobile ou signale l'échec.
 
 `Friday - Arreter le service` arrête uniquement le processus Friday qui écoute sur le port `8443`, sans couper le Wi-Fi du PC. Une confirmation courte indique que le test hors ligne peut commencer. Si un autre programme utilise ce port, le raccourci refuse de l'arrêter.
 
