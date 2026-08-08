@@ -48,7 +48,11 @@ Chemin : `D:\prog\friday`
 - `git commit` et `git push` fonctionnent sans GitHub CLI ; `gh` n’est requis que pour des opérations GitHub supplémentaires comme la création d’une pull request ;
 - commande de contrôle globale : `pnpm verify` ;
 - vertical slice tâche locale chiffrée, outbox et synchronisation idempotente implémenté ;
-- accès HTTPS depuis le Galaxy A17 configuré, avec recette physique offline/synchronisation en cours ;
+- accès HTTPS depuis le Galaxy A17 configuré sur `https://192.168.1.14:8443`, certificat approuvé et IP réservée dans la Livebox ;
+- création, modification et suppression locales testées sur l’A17 lorsque le hub est arrêté ou le Wi-Fi coupé ;
+- états de connexion stabilisés : une tentative ne reste plus bloquée sur `Connexion…` et aboutit en cinq secondes au plus à `Connecté` ou `Hors ligne` ;
+- dernier contrôle complet au commit `b262f74` : 10 tests unitaires/intégration et 4 scénarios Chrome mobile réussis ;
+- raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
 - `.gitignore` ignore `.analysis/`.
 
@@ -96,6 +100,17 @@ Les autres modèles lourds ne font pas partie du service quotidien.
 - Aucun build Xcode, Flutter, App Store ou abonnement Apple.
 - Trois destinations : Aujourd’hui, Maison, Veille ; bouton `+` permanent.
 
+### UX active
+
+- direction visuelle « futur discret » : contraste sombre, profondeur légère et effets contenus ;
+- en-tête réduit à `Friday` ; le libellé générique `Maison` au-dessus du nom a été supprimé ;
+- textes d’accueil factuels et directement liés aux tâches ;
+- le bouton en haut à droite n’affiche que `Connecté`, `Connexion…` ou `Hors ligne` ;
+- `Hors ligne` couvre volontairement aussi bien l’absence de réseau que le hub injoignable : la distinction technique reste interne ;
+- le nombre de modifications en attente et la dernière synchronisation restent discrets en bas de la page Aujourd’hui ;
+- les conflits ne sont affichés que s’ils existent et renvoient vers les tâches concernées ;
+- la suppression d’une tâche est disponible en mode modification, y compris hors ligne, sans confirmation intermédiaire pour le moment.
+
 ### Partage et profils
 
 - tâches, courses, agenda et budget sont communs aux deux adultes ;
@@ -118,8 +133,10 @@ Les autres modèles lourds ne font pas partie du service quotidien.
 - application et données utiles résident sur le téléphone après installation ;
 - Google Drive n’exécute pas Friday ;
 - toute écriture passe d’abord dans IndexedDB et l’outbox, même en ligne ;
+- création et suppression suivent la même voie locale lorsque le hub est indisponible ;
 - le hub applique les opérations de façon idempotente puis fournit un curseur de changements ;
 - le mobile synchronise au lancement, au retour au premier plan, au retour réseau et pendant qu’il reste ouvert ;
+- une tentative de synchronisation expire après cinq secondes afin de ne jamais laisser l’interface bloquée sur `Connexion…` ;
 - rappels totalement offline non garantis par la PWA ; Google Calendar garde ses propres rappels.
 
 ### Veille et IA
@@ -163,14 +180,13 @@ Ces points ne justifient pas de refaire le cadrage.
 |---|---|---|
 | Auth | Better Auth + SQLite, inscription fermée | threat model de Lot 0A/1A |
 | Calendar | compte de service partagé en lecteur | Lot 1B ; OAuth local seulement si nécessaire |
-| origine LAN | IP du PC réservée par DHCP, HTTPS `mkcert` | Lot 0B avec le routeur et l’A17 |
-| port | `8443` si libre | Lot 0B |
-| données hub | répertoire dédié hors code et hors Drive | Lot 0A |
 | chiffrement PC | BitLocker/volume Windows + ACL | vérifier avant données financières réelles |
 | chemin Drive | dossier synchronisé du compte Maison | Lot 3 |
 | notifications | Calendar pour événements ; Friday quand hub disponible | après preuve PWA |
 
-État externe inconnu et à ne pas inventer : compte Google Maison créé ou non, projet Google Cloud, capacité DHCP du routeur, état BitLocker, Google Drive Desktop et chemin de synchronisation.
+Décisions techniques désormais confirmées : IP `192.168.1.14` réservée dans la Livebox, port HTTPS `8443`, certificat `mkcert` approuvé sur l’A17 et données du hub dans `D:\FridayData` hors Drive.
+
+État externe encore inconnu et à ne pas inventer : compte Google Maison créé ou non, projet Google Cloud, état BitLocker, Google Drive Desktop et chemin de synchronisation.
 
 ## 7. Modèle de temps adapté à Codex
 
@@ -214,10 +230,13 @@ Le nouveau chat doit :
 
 1. lire `AGENTS.md`, ce document, les documents 09 et 10 ;
 2. constater l’état Git existant avec `git status -sb` et `git remote -v`, sans réinitialiser le dépôt ;
-3. reprendre le Lot 0B et exécuter `pnpm verify` avant de déclarer une évolution terminée ;
-4. terminer avec l’utilisateur la porte physique A17 : une tâche créée hors ligne survit à la fermeture forcée et au redémarrage, puis converge une seule fois après retour du hub ;
-5. après validation de cette porte, poursuivre le Lot 1A avec l’état terminé puis la date/heure, le responsable, la récurrence et la note ;
-6. reconstruire et redémarrer le hub après une évolution du runtime, sans ouvrir l’interface sur le PC, avec la commande documentée dans `infra/windows/README.md`.
+3. reprendre le Lot 0B à l’étape 4 de `docs/recipes/galaxy-a17-p0.md` et exécuter `pnpm verify` avant de déclarer une évolution terminée ;
+4. avec le hub arrêté et l’A17 hors réseau, créer une tâche de recette, forcer la fermeture de Friday, redémarrer l’A17 puis confirmer que la tâche et la modification en attente sont toujours présentes ;
+5. relancer le hub, attendre le retour à zéro de l’attente, rouvrir Friday et confirmer qu’une seule occurrence de la tâche existe ;
+6. consigner les étapes 4 à 8 dans la matrice A17 ; cette preuve ferme la porte Lot 0B ;
+7. poursuivre alors le Lot 1A dans cet ordre : terminer/rouvrir une tâche, ajouter date/heure, responsable, récurrence et note, puis les courses partagées ;
+8. traiter l’authentification/appairage du Lot 1A avant toute donnée réelle ou utilisation à deux ;
+9. reconstruire et redémarrer le hub après une évolution du runtime, sans ouvrir l’interface sur le PC, avec la commande documentée dans `infra/windows/README.md`.
 
 Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directement : commit sur la branche active puis `git push origin main`. Ne pas considérer l’absence de `gh` comme un blocage au commit ou au push.
 
@@ -252,9 +271,9 @@ l’absence éventuelle de GitHub CLI ne bloque pas ces opérations.
 
 ## 12. Contrôles réalisés et limites
 
-Contrôles automatiques réussis le 8 août 2026 :
+Contrôles automatiques réussis le 8 août 2026, actualisés au commit `b262f74` :
 
-- 13 fichiers Markdown contrôlés, en comptant `README.md` et `AGENTS.md` ;
+- documentation active, README et instructions agent contrôlés ;
 - aucun lien Markdown local manquant ;
 - aucun bloc de code non refermé ;
 - aucun caractère de remplacement révélant un problème d’encodage ;
@@ -262,11 +281,13 @@ Contrôles automatiques réussis le 8 août 2026 :
 - aucune signature évidente de clé privée, token OpenAI ou clé Google dans les documents ;
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
 - présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
+- `pnpm verify` réussi avec 10 tests unitaires/intégration, le build PWA/hub et 4 scénarios E2E Google Chrome mobile ;
+- health checks local et LAN réussis après redémarrage sans navigateur.
 
 Ce que cet audit ne prétend pas avoir validé :
 
 - persistance complète après fermeture forcée/redémarrage et convergence sans doublon sur le Galaxy A17 ;
-- robustesse du certificat, du DHCP, du pare-feu et du routeur au-delà de la recette LAN actuelle ;
+- activation d’une nouvelle version du service worker sur l’A17 sans perte de données ;
 - création ou autorisations du compte Google Maison ;
 - configuration Google Drive Desktop ou BitLocker ;
 - sécurité complète du code au-delà des contrôles et documents déjà présents ;

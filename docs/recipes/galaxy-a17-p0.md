@@ -4,7 +4,7 @@ Statut : **en cours**
 Appareil : Samsung Galaxy A17
 Objectif : prouver NFR-OFF-01, NFR-OFF-02 et NFR-SYNC-01 sur matériel réel.
 
-État observé le 8 août 2026 : accès LAN en HTTPS de confiance opérationnel, création et synchronisation visibles sur l'A17, puis modification et suppression locales testées après coupure du Wi-Fi. L'arrêt du hub en conservant le Wi-Fi actif laisse également l'interface et l'écriture locale opérationnelles. La porte complète reste ouverte tant que la persistance après fermeture forcée/redémarrage et l'absence de doublon après convergence ne sont pas consignées dans la matrice ci-dessous.
+État observé le 8 août 2026 : accès LAN en HTTPS de confiance opérationnel, création et synchronisation visibles sur l'A17, puis modification et suppression locales testées après coupure du Wi-Fi. L'arrêt du hub en conservant le Wi-Fi actif laisse également l'interface et l'écriture locale opérationnelles. La sortie de l'état bloqué `Connexion…` a été observée sur l'A17 ; le libellé a ensuite été simplifié en `Hors ligne` et ce libellé courant est couvert par le test Chrome mobile. La porte complète reste ouverte tant que la persistance après fermeture forcée/redémarrage et l'absence de doublon après convergence ne sont pas consignées dans la matrice ci-dessous.
 
 ## Préconditions utilisateur
 
@@ -30,6 +30,13 @@ mkcert `
 ```
 
 Exporter seulement le certificat public de l'autorité retourné par `mkcert -CAROOT`, jamais sa clé privée.
+
+État installé sur ce pilote :
+
+- certificat public à transférer sur l’A17 : `D:\FridayData\certificates\friday-rootCA.crt` ;
+- certificat serveur : `D:\FridayData\certificates\friday-lan.pem` ;
+- clé privée serveur : `D:\FridayData\secrets\friday-lan-key.pem` ;
+- clé privée de l’autorité : `%LOCALAPPDATA%\mkcert\rootCA-key.pem`, uniquement sur le PC et jamais transférée.
 
 ## Démarrage du candidat
 
@@ -59,8 +66,8 @@ Ouvrir `https://192.168.1.14:8443` dans Chrome sur l'A17 et ajouter Friday à l'
 
 | Étape | Action                                                    | Résultat attendu                                 | Résultat/date       |
 | ----: | --------------------------------------------------------- | ------------------------------------------------ | ------------------- |
-|     1 | ouvrir Friday avec hub et Wi-Fi actifs                    | app shell et statut synchronisé                  |                     |
-|     2 | arrêter le service, garder le Wi-Fi et rouvrir Friday     | interface disponible, hub indiqué indisponible   | OK A17 — 08/08/2026 |
+|     1 | ouvrir Friday avec hub et Wi-Fi actifs                    | app shell et statut `Connecté`                   | OK A17 — 08/08/2026 |
+|     2 | arrêter le service, garder le Wi-Fi et rouvrir Friday     | interface disponible puis statut `Hors ligne`    | OK A17 — 08/08/2026 |
 |     3 | créer une tâche avec le service toujours arrêté           | message local et une modification en attente     | OK A17 — 08/08/2026 |
 |     4 | forcer l'arrêt de la PWA puis redémarrer l'A17            | tâche et modification toujours présentes         |                     |
 |     5 | lancer le service puis rouvrir Friday                     | attente à 0 et tâche partagée                    |                     |
@@ -69,3 +76,18 @@ Ouvrir `https://192.168.1.14:8443` dans Chrome sur l'A17 et ajouter Friday à l'
 |     8 | rétablir le Wi-Fi puis installer une nouvelle version PWA | convergence, activation proposée et aucune perte |                     |
 
 Consigner la version, l'heure, le nombre d'opérations en attente, la dernière synchronisation et toute friction tactile. Ne pas déclarer la persistance A17 validée sans cette table remplie.
+
+## Prochaine session de recette
+
+Reprendre directement à l’étape 4 :
+
+1. ouvrir Friday avec le hub actif ; si la bannière de mise à jour apparaît, toucher `Installer`, vérifier qu’aucune donnée ne disparaît et consigner l’étape 8 ;
+2. cliquer sur `Friday - Arreter le service` ;
+3. passer l’A17 en mode avion et créer une tâche au titre unique, par exemple `RECETTE A17 REDÉMARRAGE` ;
+4. vérifier qu’une modification est en attente, forcer la fermeture de Friday puis redémarrer complètement l’A17 ;
+5. rouvrir Friday sans réseau et vérifier que la tâche et l’attente sont toujours présentes ;
+6. désactiver le mode avion, cliquer sur `Friday - Lancer ou redemarrer` sur le PC et rouvrir Friday ;
+7. vérifier le statut `Connecté`, zéro modification en attente et une seule occurrence de la tâche ;
+8. fermer et rouvrir Friday, toucher le statut pour provoquer une nouvelle synchronisation, vérifier une seconde fois l’absence de doublon puis renseigner les lignes 4 à 7 ; ne valider la ligne 8 que si une mise à jour PWA a réellement été installée.
+
+Après validation de ces huit lignes, le Lot 0B peut être fermé et le développement reprend sur l’état terminé/rouvert d’une tâche, puis sa date et son heure.

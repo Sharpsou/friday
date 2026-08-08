@@ -19,7 +19,8 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 - Le remote `origin` est déjà configuré vers `https://github.com/Sharpsou/friday.git`.
 - Un commit et un push simples se font avec Git. GitHub CLI (`gh`) n’est pas requis ; il ne devient utile que pour les opérations GitHub supplémentaires, par exemple créer une pull request.
 - La commande de contrôle globale est `pnpm verify`.
-- La PWA est accessible en HTTPS depuis le Galaxy A17. La recette physique offline/synchronisation reste l’autorité pour valider les comportements du téléphone.
+- La PWA est accessible en HTTPS depuis le Galaxy A17 à l’origine stable `https://192.168.1.14:8443`. Le certificat est approuvé sur l’A17 et la recette physique offline/synchronisation reste l’autorité pour valider les comportements du téléphone.
+- Les raccourcis Bureau permettent de lancer/recetter, lancer ou redémarrer sans navigateur, arrêter uniquement le hub et configurer l’accès A17. Après une évolution du runtime, utiliser le lancement sans navigateur.
 - `.analysis/` contient des artefacts temporaires et est ignoré.
 - Les projets sources sont externes au workspace Friday.
 - `D:\prog\Home_mind` est fortement modifié et ne doit jamais être édité, nettoyé, déplacé ou réinitialisé depuis Friday.
@@ -38,6 +39,8 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 - Ollama reste sur `localhost` et n’est jamais requis pour Maison, budget ou synchronisation.
 - FTS5 avant embeddings ; pas de RAG, multi-agent, domotique ou banque connectée au MVP.
 - Interface principale : Aujourd’hui, Maison, Veille et bouton `+`.
+- Direction visuelle : « futur discret » ; en-tête réduit à `Friday`, textes factuels, état de connexion compact.
+- États de connexion visibles : `Connecté`, `Connexion…`, `Hors ligne`. Une indisponibilité du hub et une absence de réseau partagent volontairement le libellé utilisateur `Hors ligne`.
 - Tâche minimale : titre ; date, responsable, récurrence et note facultatifs.
 - Budget : frais fixes, courses, santé, loisirs, extras ; revenus réguliers/extra ; objectif et versement réel d’épargne distinct du reste disponible.
 
@@ -62,9 +65,10 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 
 ## Prochaine cible d’implémentation
 
-1. terminer la porte Lot 0B sur le Galaxy A17 : persistance après fermeture/redémarrage et convergence sans doublon après retour du réseau ;
-2. conserver une preuve automatisée avec `pnpm verify` pour chaque évolution ;
-3. une fois la porte franchie, poursuivre les tâches du Lot 1A, notamment état terminé puis date/heure, responsable, récurrence et note ;
-4. après une évolution du runtime, reconstruire et redémarrer le hub sans ouvrir Chrome avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
+1. terminer la porte Lot 0B sur le Galaxy A17 : avec le hub arrêté et le téléphone hors réseau, créer une tâche repérable, forcer la fermeture de Friday, redémarrer l’A17 et vérifier que la tâche et l’attente persistent ;
+2. relancer le hub, vérifier que l’attente revient à zéro puis provoquer une nouvelle synchronisation et confirmer qu’il n’existe qu’une occurrence de la tâche ;
+3. conserver une preuve automatisée avec `pnpm verify` pour chaque évolution ;
+4. une fois la porte franchie, poursuivre le Lot 1A dans cet ordre : terminer/rouvrir une tâche, date/heure, responsable, récurrence et note, puis courses partagées ;
+5. après une évolution du runtime, reconstruire et redémarrer le hub sans ouvrir Chrome avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
 
 Ne pas commencer le budget, Calendar, la veille ou l’assistant avant validation complète de la preuve offline/sync du Lot 0B.

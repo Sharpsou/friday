@@ -752,7 +752,7 @@ Travaux :
 - clé Web Crypto et table chiffrée minimale ;
 - entité `task`, outbox et API push/pull ;
 - idempotence SQLite et curseur serveur ;
-- écran diagnostic sync ;
+- état de connexion compact et résumé discret des opérations en attente ;
 - Playwright offline + journal de recette A17.
 
 Porte go/no-go :
@@ -760,6 +760,8 @@ Porte go/no-go :
 > Une tâche créée sur l’A17, PC arrêté et téléphone en mode avion, survit à la fermeture forcée et au redémarrage du téléphone, puis apparaît une seule fois sur le hub après reconnexion.
 
 Stopper et réévaluer un client natif Android si cette porte échoue à cause d’une limite structurelle non corrigeable après un cycle de diagnostic ciblé.
+
+État d’exécution au 8 août 2026 : le vertical slice, HTTPS A17, le cache local chiffré, l’outbox, push/pull idempotent, la suppression offline, les états `Connecté`/`Connexion…`/`Hors ligne` et les raccourcis d’exploitation Windows sont implémentés. Les étapes physiques restantes sont la persistance après fermeture forcée/redémarrage de l’A17, puis la convergence sans doublon. Le détail et les preuves sont suivis dans [`recipes/galaxy-a17-p0.md`](recipes/galaxy-a17-p0.md).
 
 ### Lot 1A — comptes, tâches et courses (1 à 3 heures)
 
@@ -777,6 +779,14 @@ Travaux :
 - tests de contrats, concurrence et migrations.
 
 Sortie technique : tâches et courses passent les tests et la recette courte A17 sans perte ni action ambiguë. L’usage sur plusieurs jours reste une mesure de confiance.
+
+Ordre d’exécution après fermeture du Lot 0B :
+
+1. terminer et rouvrir une tâche, en ligne comme hors ligne ;
+2. ajouter la date et l’heure facultatives ;
+3. ajouter responsable, récurrence simple et note ;
+4. implémenter l’authentification fermée et l’appairage avant les données réelles ou l’usage à deux ;
+5. ajouter les courses partagées, puis finaliser conflits et tombstones.
 
 ### Lot 1B — budget et agenda (1 à 3 heures)
 

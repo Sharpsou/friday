@@ -38,6 +38,7 @@ La construction est pilotée en temps agentique : environ **8 à 16 heures cumul
 ## Documentation
 
 - [Point de reprise pour un nouveau chat](docs/00-reprise-nouveau-chat.md) — **commencer ici**
+- [Suivi et recette active Galaxy A17](docs/recipes/galaxy-a17-p0.md) — **checkpoint actuel**
 - [Feuille de route technique et d’implémentation](docs/10-feuille-de-route-technique-implementation.md) — **support d’exécution actuel**
 - [Décision finale PWA MVP](docs/09-decision-finale-pwa-mvp.md) — **référence produit actuelle**
 - [Étude PWA offline](docs/08-option-pwa-offline.md) — étude ayant conduit à la décision
@@ -75,6 +76,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-Fr
 
 L'installateur place également sur le Bureau `Friday - Lancer ou redemarrer`, qui exécute cette commande sans navigateur ni terminal visible et confirme son résultat, ainsi que `Friday - Arreter le service`, qui coupe uniquement le hub Friday pour la recette hors ligne.
 
-La preuve automatisée exécutée dans Google Chrome ne remplace pas la recette physique. Le checkpoint utilisateur actuel est la matrice de persistance et de convergence offline sur le Galaxy A17.
+La preuve automatisée exécutée dans Google Chrome ne remplace pas la recette physique. Le checkpoint utilisateur actuel commence à l’étape 4 de la matrice Galaxy A17 : persistance après fermeture forcée/redémarrage, puis convergence sans doublon. Après cette porte, l’ordre de développement est : terminer/rouvrir une tâche, date/heure, responsable, récurrence et note, puis courses partagées.
 
 Pour reprendre dans un nouveau chat, ouvrir `D:\prog\friday` et utiliser le prompt fourni dans le document 00. Le fichier `AGENTS.md` protège les décisions essentielles et les projets sources.
