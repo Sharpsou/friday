@@ -10,8 +10,10 @@ import {
 } from './db/task-repository.js';
 import { updateServiceWorker } from './pwa.js';
 import { cancelActiveSync, syncNow } from './sync/sync-client.js';
+import { TaskCalendar } from './TaskCalendar.js';
 
 type Destination = 'today' | 'home' | 'watch';
+type TaskView = 'list' | 'week' | 'month';
 
 const TASK_SYNC_LABELS: Record<LocalTask['syncState'], string> = {
   pending: 'À synchroniser',
@@ -20,8 +22,34 @@ const TASK_SYNC_LABELS: Record<LocalTask['syncState'], string> = {
   conflict: 'À vérifier',
 };
 
+const TASK_DATE_FORMATTER = new Intl.DateTimeFormat('fr-FR', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+
+function formatTaskSchedule(task: LocalTask): string | null {
+  if (!task.dueDate) return null;
+  const [year, month, day] = task.dueDate.split('-').map(Number);
+  const dateLabel = TASK_DATE_FORMATTER.format(
+    new Date(year ?? 0, (month ?? 1) - 1, day ?? 1),
+  );
+  if (!task.dueTime) return dateLabel;
+  if (!task.durationMinutes) return `${dateLabel} à ${task.dueTime}`;
+  const hours = Math.floor(task.durationMinutes / 60);
+  const minutes = task.durationMinutes % 60;
+  const durationLabel =
+    hours === 0
+      ? `${minutes} min`
+      : minutes === 0
+        ? `${hours} h`
+        : `${hours} h ${minutes}`;
+  return `${dateLabel} à ${task.dueTime} · ${durationLabel}`;
+}
+
 export function App() {
   const [destination, setDestination] = useState<Destination>('today');
+  const [taskView, setTaskView] = useState<TaskView>('list');
   const [tasks, setTasks] = useState<LocalTask[]>([]);
   const [editingTasks, setEditingTasks] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
@@ -29,6 +57,9 @@ export function App() {
     string | null
   >(null);
   const [title, setTitle] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [dueTime, setDueTime] = useState('');
+  const [durationMinutes, setDurationMinutes] = useState('');
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
@@ -38,6 +69,7 @@ export function App() {
   const [syncing, setSyncing] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const scheduleDetailsRef = useRef<HTMLDetailsElement>(null);
 
   const reloadLocalState = useCallback(async () => {
     const [localTasks, counts] = await Promise.all([
@@ -139,8 +171,20 @@ export function App() {
   async function submitTask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
-      await createLocalTask(title);
+      await createLocalTask({
+        title,
+        dueDate: dueDate || null,
+        dueTime: dueDate && dueTime ? dueTime : null,
+        durationMinutes:
+          dueDate && dueTime && durationMinutes
+            ? Number(durationMinutes)
+            : null,
+      });
       setTitle('');
+      setDueDate('');
+      setDueTime('');
+      setDurationMinutes('');
+      if (scheduleDetailsRef.current) scheduleDetailsRef.current.open = false;
       setMessage('Tâche enregistrée sur ce téléphone.');
       await reloadLocalState();
       void synchronize();
@@ -198,8 +242,22 @@ export function App() {
 
   function openQuickAdd() {
     setEditingTasks(false);
+    setTaskView('list');
     setDestination('home');
     window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function openQuickAddForDate(date: string) {
+    setEditingTasks(false);
+    setTaskView('list');
+    setDestination('home');
+    setDueDate(date);
+    setDueTime('');
+    setDurationMinutes('');
+    window.setTimeout(() => {
+      if (scheduleDetailsRef.current) scheduleDetailsRef.current.open = true;
+      inputRef.current?.focus();
+    }, 0);
   }
 
   const connectionLabel = !online
@@ -322,11 +380,11 @@ export function App() {
             <div className="section-heading page-heading">
               <div>
                 <span className="eyebrow">Maison</span>
-                <h2 id="home-title">Les tâches</h2>
+                <h2 id="home-title">Agenda</h2>
               </div>
               <div className="page-actions">
                 <span className="count-badge">{tasks.length}</span>
-                {tasks.length > 0 && (
+                {taskView === 'list' && tasks.length > 0 && (
                   <button
                     className="edit-toggle"
                     type="button"
@@ -339,89 +397,186 @@ export function App() {
               </div>
             </div>
 
-            {editingTasks ? (
-              <div className="edit-notice" role="status">
-                <strong>Mode modification</strong>
-                <span>
-                  Sélectionnez Supprimer sur une tâche. La suppression est
-                  immédiate, sans confirmation.
-                </span>
-              </div>
-            ) : (
-              <form
-                className="quick-form"
-                onSubmit={(event) => void submitTask(event)}
-              >
-                <label htmlFor="task-title">Nouvelle tâche</label>
-                <div className="input-row">
-                  <input
-                    ref={inputRef}
-                    id="task-title"
-                    name="title"
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder="Ex. Sortir les poubelles"
-                    maxLength={200}
-                    autoComplete="off"
+            <div
+              className="task-view-switch"
+              role="group"
+              aria-label="Affichage des tâches"
+            >
+              {(['list', 'week', 'month'] as const).map((view) => (
+                <button
+                  type="button"
+                  key={view}
+                  aria-pressed={taskView === view}
+                  onClick={() => {
+                    setEditingTasks(false);
+                    setTaskView(view);
+                  }}
+                >
+                  {view === 'list'
+                    ? 'Liste'
+                    : view === 'week'
+                      ? 'Semaine'
+                      : 'Mois'}
+                </button>
+              ))}
+            </div>
+
+            {taskView === 'list' ? (
+              <>
+                {editingTasks ? (
+                  <div className="edit-notice" role="status">
+                    <strong>Mode modification</strong>
+                    <span>
+                      Sélectionnez Supprimer sur une tâche. La suppression est
+                      immédiate, sans confirmation.
+                    </span>
+                  </div>
+                ) : (
+                  <form
+                    className="quick-form"
+                    onSubmit={(event) => void submitTask(event)}
+                  >
+                    <label htmlFor="task-title">Nouvelle tâche</label>
+                    <div className="input-row">
+                      <input
+                        ref={inputRef}
+                        id="task-title"
+                        name="title"
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
+                        placeholder="Ex. Sortir les poubelles"
+                        maxLength={200}
+                        autoComplete="off"
+                      />
+                      <button type="submit" disabled={!title.trim()}>
+                        Ajouter
+                      </button>
+                    </div>
+                    <details
+                      className="task-schedule-fields"
+                      ref={scheduleDetailsRef}
+                    >
+                      <summary>Date et rendez-vous</summary>
+                      <div className="schedule-grid">
+                        <label htmlFor="task-date">
+                          <span>Date</span>
+                          <input
+                            id="task-date"
+                            name="dueDate"
+                            type="date"
+                            value={dueDate}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setDueDate(value);
+                              if (!value) {
+                                setDueTime('');
+                                setDurationMinutes('');
+                              }
+                            }}
+                          />
+                        </label>
+                        <label htmlFor="task-time">
+                          <span>Heure</span>
+                          <input
+                            id="task-time"
+                            name="dueTime"
+                            type="time"
+                            value={dueTime}
+                            disabled={!dueDate}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setDueTime(value);
+                              if (!value) setDurationMinutes('');
+                            }}
+                          />
+                        </label>
+                        <label
+                          className="duration-field"
+                          htmlFor="task-duration"
+                        >
+                          <span>Durée</span>
+                          <select
+                            id="task-duration"
+                            name="durationMinutes"
+                            value={durationMinutes}
+                            disabled={!dueDate || !dueTime}
+                            onChange={(event) =>
+                              setDurationMinutes(event.target.value)
+                            }
+                          >
+                            <option value="">Sans durée</option>
+                            <option value="15">15 min</option>
+                            <option value="30">30 min</option>
+                            <option value="45">45 min</option>
+                            <option value="60">1 h</option>
+                            <option value="90">1 h 30</option>
+                            <option value="120">2 h</option>
+                          </select>
+                        </label>
+                      </div>
+                    </details>
+                    <p>
+                      Le titre est obligatoire. La tâche est enregistrée
+                      localement avant synchronisation.
+                    </p>
+                  </form>
+                )}
+
+                <section
+                  className="panel task-panel"
+                  aria-labelledby="active-tasks-title"
+                >
+                  <div className="task-section-heading">
+                    <h3 id="active-tasks-title">Tâches en cours</h3>
+                    <span className="count-badge">{activeTasks.length}</span>
+                  </div>
+                  <TaskList
+                    tasks={activeTasks}
+                    editing={editingTasks}
+                    deletingTaskId={deletingTaskId}
+                    changingStatusTaskId={changingStatusTaskId}
+                    actionsDisabled={
+                      deletingTaskId !== null || changingStatusTaskId !== null
+                    }
+                    onDelete={(taskId) => void deleteTask(taskId)}
+                    onStatusChange={(taskId, status) =>
+                      void changeTaskStatus(taskId, status)
+                    }
+                    emptyMessage="Aucune tâche en cours."
                   />
-                  <button type="submit" disabled={!title.trim()}>
-                    Ajouter
-                  </button>
-                </div>
-                <p>
-                  Le titre est obligatoire. La tâche est enregistrée localement
-                  avant synchronisation.
-                </p>
-              </form>
+                </section>
+
+                <section
+                  className="panel task-panel completed-task-panel"
+                  aria-labelledby="completed-tasks-title"
+                >
+                  <div className="task-section-heading">
+                    <h3 id="completed-tasks-title">Tâches terminées</h3>
+                    <span className="count-badge">{completedTasks.length}</span>
+                  </div>
+                  <TaskList
+                    tasks={completedTasks}
+                    editing={editingTasks}
+                    deletingTaskId={deletingTaskId}
+                    changingStatusTaskId={changingStatusTaskId}
+                    actionsDisabled={
+                      deletingTaskId !== null || changingStatusTaskId !== null
+                    }
+                    onDelete={(taskId) => void deleteTask(taskId)}
+                    onStatusChange={(taskId, status) =>
+                      void changeTaskStatus(taskId, status)
+                    }
+                    emptyMessage="Aucune tâche terminée."
+                  />
+                </section>
+              </>
+            ) : (
+              <TaskCalendar
+                tasks={tasks}
+                view={taskView}
+                onAddForDate={openQuickAddForDate}
+              />
             )}
-
-            <section
-              className="panel task-panel"
-              aria-labelledby="active-tasks-title"
-            >
-              <div className="task-section-heading">
-                <h3 id="active-tasks-title">Tâches en cours</h3>
-                <span className="count-badge">{activeTasks.length}</span>
-              </div>
-              <TaskList
-                tasks={activeTasks}
-                editing={editingTasks}
-                deletingTaskId={deletingTaskId}
-                changingStatusTaskId={changingStatusTaskId}
-                actionsDisabled={
-                  deletingTaskId !== null || changingStatusTaskId !== null
-                }
-                onDelete={(taskId) => void deleteTask(taskId)}
-                onStatusChange={(taskId, status) =>
-                  void changeTaskStatus(taskId, status)
-                }
-                emptyMessage="Aucune tâche en cours."
-              />
-            </section>
-
-            <section
-              className="panel task-panel completed-task-panel"
-              aria-labelledby="completed-tasks-title"
-            >
-              <div className="task-section-heading">
-                <h3 id="completed-tasks-title">Tâches terminées</h3>
-                <span className="count-badge">{completedTasks.length}</span>
-              </div>
-              <TaskList
-                tasks={completedTasks}
-                editing={editingTasks}
-                deletingTaskId={deletingTaskId}
-                changingStatusTaskId={changingStatusTaskId}
-                actionsDisabled={
-                  deletingTaskId !== null || changingStatusTaskId !== null
-                }
-                onDelete={(taskId) => void deleteTask(taskId)}
-                onStatusChange={(taskId, status) =>
-                  void changeTaskStatus(taskId, status)
-                }
-                emptyMessage="Aucune tâche terminée."
-              />
-            </section>
           </section>
         )}
 
@@ -502,47 +657,53 @@ function TaskList({
 
   return (
     <ul className="task-list">
-      {tasks.map((task) => (
-        <li className={task.status === 'done' ? 'is-done' : ''} key={task.id}>
-          <span className="task-copy">
-            <strong>{task.title}</strong>
-            <small className={`task-sync is-${task.syncState}`}>
-              {TASK_SYNC_LABELS[task.syncState]}
-            </small>
-          </span>
-          {!editing && onStatusChange ? (
-            <button
-              className="task-status-button"
-              type="button"
-              aria-label={`${task.status === 'done' ? 'Rouvrir' : 'Terminer'} ${task.title}`}
-              disabled={actionsDisabled}
-              onClick={() =>
-                onStatusChange(
-                  task.id,
-                  task.status === 'done' ? 'todo' : 'done',
-                )
-              }
-            >
-              {changingStatusTaskId === task.id
-                ? 'En cours…'
-                : task.status === 'done'
-                  ? 'Rouvrir'
-                  : 'Terminer'}
-            </button>
-          ) : null}
-          {editing && onDelete ? (
-            <button
-              className="delete-task-button"
-              type="button"
-              aria-label={`Supprimer ${task.title}`}
-              disabled={actionsDisabled}
-              onClick={() => onDelete(task.id)}
-            >
-              {deletingTaskId === task.id ? 'Suppression…' : 'Supprimer'}
-            </button>
-          ) : null}
-        </li>
-      ))}
+      {tasks.map((task) => {
+        const schedule = formatTaskSchedule(task);
+        return (
+          <li className={task.status === 'done' ? 'is-done' : ''} key={task.id}>
+            <span className="task-copy">
+              <strong>{task.title}</strong>
+              {schedule ? (
+                <small className="task-schedule">{schedule}</small>
+              ) : null}
+              <small className={`task-sync is-${task.syncState}`}>
+                {TASK_SYNC_LABELS[task.syncState]}
+              </small>
+            </span>
+            {!editing && onStatusChange ? (
+              <button
+                className="task-status-button"
+                type="button"
+                aria-label={`${task.status === 'done' ? 'Rouvrir' : 'Terminer'} ${task.title}`}
+                disabled={actionsDisabled}
+                onClick={() =>
+                  onStatusChange(
+                    task.id,
+                    task.status === 'done' ? 'todo' : 'done',
+                  )
+                }
+              >
+                {changingStatusTaskId === task.id
+                  ? 'En cours…'
+                  : task.status === 'done'
+                    ? 'Rouvrir'
+                    : 'Terminer'}
+              </button>
+            ) : null}
+            {editing && onDelete ? (
+              <button
+                className="delete-task-button"
+                type="button"
+                aria-label={`Supprimer ${task.title}`}
+                disabled={actionsDisabled}
+                onClick={() => onDelete(task.id)}
+              >
+                {deletingTaskId === task.id ? 'Suppression…' : 'Supprimer'}
+              </button>
+            ) : null}
+          </li>
+        );
+      })}
     </ul>
   );
 }

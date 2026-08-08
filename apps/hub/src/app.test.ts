@@ -28,6 +28,8 @@ function operation(): TaskOperation {
       revision: 0,
       title: 'Sortir les poubelles',
       dueDate: null,
+      dueTime: null,
+      durationMinutes: null,
       assigneeProfileId: null,
       recurrence: null,
       note: null,

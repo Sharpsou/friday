@@ -15,6 +15,8 @@ interface TaskRow {
   revision: number;
   title: string;
   due_date: string | null;
+  due_time: string | null;
+  duration_minutes: number | null;
   assignee_profile_id: string | null;
   recurrence: 'daily' | 'weekly' | 'monthly' | null;
   note: string | null;
@@ -119,12 +121,14 @@ export class SyncService {
       this.#database
         .prepare(
           `INSERT INTO tasks (
-             id, household_id, revision, title, due_date, assignee_profile_id,
-             recurrence, note, status, created_at, updated_at, deleted_at,
+             id, household_id, revision, title, due_date, due_time,
+             duration_minutes, assignee_profile_id, recurrence, note, status,
+             created_at, updated_at, deleted_at,
              created_by_profile_id, updated_by_profile_id, device_id, schema_version
            ) VALUES (
-             @id, @householdId, @revision, @title, @dueDate, @assigneeProfileId,
-             @recurrence, @note, @status, @createdAt, @updatedAt, @deletedAt,
+             @id, @householdId, @revision, @title, @dueDate, @dueTime,
+             @durationMinutes, @assigneeProfileId, @recurrence, @note, @status,
+             @createdAt, @updatedAt, @deletedAt,
              @createdByProfileId, @updatedByProfileId, @deviceId, @schemaVersion
            )
            ON CONFLICT(id) DO UPDATE SET
@@ -132,6 +136,8 @@ export class SyncService {
              revision = excluded.revision,
              title = excluded.title,
              due_date = excluded.due_date,
+             due_time = excluded.due_time,
+             duration_minutes = excluded.duration_minutes,
              assignee_profile_id = excluded.assignee_profile_id,
              recurrence = excluded.recurrence,
              note = excluded.note,

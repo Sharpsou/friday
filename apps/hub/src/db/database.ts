@@ -39,6 +39,46 @@ const MIGRATION_001 = `
   );
 `;
 
+const MIGRATION_002 = `
+  ALTER TABLE tasks ADD COLUMN due_time TEXT;
+  ALTER TABLE tasks ADD COLUMN duration_minutes INTEGER
+    CHECK (duration_minutes IS NULL OR duration_minutes BETWEEN 1 AND 1440);
+`;
+
+const MIGRATIONS = [
+  { sql: MIGRATION_001, version: 1 },
+  { sql: MIGRATION_002, version: 2 },
+] as const;
+
+export function migrateDatabase(
+  database: Database.Database,
+  throughVersion = Number.POSITIVE_INFINITY,
+): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    );
+  `);
+
+  for (const migration of MIGRATIONS) {
+    if (migration.version > throughVersion) break;
+    const applied = database
+      .prepare('SELECT version FROM schema_migrations WHERE version = ?')
+      .get(migration.version);
+    if (applied) continue;
+
+    database.transaction(() => {
+      database.exec(migration.sql);
+      database
+        .prepare(
+          'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
+        )
+        .run(migration.version, new Date().toISOString());
+    })();
+  }
+}
+
 export function openDatabase(filename: string): Database.Database {
   if (filename !== ':memory:') {
     mkdirSync(dirname(filename), { recursive: true });
@@ -51,27 +91,7 @@ export function openDatabase(filename: string): Database.Database {
     database.pragma('journal_mode = WAL');
   }
 
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      version INTEGER PRIMARY KEY,
-      applied_at TEXT NOT NULL
-    );
-  `);
-
-  const applied = database
-    .prepare('SELECT version FROM schema_migrations WHERE version = ?')
-    .get(1);
-
-  if (!applied) {
-    database.transaction(() => {
-      database.exec(MIGRATION_001);
-      database
-        .prepare(
-          'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)',
-        )
-        .run(1, new Date().toISOString());
-    })();
-  }
+  migrateDatabase(database);
 
   return database;
 }

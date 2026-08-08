@@ -4,6 +4,7 @@ export const ProtocolVersionSchema = z.literal(1);
 export const UuidSchema = z.string().uuid();
 export const UtcInstantSchema = z.string().datetime({ offset: true });
 export const LocalDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
+export const LocalTimeSchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u);
 
 export const TaskStatusSchema = z.enum(['todo', 'done']);
 export const TaskRecurrenceSchema = z.enum(['daily', 'weekly', 'monthly']);
@@ -15,6 +16,14 @@ export const TaskRecordSchema = z
     revision: z.number().int().nonnegative(),
     title: z.string().trim().min(1).max(200),
     dueDate: LocalDateSchema.nullable(),
+    dueTime: LocalTimeSchema.nullable().default(null),
+    durationMinutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(1_440)
+      .nullable()
+      .default(null),
     assigneeProfileId: UuidSchema.nullable(),
     recurrence: TaskRecurrenceSchema.nullable(),
     note: z.string().trim().max(2_000).nullable(),
@@ -27,7 +36,23 @@ export const TaskRecordSchema = z
     deviceId: UuidSchema,
     schemaVersion: z.literal(1),
   })
-  .strict();
+  .strict()
+  .superRefine((task, context) => {
+    if (task.dueTime !== null && task.dueDate === null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Une heure nécessite une date.',
+        path: ['dueTime'],
+      });
+    }
+    if (task.durationMinutes !== null && task.dueTime === null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Une durée nécessite une heure.',
+        path: ['durationMinutes'],
+      });
+    }
+  });
 
 export const TaskOperationSchema = z
   .object({

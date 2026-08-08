@@ -29,6 +29,13 @@ export type LocalTask = TaskRecord & {
   syncState: TaskRow['syncState'];
 };
 
+export interface CreateLocalTaskInput {
+  dueDate?: string | null;
+  dueTime?: string | null;
+  durationMinutes?: number | null;
+  title: string;
+}
+
 function taskAad(taskId: string, deviceId: string): string {
   return `tasks:${taskId}:1:${deviceId}`;
 }
@@ -54,8 +61,11 @@ export async function getDeviceContext(): Promise<DeviceContext> {
   return { deviceId, key };
 }
 
-export async function createLocalTask(titleInput: string): Promise<TaskRecord> {
-  const title = normalizeTaskTitle(titleInput);
+export async function createLocalTask(
+  input: string | CreateLocalTaskInput,
+): Promise<TaskRecord> {
+  const taskInput = typeof input === 'string' ? { title: input } : input;
+  const title = normalizeTaskTitle(taskInput.title);
   if (!title) {
     throw new Error('Le titre est obligatoire.');
   }
@@ -67,7 +77,9 @@ export async function createLocalTask(titleInput: string): Promise<TaskRecord> {
     householdId: HOUSEHOLD_ID,
     revision: 0,
     title,
-    dueDate: null,
+    dueDate: taskInput.dueDate ?? null,
+    dueTime: taskInput.dueTime ?? null,
+    durationMinutes: taskInput.durationMinutes ?? null,
     assigneeProfileId: null,
     recurrence: null,
     note: null,

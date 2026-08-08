@@ -38,6 +38,45 @@ describe('local task repository', () => {
     expect(JSON.stringify(rawTask?.encrypted)).not.toContain('Acheter du lait');
   });
 
+  it('stores a date-only task and a timed appointment in the encrypted outbox', async () => {
+    const datedTask = await createLocalTask({
+      title: 'Renouveler assurance',
+      dueDate: '2026-08-15',
+      dueTime: null,
+      durationMinutes: null,
+    });
+    const appointment = await createLocalTask({
+      title: 'Rendez-vous dentiste',
+      dueDate: '2026-08-16',
+      dueTime: '14:30',
+      durationMinutes: 45,
+    });
+
+    const [tasks, operations] = await Promise.all([
+      listTasks(),
+      readPendingOperations(),
+    ]);
+
+    expect(tasks.find((task) => task.id === datedTask.id)).toMatchObject({
+      dueDate: '2026-08-15',
+      dueTime: null,
+      durationMinutes: null,
+    });
+    expect(tasks.find((task) => task.id === appointment.id)).toMatchObject({
+      dueDate: '2026-08-16',
+      dueTime: '14:30',
+      durationMinutes: 45,
+    });
+    expect(
+      operations.find((operation) => operation.entityId === appointment.id)
+        ?.payload,
+    ).toMatchObject({
+      dueDate: '2026-08-16',
+      dueTime: '14:30',
+      durationMinutes: 45,
+    });
+  });
+
   it('hides a deleted task and queues an encrypted tombstone', async () => {
     const task = await createLocalTask('Rapporter le colis');
 
