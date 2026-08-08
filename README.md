@@ -73,6 +73,8 @@ Après une évolution du runtime, reconstruire et redémarrer le hub en arrière
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning
 ```
 
+L'installateur place également sur le Bureau le raccourci `Friday - Lancer ou redemarrer`, qui exécute cette commande sans navigateur ni terminal visible.
+
 La preuve automatisée exécutée dans Google Chrome ne remplace pas la recette physique. Le prochain checkpoint utilisateur est l’installation HTTPS et la matrice offline sur le Galaxy A17, uniquement après une vérification complète du dépôt.
 
 Pour reprendre dans un nouveau chat, ouvrir `D:\prog\friday` et utiliser le prompt fourni dans le document 00. Le fichier `AGENTS.md` protège les décisions essentielles et les projets sources.

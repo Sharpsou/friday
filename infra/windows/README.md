@@ -10,6 +10,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Install-
 
 `Friday - Lancer et recetter` construit la version courante, démarre le hub, attend le health check, ouvre Google Chrome et rappelle la recette. Le terminal visible appartient uniquement au mode recette : appuyer sur Entrée à la fin pour arrêter proprement le hub.
 
+`Friday - Lancer ou redemarrer` construit la version courante puis lance le hub s'il est arrêté, ou redémarre uniquement le processus Friday qui écoute déjà sur le port `8443`. Il reste en arrière-plan et n'ouvre ni Chrome ni terminal visible.
+
 Après une évolution validée, le hub peut être reconstruit et redémarré en
 arrière-plan sans ouvrir Chrome :
 
@@ -18,7 +20,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-Fr
 ```
 
 Ce redémarrage refuse d'arrêter un processus inconnu qui occuperait le port
-`8443`. Le raccourci utilisateur conserve son fonctionnement interactif.
+`8443`. Le raccourci de recette conserve son fonctionnement interactif.
 
 Le lanceur utilise Node.js et Corepack depuis l’installation Windows. Un shim `pnpm` limité au processus de recette permet aux scripts imbriqués de fonctionner sans modifier le `PATH` global de l’utilisateur.
 

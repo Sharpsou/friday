@@ -31,6 +31,20 @@ $shortcut.Description = 'Construire, lancer et recetter Friday dans Google Chrom
 $shortcut.IconLocation = "$powershellPath,0"
 $shortcut.Save()
 
+$backgroundShortcutPath = Join-Path $DesktopPath 'Friday - Lancer ou redemarrer.lnk'
+$backgroundShortcut = $shell.CreateShortcut($backgroundShortcutPath)
+$backgroundShortcut.TargetPath = $powershellPath
+$backgroundShortcut.Arguments = (
+  "-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass " +
+  "-File `"$launcherPath`" -NoBrowser -ExitAfterHealthCheck " +
+  '-RestartExisting -KeepHubRunning'
+)
+$backgroundShortcut.WorkingDirectory = $workspacePath
+$backgroundShortcut.Description = 'Construire puis lancer ou redemarrer Friday en arriere-plan'
+$backgroundShortcut.IconLocation = "$powershellPath,0"
+$backgroundShortcut.WindowStyle = 7
+$backgroundShortcut.Save()
+
 $networkConfiguration = Get-NetIPConfiguration |
   Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' } |
   Select-Object -First 1
@@ -55,4 +69,5 @@ $lanShortcut.IconLocation = "$powershellPath,0"
 $lanShortcut.Save()
 
 Write-Output "SHORTCUT_PATH=$shortcutPath"
+Write-Output "BACKGROUND_SHORTCUT_PATH=$backgroundShortcutPath"
 Write-Output "LAN_SHORTCUT_PATH=$lanShortcutPath"
