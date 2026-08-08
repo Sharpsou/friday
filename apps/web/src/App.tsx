@@ -177,14 +177,14 @@ export function App() {
       ? 'Connexion…'
       : hubReachable
         ? 'Connecté'
-        : 'Hub indisponible';
+        : 'Hors ligne';
   const connectionTone = !online
     ? 'is-offline'
     : syncing || hubReachable === null
       ? 'is-connecting'
       : hubReachable
         ? 'is-online'
-        : 'is-unavailable';
+        : 'is-offline';
 
   return (
     <div className="app-shell">

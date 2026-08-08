@@ -39,9 +39,7 @@ test('a new offline task stays pending while an older task remains shared', asyn
   ).toContainText('À synchroniser');
 
   await context.setOffline(false);
-  await page
-    .getByRole('button', { name: /Connecté|Hub indisponible/u })
-    .click();
+  await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
   await expect(page.getByRole('button', { name: 'Connecté' })).toBeVisible();
   await expect(
     page.getByRole('listitem').filter({ hasText: offlineTitle }),
@@ -79,9 +77,7 @@ test('edit mode deletes a task offline without confirmation', async ({
   await expect(page.getByText(title)).toHaveCount(0);
 
   await context.setOffline(false);
-  await page
-    .getByRole('button', { name: /Connecté|Hub indisponible/u })
-    .click();
+  await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
   await expect(page.getByRole('button', { name: 'Connecté' })).toBeVisible();
   await expect(page.getByText(title)).toHaveCount(0);
 });
@@ -155,9 +151,9 @@ test('a stalled hub request does not leave the connection status pending', async
     await expect(
       page.getByRole('button', { name: /^Connexion/u }),
     ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Hub indisponible' }),
-    ).toBeVisible({ timeout: 7_000 });
+    await expect(page.getByRole('button', { name: 'Hors ligne' })).toBeVisible({
+      timeout: 7_000,
+    });
   } finally {
     releasePull();
   }

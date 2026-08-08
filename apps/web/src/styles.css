@@ -165,11 +165,6 @@ input:focus-visible {
   box-shadow: 0 0 14px rgb(102 245 196 / 55%);
 }
 
-.status-pill.is-unavailable > span {
-  background: var(--danger);
-  box-shadow: 0 0 12px rgb(255 139 139 / 44%);
-}
-
 .status-pill.is-offline > span {
   background: var(--faint);
   box-shadow: none;
