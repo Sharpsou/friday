@@ -151,6 +151,78 @@ test('a task can be finished and reopened online and offline without duplication
   await expect(page.getByText(title)).toHaveCount(1);
 });
 
+test('tasks stay chronological in today, list, week and month views', async ({
+  page,
+}) => {
+  const suffix = crypto.randomUUID();
+  const earlyTitle = `Chrono matin ${suffix}`;
+  const lateTitle = `Chrono soir ${suffix}`;
+  const tomorrowTitle = `Chrono demain ${suffix}`;
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const formatDate = (date: Date) =>
+    [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+    ].join('-');
+  const today = formatDate(now);
+
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+
+  for (const task of [
+    { title: lateTitle, date: today, time: '18:00' },
+    { title: tomorrowTitle, date: formatDate(tomorrow), time: '' },
+    { title: earlyTitle, date: today, time: '09:00' },
+  ]) {
+    await page.getByText('Détails facultatifs').click();
+    await page.getByLabel('Nouvelle tâche').fill(task.title);
+    await page.getByLabel('Date').fill(task.date);
+    if (task.time) await page.getByLabel('Heure').fill(task.time);
+    await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  }
+
+  const homeItems = await page
+    .getByRole('region', { name: 'Tâches en cours' })
+    .getByRole('listitem')
+    .allTextContents();
+  expect(homeItems.findIndex((text) => text.includes(earlyTitle))).toBeLessThan(
+    homeItems.findIndex((text) => text.includes(lateTitle)),
+  );
+  expect(homeItems.findIndex((text) => text.includes(lateTitle))).toBeLessThan(
+    homeItems.findIndex((text) => text.includes(tomorrowTitle)),
+  );
+
+  await page.getByRole('button', { name: 'Aujourd’hui' }).click();
+  const todayItems = await page
+    .getByRole('region', { name: 'Tâches en cours' })
+    .getByRole('listitem')
+    .allTextContents();
+  expect(
+    todayItems.findIndex((text) => text.includes(earlyTitle)),
+  ).toBeLessThan(todayItems.findIndex((text) => text.includes(lateTitle)));
+
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Semaine', exact: true }).click();
+  const weekCalendar = page.getByRole('region', { name: 'Agenda des tâches' });
+  const weekText = await weekCalendar.textContent();
+  expect(weekText?.indexOf(earlyTitle)).toBeLessThan(
+    weekText?.indexOf(lateTitle) ?? -1,
+  );
+
+  await page.getByRole('button', { name: 'Mois', exact: true }).click();
+  const monthItems = await page
+    .getByRole('region', { name: 'Agenda des tâches' })
+    .getByRole('listitem')
+    .allTextContents();
+  expect(
+    monthItems.findIndex((text) => text.includes(earlyTitle)),
+  ).toBeLessThan(monthItems.findIndex((text) => text.includes(lateTitle)));
+});
+
 test('date-only tasks and timed appointments persist offline', async ({
   context,
   page,
@@ -160,7 +232,7 @@ test('date-only tasks and timed appointments persist offline', async ({
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
   await page.getByRole('button', { name: 'Maison', exact: true }).click();
-  await page.getByText('Date, rendez-vous et responsable').click();
+  await page.getByText('Détails facultatifs').click();
 
   await page.getByLabel('Nouvelle tâche').fill(datedTitle);
   await page.getByLabel('Date').fill('2026-08-15');
@@ -171,7 +243,7 @@ test('date-only tasks and timed appointments persist offline', async ({
   await expect(datedTask).toContainText('Synchronisée avec le foyer');
 
   await context.setOffline(true);
-  await page.getByText('Date, rendez-vous et responsable').click();
+  await page.getByText('Détails facultatifs').click();
   await page.getByLabel('Nouvelle tâche').fill(appointmentTitle);
   await page.getByLabel('Date').fill('2026-08-16');
   await page.getByLabel('Heure').fill('14:30');
@@ -211,7 +283,7 @@ test('week and month views expose dated tasks and prepare quick add', async ({
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
   await page.getByRole('button', { name: 'Maison', exact: true }).click();
-  await page.getByText('Date, rendez-vous et responsable').click();
+  await page.getByText('Détails facultatifs').click();
   await page.getByLabel('Nouvelle tâche').fill(title);
   await page.getByLabel('Date').fill(today);
   await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
@@ -244,13 +316,13 @@ test('responsible person persists offline and filters the agenda', async ({
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
   await page.getByRole('button', { name: 'Maison', exact: true }).click();
-  await page.getByText('Date, rendez-vous et responsable').click();
+  await page.getByText('Détails facultatifs').click();
   await page.getByLabel('Nouvelle tâche').fill(unassignedTitle);
   await page.getByLabel('Date').fill(today);
   await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
 
   await context.setOffline(true);
-  await page.getByText('Date, rendez-vous et responsable').click();
+  await page.getByText('Détails facultatifs').click();
   await page.getByLabel('Nouvelle tâche').fill(assignedTitle);
   await page.getByLabel('Date').fill(today);
   await page
@@ -287,6 +359,147 @@ test('responsible person persists offline and filters the agenda', async ({
   ).toContainText('Synchronisée avec le foyer');
 });
 
+test('optional notes and recurring tasks persist offline without duplicate occurrence', async ({
+  context,
+  page,
+}) => {
+  const recurringTitle = `Récurrence ${crypto.randomUUID()}`;
+  const noteOnlyTitle = `Note seule ${crypto.randomUUID()}`;
+  const now = new Date();
+  const recurrenceEnd = new Date(now);
+  recurrenceEnd.setDate(recurrenceEnd.getDate() + 6);
+  const today = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
+  const recurrenceEndDate = [
+    recurrenceEnd.getFullYear(),
+    String(recurrenceEnd.getMonth() + 1).padStart(2, '0'),
+    String(recurrenceEnd.getDate()).padStart(2, '0'),
+  ].join('-');
+
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+
+  await page.getByText('Détails facultatifs').click();
+  await page.getByLabel('Nouvelle tâche').fill(noteOnlyTitle);
+  await page
+    .getByRole('textbox', { name: 'Note', exact: true })
+    .fill('Note sans aucune date');
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: noteOnlyTitle }),
+  ).toContainText('Note sans aucune date');
+
+  await context.setOffline(true);
+  await page.getByText('Détails facultatifs').click();
+  await page.getByLabel('Nouvelle tâche').fill(recurringTitle);
+  await page.getByLabel('Date').fill(today);
+  await page.getByLabel('Récurrence').selectOption('custom-days');
+  await page.getByLabel('Nombre de jours').fill('3');
+  await page.getByLabel('Date de fin').fill(recurrenceEndDate);
+  await page
+    .getByRole('textbox', { name: 'Note', exact: true })
+    .fill('Arroser légèrement');
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+
+  const recurringTasks = page
+    .getByRole('region', { name: 'Tâches en cours' })
+    .getByRole('listitem')
+    .filter({ hasText: recurringTitle });
+  await expect(recurringTasks).toHaveCount(3);
+  await expect(recurringTasks.first()).toContainText('Tous les 3 jours');
+  await expect(recurringTasks.first()).toContainText('Arroser légèrement');
+  await page
+    .getByRole('button', { name: `Terminer ${recurringTitle}` })
+    .first()
+    .click();
+
+  await expect(
+    page
+      .getByRole('region', { name: 'Tâches terminées' })
+      .getByRole('listitem')
+      .filter({ hasText: recurringTitle }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole('region', { name: 'Tâches en cours' })
+      .getByRole('listitem')
+      .filter({ hasText: recurringTitle })
+      .first(),
+  ).toContainText('Tous les 3 jours');
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await expect(page.getByText(recurringTitle)).toHaveCount(3);
+
+  await context.setOffline(false);
+  await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
+  await expect(page.getByRole('button', { name: 'Connecté' })).toBeVisible();
+  await expect(page.getByText(recurringTitle)).toHaveCount(3);
+});
+
+test('a recurring task can delete one occurrence or its whole series offline', async ({
+  context,
+  page,
+}) => {
+  const title = `Série à supprimer ${crypto.randomUUID()}`;
+  const firstDate = new Date();
+  const endDate = new Date(firstDate);
+  endDate.setDate(endDate.getDate() + 2);
+  const formatDate = (date: Date) =>
+    [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+    ].join('-');
+
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await context.setOffline(true);
+  await page.getByText('Détails facultatifs').click();
+  await page.getByLabel('Nouvelle tâche').fill(title);
+  await page.getByLabel('Date').fill(formatDate(firstDate));
+  await page
+    .getByRole('combobox', { name: 'Récurrence', exact: true })
+    .selectOption('daily');
+  await page.getByLabel('Date de fin').fill(formatDate(endDate));
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+
+  await expect(page.getByText(title)).toHaveCount(3);
+  await page.getByRole('button', { name: 'Modifier' }).click();
+  await page
+    .getByRole('button', { name: `Supprimer ${title}` })
+    .first()
+    .click();
+  const deletionDialog = page.getByRole('dialog', {
+    name: 'Que supprimer ?',
+  });
+  await expect(deletionDialog).toBeVisible();
+  await deletionDialog
+    .getByRole('button', { name: 'Cette occurrence' })
+    .click();
+  await expect(page.getByText(title)).toHaveCount(2);
+
+  await page
+    .getByRole('button', { name: `Supprimer ${title}` })
+    .first()
+    .click();
+  await deletionDialog.getByRole('button', { name: 'Toute la série' }).click();
+  await expect(page.getByText(title)).toHaveCount(0);
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await expect(page.getByText(title)).toHaveCount(0);
+  await context.setOffline(false);
+  await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
+  await expect(page.getByRole('button', { name: 'Connecté' })).toBeVisible();
+  await expect(page.getByText(title)).toHaveCount(0);
+});
+
 test('local settings rename responsible people and persist the color palette', async ({
   page,
 }) => {
@@ -299,12 +512,14 @@ test('local settings rename responsible people and persist the color palette', a
   await expect(dialog).toBeVisible();
   await dialog.getByLabel('Premier responsable').fill('Alice');
   await dialog.getByLabel('Deuxième responsable').fill('Bob');
+  await dialog.getByLabel('Aujourd’hui').fill('7');
+  await dialog.getByLabel('Chaque liste Maison').fill('15');
   await dialog.getByLabel('Océan').check();
   await dialog.getByRole('button', { name: 'Enregistrer' }).click();
 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'ocean');
   await page.getByRole('button', { name: 'Maison', exact: true }).click();
-  await page.getByText('Date, rendez-vous et responsable').click();
+  await page.getByText('Détails facultatifs').click();
   await page.getByLabel('Nouvelle tâche').fill(title);
   await page
     .getByRole('combobox', { name: 'Responsable', exact: true })
@@ -321,6 +536,45 @@ test('local settings rename responsible people and persist the color palette', a
   await expect(
     page.getByRole('listitem').filter({ hasText: title }),
   ).toContainText('Alice');
+  await page.getByRole('button', { name: 'Ouvrir les réglages' }).click();
+  await expect(page.getByLabel('Aujourd’hui')).toHaveValue('7');
+  await expect(page.getByLabel('Chaque liste Maison')).toHaveValue('15');
+});
+
+test('local settings limit today and home task lists', async ({ page }) => {
+  await page.route('**/api/sync/pull?**', async (route) => {
+    await route.fulfill({ json: { changes: [], cursor: 0 } });
+  });
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+
+  for (const title of ['Limite une', 'Limite deux', 'Limite trois']) {
+    const taskTitle = page.getByLabel('Nouvelle tâche');
+    const addButton = page.getByRole('button', {
+      name: 'Ajouter',
+      exact: true,
+    });
+    await taskTitle.fill(title);
+    await expect(addButton).toBeEnabled();
+    await addButton.click();
+    await expect(taskTitle).toHaveValue('');
+  }
+
+  await page.getByRole('button', { name: 'Ouvrir les réglages' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Réglages' });
+  await dialog.getByLabel('Aujourd’hui').fill('1');
+  await dialog.getByLabel('Chaque liste Maison').fill('2');
+  await dialog.getByRole('button', { name: 'Enregistrer' }).click();
+
+  await expect(
+    page.getByRole('region', { name: 'Tâches en cours' }).getByRole('listitem'),
+  ).toHaveCount(2);
+
+  await page.getByRole('button', { name: 'Aujourd’hui' }).click();
+  await expect(
+    page.getByRole('region', { name: 'Tâches en cours' }).getByRole('listitem'),
+  ).toHaveCount(1);
 });
 
 test('local deletion stays available while the hub request is stalled', async ({

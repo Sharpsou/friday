@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 
 import type { LocalTask } from './db/task-repository.js';
 import { getAssigneeLabel } from './task-assignee.js';
+import { formatTaskRecurrence } from './task-recurrence.js';
+import { compareTasksBySchedule } from './task-sort.js';
 import {
   getMonthGridDates,
   getTodayLocalDate,
@@ -90,9 +92,7 @@ export function TaskCalendar({
       grouped.set(task.dueDate, current);
     }
     for (const current of grouped.values()) {
-      current.sort((left, right) =>
-        (left.dueTime ?? '').localeCompare(right.dueTime ?? ''),
-      );
+      current.sort(compareTasksBySchedule);
     }
     return grouped;
   }, [tasks]);
@@ -228,6 +228,7 @@ export function TaskCalendar({
               const metadata = [
                 time,
                 getAssigneeLabel(task.assigneeProfileId, assigneeLabels),
+                formatTaskRecurrence(task.recurrence),
               ]
                 .filter(Boolean)
                 .join(' · ');
@@ -236,7 +237,10 @@ export function TaskCalendar({
                   className={task.status === 'done' ? 'is-done' : ''}
                   key={task.id}
                 >
-                  <span>{task.title}</span>
+                  <span className="calendar-task-copy">
+                    <span>{task.title}</span>
+                    {task.note ? <small>{task.note}</small> : null}
+                  </span>
                   <small>{metadata}</small>
                 </li>
               );

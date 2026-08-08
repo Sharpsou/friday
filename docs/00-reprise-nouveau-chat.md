@@ -56,7 +56,11 @@ Chemin : `D:\prog\friday`
 - un filtre discret `Toutes`/`Moi`/`Autre adulte`/`Non attribuées` s’applique aux trois vues ; les libellés pilotes seront remplacés par les profils appairés lors de l’authentification ;
 - une roue dentée compacte ouvre des réglages locaux : les deux responsables peuvent être renommés sans changer leurs identifiants et la palette peut être choisie parmi `Menthe`, `Océan`, `Lavande` et `Ambre` ;
 - le pictogramme de réglages utilise un cercle SVG séparé et géométriquement centré ; ce correctif est reconstruit et déployé sur l’origine HTTPS A17 ;
-- dernier contrôle complet du candidat construit après `22dc523` : 27 tests unitaires/intégration et 9 scénarios Chrome mobile réussis ;
+- après un retour A17 montrant l'ordre de création, un candidat trie désormais toutes les listes par date puis heure ; les tâches datées sans heure ouvrent leur journée et les tâches sans date viennent après les tâches planifiées ; la recette `docs/recipes/galaxy-a17-lot-1a-ordering.md` reste à confirmer physiquement ;
+- récurrence et note sont maintenant candidates : note facultative même sans date ; répétition quotidienne, hebdomadaire, tous les N jours, mensuelle ou annuelle, bornée par une date de fin inclusive ; toutes les occurrences sont créées localement et apparaissent immédiatement dans Liste, Semaine et Mois ; la suppression propose une occurrence ou toute la série ;
+- le choix de suppression récurrente a reçu un retour UX positif de l’utilisateur le 8 août 2026 ; sa recette physique complète hors ligne/reconnexion reste à confirmer avant de fermer le checkpoint Lot 1A ;
+- les réglages locaux limitent séparément le nombre de tâches affichées dans `Aujourd'hui` et dans chaque liste `Maison`, sans changer les compteurs totaux ;
+- dernier contrôle complet du candidat construit après `f310e2c` : 37 tests unitaires/intégration et 13 scénarios Chrome mobile réussis ;
 - terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026 ; la recette physique responsable/filtre reste à confirmer ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
@@ -115,7 +119,7 @@ Les autres modèles lourds ne font pas partie du service quotidien.
 - `Hors ligne` couvre volontairement aussi bien l’absence de réseau que le hub injoignable : la distinction technique reste interne ;
 - le nombre de modifications en attente et la dernière synchronisation restent discrets en bas de la page Aujourd’hui ;
 - les conflits ne sont affichés que s’ils existent et renvoient vers les tâches concernées ;
-- la suppression d’une tâche est disponible en mode modification, y compris hors ligne, sans confirmation intermédiaire pour le moment.
+- la suppression d’une tâche est disponible en mode modification, y compris hors ligne ; une tâche ordinaire est supprimée directement et une occurrence récurrente propose de retirer cette occurrence ou toute la série.
 
 ### Partage et profils
 
@@ -236,12 +240,11 @@ Le nouveau chat doit :
 
 1. lire `AGENTS.md`, ce document, les documents 09 et 10 ;
 2. constater l’état Git existant avec `git status -sb` et `git remote -v`, sans réinitialiser le dépôt ;
-3. faire confirmer sur l’A17 les parcours courts de `docs/recipes/galaxy-a17-lot-1a-assignee.md` et `docs/recipes/galaxy-a17-lot-1a-settings.md`, sans déclarer le comportement physique validé avant le retour utilisateur ;
-4. après ce checkpoint, compléter la tâche avec récurrence simple et note, toujours par la même écriture locale/outbox en ligne et hors ligne ;
-5. traiter l’authentification/appairage du Lot 1A avant toute donnée réelle ou utilisation à deux ;
-6. ajouter ensuite les courses partagées, puis finaliser conflits et tombstones ;
-7. couvrir chaque nouveau parcours par tests unitaires/intégration et Chrome mobile, exécuter `pnpm verify`, puis redémarrer le runtime sans navigateur ;
-8. conserver les lignes 7 et 8 de `docs/recipes/galaxy-a17-p0.md` comme contrôles de confiance non bloquants.
+3. faire confirmer sur l’A17 les parcours courts de `docs/recipes/galaxy-a17-lot-1a-ordering.md`, `docs/recipes/galaxy-a17-lot-1a-assignee.md`, `docs/recipes/galaxy-a17-lot-1a-settings.md` et `docs/recipes/galaxy-a17-lot-1a-recurrence-note.md`, sans déclarer le comportement physique validé avant le retour utilisateur ;
+4. traiter ensuite l’authentification/appairage du Lot 1A avant toute donnée réelle ou utilisation à deux ;
+5. ajouter ensuite les courses partagées, puis finaliser conflits et tombstones ;
+6. couvrir chaque nouveau parcours par tests unitaires/intégration et Chrome mobile, exécuter `pnpm verify`, puis redémarrer le runtime sans navigateur ;
+7. conserver les lignes 7 et 8 de `docs/recipes/galaxy-a17-p0.md` comme contrôles de confiance non bloquants.
 
 Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directement : commit sur la branche active puis `git push origin main`. Ne pas considérer l’absence de `gh` comme un blocage au commit ou au push.
 
@@ -289,7 +292,7 @@ Contrôles automatiques réussis le 8 août 2026, actualisés sur le candidat re
 - aucune signature évidente de clé privée, token OpenAI ou clé Google dans les documents ;
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
 - présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
-- `pnpm verify` réussi avec 27 tests unitaires/intégration, le build PWA/hub et 9 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi avec 37 tests unitaires/intégration, le build PWA/hub et 13 scénarios E2E Google Chrome mobile ;
 - health checks local et LAN réussis après redémarrage sans navigateur.
 
 Ce que cet audit ne prétend pas avoir validé :
@@ -298,6 +301,8 @@ Ce que cet audit ne prétend pas avoir validé :
 - activation d’une nouvelle version du service worker sur l’A17 sans perte de données ;
 - parcours physique A17 du Lot 1A pour le responsable et son filtre ;
 - parcours physique A17 des noms configurables et du choix de palette ;
+- parcours physique A17 du tri chronologique corrigé dans les quatre vues ;
+- parcours physique A17 de la note facultative et des occurrences récurrentes hors ligne ;
 - création ou autorisations du compte Google Maison ;
 - configuration Google Drive Desktop ou BitLocker ;
 - sécurité complète du code au-delà des contrôles et documents déjà présents ;

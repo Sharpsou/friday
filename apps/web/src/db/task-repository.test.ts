@@ -7,6 +7,7 @@ import {
   applyAcks,
   createLocalTask,
   deleteLocalTask,
+  deleteLocalTaskSeries,
   listTasks,
   readPendingOperations,
   resetDatabaseForTests,
@@ -98,6 +99,40 @@ describe('local task repository', () => {
     });
   });
 
+  it('stores an optional note without requiring a date', async () => {
+    await createLocalTask({
+      title: 'Appeler le garage',
+      note: 'Demander un devis',
+    });
+    const [task] = await listTasks();
+    expect(task).toMatchObject({ dueDate: null, note: 'Demander un devis' });
+  });
+
+  it('materializes a bounded recurring series without duplicate on completion', async () => {
+    const task = await createLocalTask({
+      title: 'Arroser les plantes',
+      dueDate: '2026-08-08',
+      recurrence: { endDate: '2026-08-14', interval: 3, unit: 'day' },
+      note: 'Vérifier la terre',
+    });
+
+    await setLocalTaskStatus(task.id, 'done');
+    await setLocalTaskStatus(task.id, 'done');
+
+    const tasks = await listTasks();
+    expect(tasks).toHaveLength(3);
+    expect(tasks.map(({ dueDate }) => dueDate)).toEqual([
+      '2026-08-08',
+      '2026-08-11',
+      '2026-08-14',
+    ]);
+    expect(tasks[1]).toMatchObject({
+      note: 'Vérifier la terre',
+      recurrence: { interval: 3, unit: 'day' },
+    });
+    expect(await readPendingOperations()).toHaveLength(4);
+  });
+
   it('hides a deleted task and queues an encrypted tombstone', async () => {
     const task = await createLocalTask('Rapporter le colis');
 
@@ -121,6 +156,55 @@ describe('local task repository', () => {
     expect(JSON.stringify(rawTask?.encrypted)).not.toContain(
       'Rapporter le colis',
     );
+  });
+
+  it('can delete one occurrence without deleting its recurring series', async () => {
+    await createLocalTask({
+      title: 'Sortir les poubelles',
+      dueDate: '2026-08-08',
+      recurrence: { endDate: '2026-08-22', interval: 1, unit: 'week' },
+    });
+    const tasksBeforeDeletion = await listTasks();
+
+    await deleteLocalTask(tasksBeforeDeletion[1]?.id ?? 'missing');
+
+    const tasks = await listTasks();
+    expect(tasks.map(({ dueDate }) => dueDate)).toEqual([
+      '2026-08-08',
+      '2026-08-22',
+    ]);
+    expect(await readPendingOperations()).toHaveLength(4);
+  });
+
+  it('deletes every occurrence of a recurring series in one local operation', async () => {
+    await createLocalTask({
+      title: 'Arroser les plantes',
+      dueDate: '2026-08-08',
+      recurrence: { endDate: '2026-08-14', interval: 3, unit: 'day' },
+    });
+    const tasksBeforeDeletion = await listTasks();
+
+    const deletedCount = await deleteLocalTaskSeries(
+      tasksBeforeDeletion[1]?.id ?? 'missing',
+    );
+
+    const operations = await readPendingOperations();
+    const deletions = operations.filter(
+      (operation) => operation.payload.deletedAt !== null,
+    );
+    expect(deletedCount).toBe(3);
+    expect(await listTasks()).toHaveLength(0);
+    expect(operations).toHaveLength(6);
+    expect(deletions).toHaveLength(3);
+    expect(
+      new Set(
+        deletions.map((operation) =>
+          typeof operation.payload.recurrence === 'object'
+            ? operation.payload.recurrence?.seriesId
+            : null,
+        ),
+      ).size,
+    ).toBe(1);
   });
 
   it('queues finishing and reopening through the same local transaction', async () => {

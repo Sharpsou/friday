@@ -7,7 +7,36 @@ export const LocalDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
 export const LocalTimeSchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u);
 
 export const TaskStatusSchema = z.enum(['todo', 'done']);
-export const TaskRecurrenceSchema = z.enum(['daily', 'weekly', 'monthly']);
+export const TaskRecurrenceRuleSchema = z
+  .object({
+    anchorDate: LocalDateSchema,
+    endDate: LocalDateSchema.nullable().default(null),
+    interval: z.number().int().min(1).max(365),
+    seriesId: UuidSchema,
+    unit: z.enum(['day', 'week', 'month', 'year']),
+  })
+  .strict()
+  .superRefine((rule, context) => {
+    if (rule.unit !== 'day' && rule.interval !== 1) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Seule la récurrence en jours accepte un intervalle personnalisé.',
+        path: ['interval'],
+      });
+    }
+    if (rule.endDate !== null && rule.endDate < rule.anchorDate) {
+      context.addIssue({
+        code: 'custom',
+        message: 'La date de fin doit suivre la première occurrence.',
+        path: ['endDate'],
+      });
+    }
+  });
+export const TaskRecurrenceSchema = z.union([
+  z.enum(['daily', 'weekly', 'monthly']),
+  TaskRecurrenceRuleSchema,
+]);
 
 export const TaskRecordSchema = z
   .object({
@@ -50,6 +79,13 @@ export const TaskRecordSchema = z
         code: 'custom',
         message: 'Une durée nécessite une heure.',
         path: ['durationMinutes'],
+      });
+    }
+    if (task.recurrence !== null && task.dueDate === null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Une récurrence nécessite une date.',
+        path: ['recurrence'],
       });
     }
   });
@@ -119,6 +155,8 @@ export const HealthResponseSchema = z
   .strict();
 
 export type TaskRecord = z.infer<typeof TaskRecordSchema>;
+export type TaskRecurrence = z.infer<typeof TaskRecurrenceSchema>;
+export type TaskRecurrenceRule = z.infer<typeof TaskRecurrenceRuleSchema>;
 export type TaskOperation = z.infer<typeof TaskOperationSchema>;
 export type PushRequest = z.infer<typeof PushRequestSchema>;
 export type OperationAck = z.infer<typeof OperationAckSchema>;

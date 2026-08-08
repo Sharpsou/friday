@@ -25,6 +25,7 @@ Ouvrir Friday depuis l'icône installée sur l'A17.
 |     4 | créer une tâche attribuée au premier responsable                               | la tâche affiche le nouveau nom, sans modifier son comportement de synchronisation                         |               |
 |     5 | arrêter uniquement le service Friday, puis fermer de force et rouvrir la PWA   | la palette et les deux noms sont conservés alors que Friday affiche `Hors ligne`                           |               |
 |     6 | rouvrir les réglages, toucher `Annuler`, puis les rouvrir                      | aucun changement non enregistré n'a remplacé les préférences existantes                                    |               |
+|     7 | régler les limites `Aujourd'hui` et `Chaque liste Maison`, puis enregistrer    | chaque liste affiche au plus le nombre choisi ; ses compteurs conservent le total réel                     |               |
 
 Ces réglages sont locaux à l'appareil dans ce lot. Les deux emplacements correspondent aux deux futurs profils appairés : renommer un responsable change son libellé, jamais l'identifiant déjà porté par les tâches.
 

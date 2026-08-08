@@ -67,12 +67,11 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 
 La porte go/no-go du Lot 0B est validée sur le Galaxy A17 : persistance après redémarrage hors réseau, retour de l’attente à zéro et convergence sans doublon confirmés par l’utilisateur le 8 août 2026.
 
-Le candidat construit après `22dc523` implémente terminer/rouvrir, date/heure/durée, responsable facultatif et les vues `Liste`/`Semaine`/`Mois` dans `Maison > Agenda`. Le filtre responsable commun utilise deux identifiants pilotes ; leurs noms sont configurables localement depuis la roue dentée, qui permet aussi de choisir entre quatre palettes sombres. Le cercle intérieur du pictogramme de réglages a été recentré puis redéployé sur l’origine HTTPS A17. Les profils réels restent réservés à l’appairage. `pnpm verify` réussit avec 27 tests unitaires/intégration et 9 scénarios Chrome mobile. Terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026.
+Le candidat construit après `f310e2c` implémente terminer/rouvrir, date/heure/durée, responsable facultatif, note facultative, récurrence jour/semaine/N jours/mois/an bornée par une date de fin et les vues `Liste`/`Semaine`/`Mois`. Toutes les occurrences sont créées avec des identifiants déterministes dans une transaction locale/outbox et sont immédiatement visibles ; leur suppression propose une occurrence ou toute la série. Les réglages locaux couvrent noms, palettes et limites distinctes des listes `Aujourd'hui`/`Maison`. Après un retour A17, les tâches sont triées par date puis heure dans toutes les vues, avec les tâches sans date en dernier. Les profils réels restent réservés à l’appairage. Terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026.
 
-1. faire confirmer les recettes physiques `docs/recipes/galaxy-a17-lot-1a-assignee.md` et `docs/recipes/galaxy-a17-lot-1a-settings.md` ;
-2. après ce checkpoint, ajouter récurrence simple et note par la même voie locale/outbox en ligne et hors ligne ;
-3. traiter l’authentification fermée et l’appairage avant toute donnée réelle ou utilisation à deux ;
-4. ajouter ensuite les courses partagées, puis finaliser conflits et tombstones ;
-5. après une évolution du runtime, reconstruire et redémarrer le hub sans ouvrir Chrome avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
+1. faire confirmer les recettes physiques `docs/recipes/galaxy-a17-lot-1a-ordering.md`, `docs/recipes/galaxy-a17-lot-1a-assignee.md`, `docs/recipes/galaxy-a17-lot-1a-settings.md` et `docs/recipes/galaxy-a17-lot-1a-recurrence-note.md` ;
+2. traiter ensuite l’authentification fermée et l’appairage avant toute donnée réelle ou utilisation à deux ;
+3. ajouter ensuite les courses partagées, puis finaliser conflits et tombstones ;
+4. après une évolution du runtime, reconstruire et redémarrer le hub sans ouvrir Chrome avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
 
 Ne pas commencer le budget, Calendar, la veille ou l’assistant avant la sortie technique du Lot 1A.

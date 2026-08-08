@@ -13,14 +13,18 @@ export type AppTheme = (typeof THEME_OPTIONS)[number]['value'];
 
 export interface AppPreferences {
   currentResponsibleName: string;
+  homeTaskLimit: number;
   otherResponsibleName: string;
   theme: AppTheme;
+  todayTaskLimit: number;
 }
 
 export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   currentResponsibleName: 'Moi',
+  homeTaskLimit: 20,
   otherResponsibleName: 'Autre adulte',
   theme: 'mint',
+  todayTaskLimit: 4,
 };
 
 const THEMES = new Set<AppTheme>(THEME_OPTIONS.map((option) => option.value));
@@ -31,6 +35,12 @@ function cleanName(value: unknown, fallback: string): string {
   return cleaned || fallback;
 }
 
+function cleanLimit(value: unknown, fallback: number, maximum: number): number {
+  return typeof value === 'number' && Number.isInteger(value)
+    ? Math.min(maximum, Math.max(1, value))
+    : fallback;
+}
+
 export function normalizeAppPreferences(value: unknown): AppPreferences {
   if (!value || typeof value !== 'object') return DEFAULT_APP_PREFERENCES;
   const candidate = value as Partial<AppPreferences>;
@@ -38,6 +48,11 @@ export function normalizeAppPreferences(value: unknown): AppPreferences {
     currentResponsibleName: cleanName(
       candidate.currentResponsibleName,
       DEFAULT_APP_PREFERENCES.currentResponsibleName,
+    ),
+    homeTaskLimit: cleanLimit(
+      candidate.homeTaskLimit,
+      DEFAULT_APP_PREFERENCES.homeTaskLimit,
+      200,
     ),
     otherResponsibleName: cleanName(
       candidate.otherResponsibleName,
@@ -48,6 +63,11 @@ export function normalizeAppPreferences(value: unknown): AppPreferences {
       THEMES.has(candidate.theme as AppTheme)
         ? (candidate.theme as AppTheme)
         : DEFAULT_APP_PREFERENCES.theme,
+    todayTaskLimit: cleanLimit(
+      candidate.todayTaskLimit,
+      DEFAULT_APP_PREFERENCES.todayTaskLimit,
+      50,
+    ),
   };
 }
 

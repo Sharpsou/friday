@@ -18,7 +18,7 @@ interface TaskRow {
   due_time: string | null;
   duration_minutes: number | null;
   assignee_profile_id: string | null;
-  recurrence: 'daily' | 'weekly' | 'monthly' | null;
+  recurrence: string | null;
   note: string | null;
   status: 'todo' | 'done';
   created_at: string;
@@ -148,7 +148,13 @@ export class SyncService {
              device_id = excluded.device_id,
              schema_version = excluded.schema_version`,
         )
-        .run(canonical);
+        .run({
+          ...canonical,
+          recurrence:
+            canonical.recurrence === null
+              ? null
+              : JSON.stringify(canonical.recurrence),
+        });
 
       this.#database
         .prepare(

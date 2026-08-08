@@ -10,6 +10,7 @@ import {
 import {
   createLocalTask,
   deleteLocalTask,
+  deleteLocalTaskSeries,
   getOutboxCounts,
   listTasks,
   setLocalTaskStatus,
@@ -27,9 +28,12 @@ import {
   type AssigneeFilter,
 } from './task-assignee.js';
 import { TaskCalendar } from './TaskCalendar.js';
+import { formatTaskRecurrence } from './task-recurrence.js';
 
 type Destination = 'today' | 'home' | 'watch';
 type TaskView = 'list' | 'week' | 'month';
+type RecurrenceChoice =
+  'none' | 'daily' | 'weekly' | 'custom-days' | 'monthly' | 'yearly';
 
 const TASK_SYNC_LABELS: Record<LocalTask['syncState'], string> = {
   pending: 'À synchroniser',
@@ -69,6 +73,8 @@ export function App() {
   const [tasks, setTasks] = useState<LocalTask[]>([]);
   const [editingTasks, setEditingTasks] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [taskPendingDeletion, setTaskPendingDeletion] =
+    useState<LocalTask | null>(null);
   const [changingStatusTaskId, setChangingStatusTaskId] = useState<
     string | null
   >(null);
@@ -76,6 +82,11 @@ export function App() {
   const [dueDate, setDueDate] = useState('');
   const [dueTime, setDueTime] = useState('');
   const [durationMinutes, setDurationMinutes] = useState('');
+  const [recurrenceChoice, setRecurrenceChoice] =
+    useState<RecurrenceChoice>('none');
+  const [recurrenceIntervalDays, setRecurrenceIntervalDays] = useState('2');
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
+  const [note, setNote] = useState('');
   const [assigneeChoice, setAssigneeChoice] =
     useState<AssigneeChoice>('unassigned');
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
@@ -95,6 +106,7 @@ export function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const scheduleDetailsRef = useRef<HTMLDetailsElement>(null);
   const settingsCloseRef = useRef<HTMLButtonElement>(null);
+  const deletionCancelRef = useRef<HTMLButtonElement>(null);
 
   const assigneeLabels = useMemo(
     () => ({
@@ -171,6 +183,18 @@ export function App() {
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [settingsOpen]);
+
+  useEffect(() => {
+    if (!taskPendingDeletion) return;
+    deletionCancelRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && deletingTaskId === null) {
+        setTaskPendingDeletion(null);
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [deletingTaskId, taskPendingDeletion]);
 
   useEffect(() => {
     let onlineSyncTimer: number | undefined;
@@ -252,11 +276,37 @@ export function App() {
           dueDate && dueTime && durationMinutes
             ? Number(durationMinutes)
             : null,
+        recurrence:
+          dueDate && recurrenceChoice !== 'none'
+            ? recurrenceChoice === 'custom-days'
+              ? {
+                  endDate: recurrenceEndDate,
+                  interval: Number(recurrenceIntervalDays),
+                  unit: 'day',
+                }
+              : {
+                  endDate: recurrenceEndDate,
+                  interval: 1,
+                  unit:
+                    recurrenceChoice === 'daily'
+                      ? 'day'
+                      : recurrenceChoice === 'weekly'
+                        ? 'week'
+                        : recurrenceChoice === 'monthly'
+                          ? 'month'
+                          : 'year',
+                }
+            : null,
+        note,
       });
       setTitle('');
       setDueDate('');
       setDueTime('');
       setDurationMinutes('');
+      setRecurrenceChoice('none');
+      setRecurrenceIntervalDays('2');
+      setRecurrenceEndDate('');
+      setNote('');
       setAssigneeChoice('unassigned');
       if (scheduleDetailsRef.current) scheduleDetailsRef.current.open = false;
       setMessage('Tâche enregistrée sur ce téléphone.');
@@ -269,17 +319,32 @@ export function App() {
     }
   }
 
-  async function deleteTask(taskId: string) {
-    setDeletingTaskId(taskId);
+  function requestTaskDeletion(task: LocalTask) {
+    if (task.recurrence !== null) {
+      setTaskPendingDeletion(task);
+      return;
+    }
+    void deleteTask(task, 'occurrence');
+  }
+
+  async function deleteTask(task: LocalTask, scope: 'occurrence' | 'series') {
+    setDeletingTaskId(task.id);
     try {
       await cancelActiveSync();
       setSyncing(false);
-      await deleteLocalTask(taskId);
+      if (scope === 'series') {
+        await deleteLocalTaskSeries(task.id);
+      } else {
+        await deleteLocalTask(task.id);
+      }
       setMessage(
-        navigator.onLine
-          ? 'Tâche supprimée.'
-          : 'Tâche supprimée sur ce téléphone.',
+        scope === 'series'
+          ? 'Série récurrente supprimée sur ce téléphone.'
+          : navigator.onLine
+            ? 'Tâche supprimée.'
+            : 'Tâche supprimée sur ce téléphone.',
       );
+      setTaskPendingDeletion(null);
       const remainingTasks = await reloadLocalState();
       if (remainingTasks.length === 0) setEditingTasks(false);
       void synchronize();
@@ -328,6 +393,8 @@ export function App() {
     setDueDate(date);
     setDueTime('');
     setDurationMinutes('');
+    setRecurrenceChoice('none');
+    setRecurrenceEndDate('');
     window.setTimeout(() => {
       if (scheduleDetailsRef.current) scheduleDetailsRef.current.open = true;
       inputRef.current?.focus();
@@ -429,7 +496,7 @@ export function App() {
                 </button>
               </div>
               <TaskList
-                tasks={activeTasks.slice(0, 4)}
+                tasks={activeTasks.slice(0, preferences.todayTaskLimit)}
                 assigneeLabels={assigneeLabels}
                 changingStatusTaskId={changingStatusTaskId}
                 actionsDisabled={changingStatusTaskId !== null}
@@ -554,8 +621,8 @@ export function App() {
                   <div className="edit-notice" role="status">
                     <strong>Mode modification</strong>
                     <span>
-                      Sélectionnez Supprimer sur une tâche. La suppression est
-                      immédiate, sans confirmation.
+                      Sélectionnez Supprimer sur une tâche. Pour une récurrence,
+                      choisissez une occurrence ou toute la série.
                     </span>
                   </div>
                 ) : (
@@ -583,7 +650,7 @@ export function App() {
                       className="task-schedule-fields"
                       ref={scheduleDetailsRef}
                     >
-                      <summary>Date, rendez-vous et responsable</summary>
+                      <summary>Détails facultatifs</summary>
                       <div className="schedule-grid">
                         <label htmlFor="task-date">
                           <span>Date</span>
@@ -598,6 +665,8 @@ export function App() {
                               if (!value) {
                                 setDueTime('');
                                 setDurationMinutes('');
+                                setRecurrenceChoice('none');
+                                setRecurrenceEndDate('');
                               }
                             }}
                           />
@@ -660,6 +729,73 @@ export function App() {
                             ))}
                           </select>
                         </label>
+                        <label htmlFor="task-recurrence">
+                          <span>Récurrence</span>
+                          <select
+                            id="task-recurrence"
+                            name="recurrence"
+                            value={recurrenceChoice}
+                            disabled={!dueDate}
+                            onChange={(event) =>
+                              setRecurrenceChoice(
+                                event.target.value as RecurrenceChoice,
+                              )
+                            }
+                          >
+                            <option value="none">Sans récurrence</option>
+                            <option value="daily">Chaque jour</option>
+                            <option value="weekly">Chaque semaine</option>
+                            <option value="custom-days">
+                              Tous les N jours
+                            </option>
+                            <option value="monthly">Chaque mois</option>
+                            <option value="yearly">Chaque année</option>
+                          </select>
+                        </label>
+                        {recurrenceChoice === 'custom-days' ? (
+                          <label htmlFor="task-recurrence-days">
+                            <span>Nombre de jours</span>
+                            <input
+                              id="task-recurrence-days"
+                              type="number"
+                              inputMode="numeric"
+                              min="2"
+                              max="365"
+                              required
+                              value={recurrenceIntervalDays}
+                              onChange={(event) =>
+                                setRecurrenceIntervalDays(event.target.value)
+                              }
+                            />
+                          </label>
+                        ) : null}
+                        {recurrenceChoice !== 'none' ? (
+                          <label htmlFor="task-recurrence-end">
+                            <span>Date de fin</span>
+                            <input
+                              id="task-recurrence-end"
+                              type="date"
+                              min={dueDate}
+                              required
+                              value={recurrenceEndDate}
+                              onChange={(event) =>
+                                setRecurrenceEndDate(event.target.value)
+                              }
+                            />
+                          </label>
+                        ) : null}
+                        <label className="note-field" htmlFor="task-note">
+                          <span>Note</span>
+                          <textarea
+                            id="task-note"
+                            name="note"
+                            value={note}
+                            maxLength={2000}
+                            rows={3}
+                            placeholder="Facultatif"
+                            onChange={(event) => setNote(event.target.value)}
+                          />
+                        </label>
                       </div>
                     </details>
                     <p>
@@ -680,7 +816,10 @@ export function App() {
                     </span>
                   </div>
                   <TaskList
-                    tasks={filteredActiveTasks}
+                    tasks={filteredActiveTasks.slice(
+                      0,
+                      preferences.homeTaskLimit,
+                    )}
                     assigneeLabels={assigneeLabels}
                     editing={editingTasks}
                     deletingTaskId={deletingTaskId}
@@ -688,7 +827,7 @@ export function App() {
                     actionsDisabled={
                       deletingTaskId !== null || changingStatusTaskId !== null
                     }
-                    onDelete={(taskId) => void deleteTask(taskId)}
+                    onDelete={requestTaskDeletion}
                     onStatusChange={(taskId, status) =>
                       void changeTaskStatus(taskId, status)
                     }
@@ -707,7 +846,10 @@ export function App() {
                     </span>
                   </div>
                   <TaskList
-                    tasks={filteredCompletedTasks}
+                    tasks={filteredCompletedTasks.slice(
+                      0,
+                      preferences.homeTaskLimit,
+                    )}
                     assigneeLabels={assigneeLabels}
                     editing={editingTasks}
                     deletingTaskId={deletingTaskId}
@@ -715,7 +857,7 @@ export function App() {
                     actionsDisabled={
                       deletingTaskId !== null || changingStatusTaskId !== null
                     }
-                    onDelete={(taskId) => void deleteTask(taskId)}
+                    onDelete={requestTaskDeletion}
                     onStatusChange={(taskId, status) =>
                       void changeTaskStatus(taskId, status)
                     }
@@ -755,6 +897,64 @@ export function App() {
           </button>
         </aside>
       )}
+
+      {taskPendingDeletion ? (
+        <div
+          className="settings-backdrop"
+          onMouseDown={() => {
+            if (deletingTaskId === null) setTaskPendingDeletion(null);
+          }}
+        >
+          <section
+            className="settings-dialog deletion-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deletion-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="settings-heading">
+              <div>
+                <span className="eyebrow">Tâche récurrente</span>
+                <h2 id="deletion-title">Que supprimer&nbsp;?</h2>
+              </div>
+            </div>
+            <p>
+              Choisissez si vous retirez uniquement «&nbsp;
+              {taskPendingDeletion.title}&nbsp;» à cette date ou toutes les
+              occurrences de la série.
+            </p>
+            <div className="deletion-actions">
+              <button
+                ref={deletionCancelRef}
+                className="secondary-button"
+                type="button"
+                disabled={deletingTaskId !== null}
+                onClick={() => setTaskPendingDeletion(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="secondary-button deletion-choice-button"
+                type="button"
+                disabled={deletingTaskId !== null}
+                onClick={() =>
+                  void deleteTask(taskPendingDeletion, 'occurrence')
+                }
+              >
+                Cette occurrence
+              </button>
+              <button
+                className="delete-series-button"
+                type="button"
+                disabled={deletingTaskId !== null}
+                onClick={() => void deleteTask(taskPendingDeletion, 'series')}
+              >
+                {deletingTaskId !== null ? 'Suppression…' : 'Toute la série'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {settingsOpen ? (
         <div
@@ -850,6 +1050,43 @@ export function App() {
                   ))}
                 </div>
               </fieldset>
+              <fieldset>
+                <legend>Nombre de tâches affichées</legend>
+                <label htmlFor="today-task-limit">
+                  <span>Aujourd’hui</span>
+                  <input
+                    id="today-task-limit"
+                    type="number"
+                    min="1"
+                    max="50"
+                    required
+                    value={preferencesDraft.todayTaskLimit}
+                    onChange={(event) =>
+                      setPreferencesDraft((current) => ({
+                        ...current,
+                        todayTaskLimit: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+                <label htmlFor="home-task-limit">
+                  <span>Chaque liste Maison</span>
+                  <input
+                    id="home-task-limit"
+                    type="number"
+                    min="1"
+                    max="200"
+                    required
+                    value={preferencesDraft.homeTaskLimit}
+                    onChange={(event) =>
+                      setPreferencesDraft((current) => ({
+                        ...current,
+                        homeTaskLimit: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+              </fieldset>
               <div className="settings-actions">
                 <button
                   className="secondary-button"
@@ -915,7 +1152,7 @@ function TaskList({
   changingStatusTaskId?: string | null;
   actionsDisabled?: boolean;
   emptyMessage?: string;
-  onDelete?: (taskId: string) => void;
+  onDelete?: (task: LocalTask) => void;
   onStatusChange?: (taskId: string, status: LocalTask['status']) => void;
 }) {
   if (tasks.length === 0) {
@@ -930,6 +1167,7 @@ function TaskList({
           task.assigneeProfileId,
           assigneeLabels,
         );
+        const recurrence = formatTaskRecurrence(task.recurrence);
         return (
           <li className={task.status === 'done' ? 'is-done' : ''} key={task.id}>
             <span className="task-copy">
@@ -941,7 +1179,13 @@ function TaskList({
                 <small className="task-assignee">
                   {schedule ? `· ${assignee}` : assignee}
                 </small>
+                {recurrence ? (
+                  <small className="task-recurrence">· {recurrence}</small>
+                ) : null}
               </span>
+              {task.note ? (
+                <small className="task-note">{task.note}</small>
+              ) : null}
               <small className={`task-sync is-${task.syncState}`}>
                 {TASK_SYNC_LABELS[task.syncState]}
               </small>
@@ -972,7 +1216,7 @@ function TaskList({
                 type="button"
                 aria-label={`Supprimer ${task.title}`}
                 disabled={actionsDisabled}
-                onClick={() => onDelete(task.id)}
+                onClick={() => onDelete(task)}
               >
                 {deletingTaskId === task.id ? 'Suppression…' : 'Supprimer'}
               </button>

@@ -29,22 +29,28 @@ describe('app preferences', () => {
       }),
     ).toEqual({
       currentResponsibleName: 'Moi',
+      homeTaskLimit: 20,
       otherResponsibleName: 'Alex Martin',
       theme: 'mint',
+      todayTaskLimit: 4,
     });
   });
 
   it('persists responsible names and palette on this device', async () => {
     await saveAppPreferences({
       currentResponsibleName: 'Alice',
+      homeTaskLimit: 30,
       otherResponsibleName: 'Bob',
       theme: 'ocean',
+      todayTaskLimit: 6,
     });
 
     await expect(loadAppPreferences()).resolves.toEqual({
       currentResponsibleName: 'Alice',
+      homeTaskLimit: 30,
       otherResponsibleName: 'Bob',
       theme: 'ocean',
+      todayTaskLimit: 6,
     });
   });
 });
