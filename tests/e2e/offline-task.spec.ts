@@ -160,7 +160,7 @@ test('date-only tasks and timed appointments persist offline', async ({
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
   await page.getByRole('button', { name: 'Maison', exact: true }).click();
-  await page.getByText('Date et rendez-vous').click();
+  await page.getByText('Date, rendez-vous et responsable').click();
 
   await page.getByLabel('Nouvelle tâche').fill(datedTitle);
   await page.getByLabel('Date').fill('2026-08-15');
@@ -171,7 +171,7 @@ test('date-only tasks and timed appointments persist offline', async ({
   await expect(datedTask).toContainText('Synchronisée avec le foyer');
 
   await context.setOffline(true);
-  await page.getByText('Date et rendez-vous').click();
+  await page.getByText('Date, rendez-vous et responsable').click();
   await page.getByLabel('Nouvelle tâche').fill(appointmentTitle);
   await page.getByLabel('Date').fill('2026-08-16');
   await page.getByLabel('Heure').fill('14:30');
@@ -211,7 +211,7 @@ test('week and month views expose dated tasks and prepare quick add', async ({
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
   await page.getByRole('button', { name: 'Maison', exact: true }).click();
-  await page.getByText('Date et rendez-vous').click();
+  await page.getByText('Date, rendez-vous et responsable').click();
   await page.getByLabel('Nouvelle tâche').fill(title);
   await page.getByLabel('Date').fill(today);
   await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
@@ -226,6 +226,101 @@ test('week and month views expose dated tasks and prepare quick add', async ({
 
   await expect(page.getByLabel('Date')).toBeVisible();
   await expect(page.getByLabel('Date')).toHaveValue(today);
+});
+
+test('responsible person persists offline and filters the agenda', async ({
+  context,
+  page,
+}) => {
+  const unassignedTitle = `Sans responsable ${crypto.randomUUID()}`;
+  const assignedTitle = `Responsable moi ${crypto.randomUUID()}`;
+  const now = new Date();
+  const today = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
+
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByText('Date, rendez-vous et responsable').click();
+  await page.getByLabel('Nouvelle tâche').fill(unassignedTitle);
+  await page.getByLabel('Date').fill(today);
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+
+  await context.setOffline(true);
+  await page.getByText('Date, rendez-vous et responsable').click();
+  await page.getByLabel('Nouvelle tâche').fill(assignedTitle);
+  await page.getByLabel('Date').fill(today);
+  await page
+    .getByRole('combobox', { name: 'Responsable', exact: true })
+    .selectOption('current');
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+
+  const assignedTask = page
+    .getByRole('listitem')
+    .filter({ hasText: assignedTitle });
+  await expect(assignedTask).toContainText('Moi');
+  await expect(assignedTask).toContainText('À synchroniser');
+
+  await page.getByLabel('Filtrer par responsable').selectOption('current');
+  await expect(assignedTask).toBeVisible();
+  await expect(page.getByText(unassignedTitle)).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Mois', exact: true }).click();
+  const calendar = page.getByRole('region', { name: 'Agenda des tâches' });
+  await expect(calendar).toContainText(assignedTitle);
+  await expect(calendar).not.toContainText(unassignedTitle);
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: assignedTitle }),
+  ).toContainText('Moi');
+
+  await context.setOffline(false);
+  await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
+  await expect(page.getByRole('button', { name: 'Connecté' })).toBeVisible();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: assignedTitle }),
+  ).toContainText('Synchronisée avec le foyer');
+});
+
+test('local settings rename responsible people and persist the color palette', async ({
+  page,
+}) => {
+  const title = `Tâche Alice ${crypto.randomUUID()}`;
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+
+  await page.getByRole('button', { name: 'Ouvrir les réglages' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Réglages' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Premier responsable').fill('Alice');
+  await dialog.getByLabel('Deuxième responsable').fill('Bob');
+  await dialog.getByLabel('Océan').check();
+  await dialog.getByRole('button', { name: 'Enregistrer' }).click();
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'ocean');
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByText('Date, rendez-vous et responsable').click();
+  await page.getByLabel('Nouvelle tâche').fill(title);
+  await page
+    .getByRole('combobox', { name: 'Responsable', exact: true })
+    .selectOption({ label: 'Alice' });
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: title }),
+  ).toContainText('Alice');
+  await expect(page.getByLabel('Filtrer par responsable')).toContainText('Bob');
+
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'ocean');
+  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: title }),
+  ).toContainText('Alice');
 });
 
 test('local deletion stays available while the hub request is stalled', async ({

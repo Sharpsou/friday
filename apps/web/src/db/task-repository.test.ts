@@ -12,6 +12,7 @@ import {
   resetDatabaseForTests,
   setLocalTaskStatus,
 } from './task-repository.js';
+import { CURRENT_PROFILE_ID } from '../task-assignee.js';
 
 beforeEach(async () => {
   await fridayDb.open();
@@ -74,6 +75,26 @@ describe('local task repository', () => {
       dueDate: '2026-08-16',
       dueTime: '14:30',
       durationMinutes: 45,
+    });
+  });
+
+  it('stores the responsible profile in the encrypted task and outbox', async () => {
+    const task = await createLocalTask({
+      assigneeProfileId: CURRENT_PROFILE_ID,
+      title: 'Préparer les documents',
+    });
+
+    const [tasks, operations] = await Promise.all([
+      listTasks(),
+      readPendingOperations(),
+    ]);
+
+    expect(tasks[0]).toMatchObject({
+      id: task.id,
+      assigneeProfileId: CURRENT_PROFILE_ID,
+    });
+    expect(operations[0]?.payload).toMatchObject({
+      assigneeProfileId: CURRENT_PROFILE_ID,
     });
   });
 

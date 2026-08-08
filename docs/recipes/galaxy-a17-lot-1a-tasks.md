@@ -1,9 +1,10 @@
 # Recette Lot 1A — terminer et rouvrir une tâche
 
-- Statut : **candidat automatisé validé — recette A17 à réaliser**
+- Statut : **validé sur le Galaxy A17 le 8 août 2026**
 - Appareil : Samsung Galaxy A17
 - Exigences : `FR-TASK-02`, `NFR-OFF-02`, `NFR-SYNC-01`, `NFR-SYNC-02`
 - Objectif : vérifier que terminer et rouvrir utilisent la voie locale/outbox en ligne comme hors ligne, persistent après fermeture et convergent sans doublon.
+- Validation utilisateur : parcours terminer/rouvrir confirmé en ligne et hors ligne, sans anomalie signalée.
 
 ## Préparation
 

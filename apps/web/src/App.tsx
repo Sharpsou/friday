@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  applyAppTheme,
+  DEFAULT_APP_PREFERENCES,
+  loadAppPreferences,
+  saveAppPreferences,
+  THEME_OPTIONS,
+} from './app-preferences.js';
+import {
   createLocalTask,
   deleteLocalTask,
   getOutboxCounts,
@@ -10,6 +17,15 @@ import {
 } from './db/task-repository.js';
 import { updateServiceWorker } from './pwa.js';
 import { cancelActiveSync, syncNow } from './sync/sync-client.js';
+import {
+  getAssigneeChoices,
+  getAssigneeFilters,
+  getAssigneeLabel,
+  getAssigneeProfileId,
+  matchesAssigneeFilter,
+  type AssigneeChoice,
+  type AssigneeFilter,
+} from './task-assignee.js';
 import { TaskCalendar } from './TaskCalendar.js';
 
 type Destination = 'today' | 'home' | 'watch';
@@ -60,6 +76,14 @@ export function App() {
   const [dueDate, setDueDate] = useState('');
   const [dueTime, setDueTime] = useState('');
   const [durationMinutes, setDurationMinutes] = useState('');
+  const [assigneeChoice, setAssigneeChoice] =
+    useState<AssigneeChoice>('unassigned');
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
+  const [preferences, setPreferences] = useState(DEFAULT_APP_PREFERENCES);
+  const [preferencesDraft, setPreferencesDraft] = useState(
+    DEFAULT_APP_PREFERENCES,
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
@@ -70,6 +94,23 @@ export function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const scheduleDetailsRef = useRef<HTMLDetailsElement>(null);
+  const settingsCloseRef = useRef<HTMLButtonElement>(null);
+
+  const assigneeLabels = useMemo(
+    () => ({
+      current: preferences.currentResponsibleName,
+      other: preferences.otherResponsibleName,
+    }),
+    [preferences.currentResponsibleName, preferences.otherResponsibleName],
+  );
+  const assigneeChoices = useMemo(
+    () => getAssigneeChoices(assigneeLabels),
+    [assigneeLabels],
+  );
+  const assigneeFilters = useMemo(
+    () => getAssigneeFilters(assigneeLabels),
+    [assigneeLabels],
+  );
 
   const reloadLocalState = useCallback(async () => {
     const [localTasks, counts] = await Promise.all([
@@ -112,9 +153,24 @@ export function App() {
     window.queueMicrotask(() => {
       void reloadLocalState();
       void synchronize();
+      void loadAppPreferences().then((storedPreferences) => {
+        setPreferences(storedPreferences);
+        setPreferencesDraft(storedPreferences);
+        applyAppTheme(storedPreferences.theme);
+      });
     });
     if (navigator.storage?.persist) void navigator.storage.persist();
   }, [reloadLocalState, synchronize]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    settingsCloseRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSettingsOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [settingsOpen]);
 
   useEffect(() => {
     let onlineSyncTimer: number | undefined;
@@ -158,20 +214,37 @@ export function App() {
     };
   }, [synchronize]);
 
-  const { activeTasks, completedTasks } = useMemo(() => {
+  const activeTasks = useMemo(
+    () => tasks.filter((task) => task.status !== 'done'),
+    [tasks],
+  );
+
+  const filteredTasks = useMemo(
+    () =>
+      tasks.filter((task) =>
+        matchesAssigneeFilter(task.assigneeProfileId, assigneeFilter),
+      ),
+    [assigneeFilter, tasks],
+  );
+
+  const { filteredActiveTasks, filteredCompletedTasks } = useMemo(() => {
     const active: LocalTask[] = [];
     const completed: LocalTask[] = [];
-    for (const task of tasks) {
+    for (const task of filteredTasks) {
       if (task.status === 'done') completed.push(task);
       else active.push(task);
     }
-    return { activeTasks: active, completedTasks: completed };
-  }, [tasks]);
+    return {
+      filteredActiveTasks: active,
+      filteredCompletedTasks: completed,
+    };
+  }, [filteredTasks]);
 
   async function submitTask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
       await createLocalTask({
+        assigneeProfileId: getAssigneeProfileId(assigneeChoice),
         title,
         dueDate: dueDate || null,
         dueTime: dueDate && dueTime ? dueTime : null,
@@ -184,6 +257,7 @@ export function App() {
       setDueDate('');
       setDueTime('');
       setDurationMinutes('');
+      setAssigneeChoice('unassigned');
       if (scheduleDetailsRef.current) scheduleDetailsRef.current.open = false;
       setMessage('Tâche enregistrée sur ce téléphone.');
       await reloadLocalState();
@@ -260,6 +334,25 @@ export function App() {
     }, 0);
   }
 
+  function openSettings() {
+    setPreferencesDraft(preferences);
+    setSettingsOpen(true);
+  }
+
+  async function submitPreferences(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      const savedPreferences = await saveAppPreferences(preferencesDraft);
+      setPreferences(savedPreferences);
+      setPreferencesDraft(savedPreferences);
+      applyAppTheme(savedPreferences.theme);
+      setSettingsOpen(false);
+      setMessage('Réglages enregistrés sur cet appareil.');
+    } catch {
+      setMessage('Impossible d’enregistrer les réglages sur cet appareil.');
+    }
+  }
+
   const connectionLabel = !online
     ? 'Hors ligne'
     : syncing || hubReachable === null
@@ -279,15 +372,28 @@ export function App() {
     <div className="app-shell">
       <header className="topbar">
         <h1>Friday</h1>
-        <button
-          className={`status-pill ${connectionTone}`}
-          type="button"
-          onClick={() => void synchronize()}
-          disabled={syncing}
-        >
-          <span aria-hidden="true" />
-          {connectionLabel}
-        </button>
+        <div className="topbar-actions">
+          <button
+            className={`status-pill ${connectionTone}`}
+            type="button"
+            onClick={() => void synchronize()}
+            disabled={syncing}
+          >
+            <span aria-hidden="true" />
+            {connectionLabel}
+          </button>
+          <button
+            className="settings-button"
+            type="button"
+            aria-label="Ouvrir les réglages"
+            onClick={openSettings}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <main>
@@ -324,6 +430,7 @@ export function App() {
               </div>
               <TaskList
                 tasks={activeTasks.slice(0, 4)}
+                assigneeLabels={assigneeLabels}
                 changingStatusTaskId={changingStatusTaskId}
                 actionsDisabled={changingStatusTaskId !== null}
                 onStatusChange={(taskId, status) =>
@@ -383,8 +490,8 @@ export function App() {
                 <h2 id="home-title">Agenda</h2>
               </div>
               <div className="page-actions">
-                <span className="count-badge">{tasks.length}</span>
-                {taskView === 'list' && tasks.length > 0 && (
+                <span className="count-badge">{filteredTasks.length}</span>
+                {taskView === 'list' && filteredTasks.length > 0 && (
                   <button
                     className="edit-toggle"
                     type="button"
@@ -419,6 +526,26 @@ export function App() {
                       : 'Mois'}
                 </button>
               ))}
+            </div>
+
+            <div className="task-filter-row">
+              <label className="task-assignee-filter" htmlFor="assignee-filter">
+                <span>Responsable</span>
+                <select
+                  id="assignee-filter"
+                  value={assigneeFilter}
+                  aria-label="Filtrer par responsable"
+                  onChange={(event) =>
+                    setAssigneeFilter(event.target.value as AssigneeFilter)
+                  }
+                >
+                  {assigneeFilters.map((filter) => (
+                    <option value={filter.value} key={filter.value}>
+                      {filter.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             {taskView === 'list' ? (
@@ -456,7 +583,7 @@ export function App() {
                       className="task-schedule-fields"
                       ref={scheduleDetailsRef}
                     >
-                      <summary>Date et rendez-vous</summary>
+                      <summary>Date, rendez-vous et responsable</summary>
                       <div className="schedule-grid">
                         <label htmlFor="task-date">
                           <span>Date</span>
@@ -513,6 +640,26 @@ export function App() {
                             <option value="120">2 h</option>
                           </select>
                         </label>
+                        <label htmlFor="task-assignee">
+                          <span>Responsable</span>
+                          <select
+                            id="task-assignee"
+                            name="assignee"
+                            aria-label="Responsable"
+                            value={assigneeChoice}
+                            onChange={(event) =>
+                              setAssigneeChoice(
+                                event.target.value as AssigneeChoice,
+                              )
+                            }
+                          >
+                            {assigneeChoices.map((choice) => (
+                              <option value={choice.value} key={choice.value}>
+                                {choice.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
                     </details>
                     <p>
@@ -528,10 +675,13 @@ export function App() {
                 >
                   <div className="task-section-heading">
                     <h3 id="active-tasks-title">Tâches en cours</h3>
-                    <span className="count-badge">{activeTasks.length}</span>
+                    <span className="count-badge">
+                      {filteredActiveTasks.length}
+                    </span>
                   </div>
                   <TaskList
-                    tasks={activeTasks}
+                    tasks={filteredActiveTasks}
+                    assigneeLabels={assigneeLabels}
                     editing={editingTasks}
                     deletingTaskId={deletingTaskId}
                     changingStatusTaskId={changingStatusTaskId}
@@ -552,10 +702,13 @@ export function App() {
                 >
                   <div className="task-section-heading">
                     <h3 id="completed-tasks-title">Tâches terminées</h3>
-                    <span className="count-badge">{completedTasks.length}</span>
+                    <span className="count-badge">
+                      {filteredCompletedTasks.length}
+                    </span>
                   </div>
                   <TaskList
-                    tasks={completedTasks}
+                    tasks={filteredCompletedTasks}
+                    assigneeLabels={assigneeLabels}
                     editing={editingTasks}
                     deletingTaskId={deletingTaskId}
                     changingStatusTaskId={changingStatusTaskId}
@@ -572,9 +725,10 @@ export function App() {
               </>
             ) : (
               <TaskCalendar
-                tasks={tasks}
+                tasks={filteredTasks}
                 view={taskView}
                 onAddForDate={openQuickAddForDate}
+                assigneeLabels={assigneeLabels}
               />
             )}
           </section>
@@ -601,6 +755,117 @@ export function App() {
           </button>
         </aside>
       )}
+
+      {settingsOpen ? (
+        <div
+          className="settings-backdrop"
+          onMouseDown={() => setSettingsOpen(false)}
+        >
+          <section
+            className="settings-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="settings-heading">
+              <div>
+                <span className="eyebrow">Préférences locales</span>
+                <h2 id="settings-title">Réglages</h2>
+              </div>
+              <button
+                ref={settingsCloseRef}
+                type="button"
+                aria-label="Fermer les réglages"
+                onClick={() => setSettingsOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={(event) => void submitPreferences(event)}>
+              <fieldset>
+                <legend>Responsables</legend>
+                <p>
+                  Les noms changent seulement l’affichage. Les tâches gardent
+                  leur responsable.
+                </p>
+                <label htmlFor="current-responsible-name">
+                  <span>Premier responsable</span>
+                  <input
+                    id="current-responsible-name"
+                    maxLength={40}
+                    required
+                    value={preferencesDraft.currentResponsibleName}
+                    onChange={(event) =>
+                      setPreferencesDraft((current) => ({
+                        ...current,
+                        currentResponsibleName: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label htmlFor="other-responsible-name">
+                  <span>Deuxième responsable</span>
+                  <input
+                    id="other-responsible-name"
+                    maxLength={40}
+                    required
+                    value={preferencesDraft.otherResponsibleName}
+                    onChange={(event) =>
+                      setPreferencesDraft((current) => ({
+                        ...current,
+                        otherResponsibleName: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </fieldset>
+              <fieldset>
+                <legend>Palette de couleurs</legend>
+                <div className="palette-grid">
+                  {THEME_OPTIONS.map((theme) => (
+                    <label
+                      className={`palette-option is-${theme.value}`}
+                      key={theme.value}
+                    >
+                      <input
+                        type="radio"
+                        name="theme"
+                        value={theme.value}
+                        checked={preferencesDraft.theme === theme.value}
+                        onChange={() =>
+                          setPreferencesDraft((current) => ({
+                            ...current,
+                            theme: theme.value,
+                          }))
+                        }
+                      />
+                      <span className="palette-swatches" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                      <strong>{theme.label}</strong>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <div className="settings-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setSettingsOpen(false)}
+                >
+                  Annuler
+                </button>
+                <button className="primary-button" type="submit">
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
 
       <button
         className="fab"
@@ -634,6 +899,7 @@ export function App() {
 
 function TaskList({
   tasks,
+  assigneeLabels,
   editing = false,
   deletingTaskId = null,
   changingStatusTaskId = null,
@@ -643,6 +909,7 @@ function TaskList({
   onStatusChange,
 }: {
   tasks: readonly LocalTask[];
+  assigneeLabels: { current: string; other: string };
   editing?: boolean;
   deletingTaskId?: string | null;
   changingStatusTaskId?: string | null;
@@ -659,13 +926,22 @@ function TaskList({
     <ul className="task-list">
       {tasks.map((task) => {
         const schedule = formatTaskSchedule(task);
+        const assignee = getAssigneeLabel(
+          task.assigneeProfileId,
+          assigneeLabels,
+        );
         return (
           <li className={task.status === 'done' ? 'is-done' : ''} key={task.id}>
             <span className="task-copy">
               <strong>{task.title}</strong>
-              {schedule ? (
-                <small className="task-schedule">{schedule}</small>
-              ) : null}
+              <span className="task-metadata">
+                {schedule ? (
+                  <small className="task-schedule">{schedule}</small>
+                ) : null}
+                <small className="task-assignee">
+                  {schedule ? `· ${assignee}` : assignee}
+                </small>
+              </span>
               <small className={`task-sync is-${task.syncState}`}>
                 {TASK_SYNC_LABELS[task.syncState]}
               </small>

@@ -15,10 +15,10 @@ import {
   encryptJson,
   generateDeviceKey,
 } from '../crypto/vault.js';
+import { CURRENT_PROFILE_ID } from '../task-assignee.js';
 import { fridayDb, type OutboxRow, type TaskRow } from './friday-db.js';
 
 const HOUSEHOLD_ID = '1030b4f6-1e0f-48fa-adab-865750ce597d';
-const PROFILE_ID = 'f61f8f8b-8d09-4575-8e83-357618e881ac';
 
 interface DeviceContext {
   deviceId: string;
@@ -30,6 +30,7 @@ export type LocalTask = TaskRecord & {
 };
 
 export interface CreateLocalTaskInput {
+  assigneeProfileId?: string | null;
   dueDate?: string | null;
   dueTime?: string | null;
   durationMinutes?: number | null;
@@ -80,15 +81,15 @@ export async function createLocalTask(
     dueDate: taskInput.dueDate ?? null,
     dueTime: taskInput.dueTime ?? null,
     durationMinutes: taskInput.durationMinutes ?? null,
-    assigneeProfileId: null,
+    assigneeProfileId: taskInput.assigneeProfileId ?? null,
     recurrence: null,
     note: null,
     status: 'todo',
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
-    createdByProfileId: PROFILE_ID,
-    updatedByProfileId: PROFILE_ID,
+    createdByProfileId: CURRENT_PROFILE_ID,
+    updatedByProfileId: CURRENT_PROFILE_ID,
     deviceId,
     schemaVersion: 1,
   });
@@ -96,7 +97,7 @@ export async function createLocalTask(
     protocolVersion: 1,
     operationId: crypto.randomUUID(),
     deviceId,
-    profileId: PROFILE_ID,
+    profileId: CURRENT_PROFILE_ID,
     entityType: 'task',
     entityId: task.id,
     operation: 'upsert',
@@ -171,14 +172,14 @@ async function queueLocalTaskUpdate(
     ...changedTask,
     revision: baseRevision,
     updatedAt: now,
-    updatedByProfileId: PROFILE_ID,
+    updatedByProfileId: CURRENT_PROFILE_ID,
     deviceId,
   });
   const operation = TaskOperationSchema.parse({
     protocolVersion: 1,
     operationId: crypto.randomUUID(),
     deviceId,
-    profileId: PROFILE_ID,
+    profileId: CURRENT_PROFILE_ID,
     entityType: 'task',
     entityId: task.id,
     operation: 'upsert',

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import type { LocalTask } from './db/task-repository.js';
+import { getAssigneeLabel } from './task-assignee.js';
 import {
   getMonthGridDates,
   getTodayLocalDate,
@@ -70,10 +71,12 @@ export function TaskCalendar({
   tasks,
   view,
   onAddForDate,
+  assigneeLabels,
 }: {
   tasks: readonly LocalTask[];
   view: CalendarPeriod;
   onAddForDate: (date: string) => void;
+  assigneeLabels: { current: string; other: string };
 }) {
   const [anchorDate, setAnchorDate] = useState(getTodayLocalDate);
   const [selectedDate, setSelectedDate] = useState(getTodayLocalDate);
@@ -222,13 +225,19 @@ export function TaskCalendar({
           <ul className="calendar-day-tasks">
             {selectedTasks.map((task) => {
               const time = formatTaskTime(task);
+              const metadata = [
+                time,
+                getAssigneeLabel(task.assigneeProfileId, assigneeLabels),
+              ]
+                .filter(Boolean)
+                .join(' · ');
               return (
                 <li
                   className={task.status === 'done' ? 'is-done' : ''}
                   key={task.id}
                 >
                   <span>{task.title}</span>
-                  {time ? <small>{time}</small> : null}
+                  <small>{metadata}</small>
                 </li>
               );
             })}
