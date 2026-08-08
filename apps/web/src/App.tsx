@@ -60,13 +60,11 @@ export function App() {
         setHubReachable(true);
         setLastSync(result.syncedAt);
         await reloadLocalState();
-      } catch (error) {
-        const cancelled =
-          error instanceof DOMException && error.name === 'AbortError';
-        if (!cancelled) {
-          setHubReachable(false);
-          await reloadLocalState();
-        }
+      } catch {
+        const browserOnline = navigator.onLine;
+        setOnline(browserOnline);
+        setHubReachable(false);
+        await reloadLocalState();
       } finally {
         setSyncing(false);
       }
@@ -88,7 +86,12 @@ export function App() {
       setOnline(true);
       setHubReachable(null);
       window.clearTimeout(onlineSyncTimer);
-      onlineSyncTimer = window.setTimeout(() => void synchronize(true), 300);
+      onlineSyncTimer = window.setTimeout(() => {
+        void (async () => {
+          await cancelActiveSync();
+          if (navigator.onLine) await synchronize(true);
+        })();
+      }, 300);
     };
     const onOffline = () => {
       void cancelActiveSync();

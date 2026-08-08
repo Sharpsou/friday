@@ -126,3 +126,39 @@ test('local deletion stays available while the hub request is stalled', async ({
     releasePull();
   }
 });
+
+test('a stalled hub request does not leave the connection status pending', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await expect(page.getByRole('button', { name: /^Connect/u })).toBeVisible();
+
+  let releasePull!: () => void;
+  let signalPullStarted!: () => void;
+  const pullStarted = new Promise<void>((resolve) => {
+    signalPullStarted = resolve;
+  });
+  const pullReleased = new Promise<void>((resolve) => {
+    releasePull = resolve;
+  });
+
+  await page.route('**/api/sync/pull?**', async (route) => {
+    signalPullStarted();
+    await pullReleased;
+    await route.continue().catch(() => undefined);
+  });
+
+  try {
+    await page.getByRole('button', { name: /^Connect/u }).click();
+    await pullStarted;
+    await expect(
+      page.getByRole('button', { name: /^Connexion/u }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Hub indisponible' }),
+    ).toBeVisible({ timeout: 7_000 });
+  } finally {
+    releasePull();
+  }
+});
