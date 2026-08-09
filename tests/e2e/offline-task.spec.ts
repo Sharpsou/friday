@@ -125,6 +125,49 @@ test('edit mode deletes a task offline without confirmation', async ({
   await expect(page.getByText(title)).toHaveCount(0);
 });
 
+test('edit mode keeps delete visible and edits a task offline', async ({
+  context,
+  page,
+}) => {
+  const title = `Tâche à modifier ${crypto.randomUUID()}`;
+  const updatedTitle = `Tâche modifiée ${crypto.randomUUID()}`;
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
+  await page.getByLabel('Nouvelle tâche').fill(title);
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Modifier', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: `Supprimer ${title}` }),
+  ).toBeVisible();
+  await context.setOffline(true);
+  await page.getByRole('button', { name: `Modifier ${title}` }).click();
+  const dialog = page.getByRole('dialog', { name: `Modifier ${title}` });
+  await dialog.getByLabel('Titre').fill(updatedTitle);
+  await dialog.getByLabel('Date').fill('2026-08-21');
+  await dialog.getByLabel('Heure').fill('09:15');
+  await dialog.getByLabel('Durée').selectOption('30');
+  await dialog.getByLabel('Note').fill('Modification hors ligne');
+  await dialog.getByRole('button', { name: 'Enregistrer' }).click();
+
+  const updatedTask = page
+    .getByRole('listitem')
+    .filter({ hasText: updatedTitle });
+  await expect(updatedTask).toContainText('21 août 2026 à 09:15 · 30 min');
+  await expect(updatedTask).toContainText('Modification hors ligne');
+  await expect(updatedTask).toContainText('À synchroniser');
+  await expect(
+    page.getByRole('button', { name: `Supprimer ${updatedTitle}` }),
+  ).toBeVisible();
+
+  await context.setOffline(false);
+  await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
+  await expect(updatedTask).toContainText('Synchronisée avec le foyer');
+  await page.getByRole('button', { name: `Supprimer ${updatedTitle}` }).click();
+  await expect(page.getByText(updatedTitle)).toHaveCount(0);
+});
+
 test('a task can be finished and reopened online and offline without duplication', async ({
   context,
   page,
@@ -674,6 +717,49 @@ test('shared groceries persist through an offline purchase cycle', async ({
   await expect(
     page.getByRole('listitem').filter({ hasText: label }),
   ).toContainText('Synchronisée avec le foyer');
+});
+
+test('edit mode keeps grocery delete visible and changes its aisle offline', async ({
+  context,
+  page,
+}) => {
+  const label = `Produit à modifier ${crypto.randomUUID()}`;
+  const updatedLabel = `Peinture mate ${crypto.randomUUID()}`;
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.getByRole('button', { name: 'Courses', exact: true }).click();
+  await page.getByLabel('Ajouter un produit').fill(label);
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Modifier', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: `Supprimer ${label}` }),
+  ).toBeVisible();
+  await context.setOffline(true);
+  await page.getByRole('button', { name: `Modifier ${label}` }).click();
+  const dialog = page.getByRole('dialog', { name: `Modifier ${label}` });
+  await dialog.getByLabel('Produit').fill(updatedLabel);
+  await dialog.getByLabel('Quantité').fill('2 pots');
+  await dialog.getByLabel('Rayon').selectOption('diy-garden:paint');
+  await dialog.getByRole('button', { name: 'Enregistrer' }).click();
+
+  const updatedItem = page
+    .getByRole('listitem')
+    .filter({ hasText: updatedLabel });
+  await expect(
+    page.getByRole('heading', { name: 'Peinture et droguerie' }),
+  ).toBeVisible();
+  await expect(updatedItem).toContainText('2 pots');
+  await expect(updatedItem).toContainText('À synchroniser');
+  await expect(
+    page.getByRole('button', { name: `Supprimer ${updatedLabel}` }),
+  ).toBeVisible();
+
+  await context.setOffline(false);
+  await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
+  await expect(updatedItem).toContainText('Synchronisée avec le foyer');
+  await page.getByRole('button', { name: `Supprimer ${updatedLabel}` }).click();
+  await expect(page.getByText(updatedLabel)).toHaveCount(0);
 });
 
 test('grocery classification stays visible in background and can be stopped', async ({

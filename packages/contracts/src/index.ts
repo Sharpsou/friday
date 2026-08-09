@@ -185,6 +185,8 @@ export const GroceryItemRecordSchema = z
     revision: z.number().int().nonnegative(),
     label: z.string().trim().min(1).max(200),
     quantityText: z.string().trim().max(80).nullable(),
+    manualStoreFamilyId: z.string().trim().min(1).nullable().default(null),
+    manualAisleId: z.string().trim().min(1).nullable().default(null),
     checkedAt: UtcInstantSchema.nullable(),
     createdAt: UtcInstantSchema,
     updatedAt: UtcInstantSchema,
@@ -194,7 +196,30 @@ export const GroceryItemRecordSchema = z
     deviceId: UuidSchema,
     schemaVersion: z.literal(1),
   })
-  .strict();
+  .strict()
+  .superRefine((item, context) => {
+    if ((item.manualStoreFamilyId === null) !== (item.manualAisleId === null)) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'La famille et le rayon manuels doivent être renseignés ensemble.',
+        path: ['manualAisleId'],
+      });
+    } else if (
+      item.manualStoreFamilyId !== null &&
+      item.manualAisleId !== null &&
+      !isGroceryClassificationChoice(
+        item.manualStoreFamilyId,
+        item.manualAisleId,
+      )
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Le rayon manuel ne correspond pas à la famille de magasin.',
+        path: ['manualAisleId'],
+      });
+    }
+  });
 
 export const GroceryItemOperationSchema = z
   .object({

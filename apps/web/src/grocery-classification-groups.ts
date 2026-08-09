@@ -25,9 +25,12 @@ export function groupGroceriesByAisle(
   const itemsByGroup = new Map<string, LocalGroceryItem[]>();
   for (const item of items) {
     const classification = classificationByItem.get(item.id);
-    const key = classification
-      ? `${classification.storeFamilyId}:${classification.aisleId}`
-      : 'other:unclassified';
+    const key =
+      item.manualStoreFamilyId && item.manualAisleId
+        ? `${item.manualStoreFamilyId}:${item.manualAisleId}`
+        : classification
+          ? `${classification.storeFamilyId}:${classification.aisleId}`
+          : 'other:unclassified';
     const group = itemsByGroup.get(key) ?? [];
     group.push(item);
     itemsByGroup.set(key, group);

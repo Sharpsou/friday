@@ -1,4 +1,5 @@
 import {
+  isGroceryClassificationChoice,
   GroceryItemOperationSchema,
   GroceryItemRecordSchema,
   type GroceryItemRecord,
@@ -18,6 +19,13 @@ export type LocalGroceryItem = GroceryItemRecord & {
 export interface CreateLocalGroceryItemInput {
   label: string;
   quantityText?: string | null;
+}
+
+export interface UpdateLocalGroceryItemInput {
+  aisleId?: string | null;
+  label: string;
+  quantityText?: string | null;
+  storeFamilyId?: string | null;
 }
 
 function normalizeRequired(value: string): string {
@@ -43,6 +51,8 @@ export async function createLocalGroceryItem(
     revision: 0,
     label,
     quantityText: normalizeOptional(input.quantityText),
+    manualStoreFamilyId: null,
+    manualAisleId: null,
     checkedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -185,6 +195,35 @@ export async function setLocalGroceryItemChecked(
     if (item.deletedAt) throw new Error('Produit introuvable.');
     if ((item.checkedAt !== null) === checked) return null;
     return { ...item, checkedAt: checked ? updatedAt : null };
+  });
+}
+
+export async function updateLocalGroceryItem(
+  itemId: string,
+  input: UpdateLocalGroceryItemInput,
+): Promise<GroceryItemRecord> {
+  const label = normalizeRequired(input.label);
+  if (!label) throw new Error('Le produit est obligatoire.');
+  const storeFamilyId = input.storeFamilyId ?? null;
+  const aisleId = input.aisleId ?? null;
+  if (
+    (storeFamilyId === null) !== (aisleId === null) ||
+    (storeFamilyId !== null &&
+      aisleId !== null &&
+      !isGroceryClassificationChoice(storeFamilyId, aisleId))
+  ) {
+    throw new Error('Le rayon sélectionné est invalide.');
+  }
+
+  return queueLocalGroceryItemUpdate(itemId, (item) => {
+    if (item.deletedAt) throw new Error('Produit introuvable.');
+    return {
+      ...item,
+      label,
+      quantityText: normalizeOptional(input.quantityText),
+      manualStoreFamilyId: storeFamilyId,
+      manualAisleId: aisleId,
+    };
   });
 }
 

@@ -12,6 +12,8 @@ import {
   readPendingOperations,
   resetDatabaseForTests,
   setLocalTaskStatus,
+  updateLocalTask,
+  updateLocalTaskSeries,
 } from './task-repository.js';
 import {
   CURRENT_PROFILE_ID,
@@ -279,5 +281,66 @@ describe('local task repository', () => {
     const [acknowledgedTask] = await listTasks();
     expect(acknowledgedTask?.revision).toBe(1);
     expect(acknowledgedTask?.syncState).toBe('acknowledged');
+  });
+
+  it('edits one task through the encrypted local outbox', async () => {
+    const task = await createLocalTask({
+      title: 'Garage',
+      note: 'Ancienne note',
+    });
+
+    await updateLocalTask(task.id, {
+      title: 'Appeler le garage',
+      dueDate: '2026-08-18',
+      dueTime: '10:30',
+      durationMinutes: 30,
+      assigneeProfileId: CURRENT_PROFILE_ID,
+      note: 'Demander le devis',
+    });
+
+    expect((await listTasks())[0]).toMatchObject({
+      title: 'Appeler le garage',
+      dueDate: '2026-08-18',
+      dueTime: '10:30',
+      durationMinutes: 30,
+      assigneeProfileId: CURRENT_PROFILE_ID,
+      note: 'Demander le devis',
+      syncState: 'pending',
+    });
+    expect((await readPendingOperations()).at(-1)?.payload).toMatchObject({
+      title: 'Appeler le garage',
+      dueDate: '2026-08-18',
+    });
+  });
+
+  it('shifts and edits every occurrence when the whole series is selected', async () => {
+    const first = await createLocalTask({
+      title: 'Arroser',
+      dueDate: '2026-08-08',
+      recurrence: { endDate: '2026-08-14', interval: 3, unit: 'day' },
+    });
+
+    const count = await updateLocalTaskSeries(first.id, {
+      title: 'Arroser les plantes',
+      dueDate: '2026-08-09',
+      dueTime: '19:00',
+      durationMinutes: 15,
+      note: 'Vérifier la terre',
+    });
+
+    const tasks = await listTasks();
+    expect(count).toBe(3);
+    expect(tasks.map((task) => task.dueDate)).toEqual([
+      '2026-08-09',
+      '2026-08-12',
+      '2026-08-15',
+    ]);
+    expect(tasks.every((task) => task.title === 'Arroser les plantes')).toBe(
+      true,
+    );
+    expect(tasks[0]?.recurrence).toMatchObject({
+      anchorDate: '2026-08-09',
+      endDate: '2026-08-15',
+    });
   });
 });

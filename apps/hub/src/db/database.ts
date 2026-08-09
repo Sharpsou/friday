@@ -247,6 +247,11 @@ const MIGRATION_006 = `
   );
 `;
 
+const MIGRATION_007 = `
+  ALTER TABLE grocery_items ADD COLUMN manual_store_family_id TEXT;
+  ALTER TABLE grocery_items ADD COLUMN manual_aisle_id TEXT;
+`;
+
 const MIGRATIONS = [
   { sql: MIGRATION_001, version: 1 },
   { sql: MIGRATION_002, version: 2 },
@@ -254,6 +259,7 @@ const MIGRATIONS = [
   { sql: MIGRATION_004, version: 4 },
   { sql: MIGRATION_005, version: 5 },
   { sql: MIGRATION_006, version: 6 },
+  { sql: MIGRATION_007, version: 7 },
 ] as const;
 
 export function migrateDatabase(

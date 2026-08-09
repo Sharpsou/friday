@@ -85,6 +85,7 @@ describe('hub database migrations', () => {
       { version: 4 },
       { version: 5 },
       { version: 6 },
+      { version: 7 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -108,11 +109,13 @@ describe('hub database migrations', () => {
       expect.arrayContaining([
         'label',
         'quantity_text',
+        'manual_store_family_id',
+        'manual_aisle_id',
         'checked_at',
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 6 });
+    expect(migrations.at(-1)).toEqual({ version: 7 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -148,7 +151,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 6 });
+    expect(migrations.at(-1)).toEqual({ version: 7 });
   });
 
   it('backfills the Friday identifier when upgrading an existing auth database', () => {

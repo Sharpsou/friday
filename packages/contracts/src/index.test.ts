@@ -103,7 +103,30 @@ describe('PushRequestSchema', () => {
     });
 
     expect(groceryItem.label).toBe('Lait');
+    expect(groceryItem.manualStoreFamilyId).toBeNull();
     expect(result.success).toBe(true);
+  });
+
+  it('rejects a manual aisle outside its store family', () => {
+    const result = GroceryItemRecordSchema.safeParse({
+      id: 'da166bcc-38c4-4a17-859f-7491e1b2312f',
+      householdId: '1030b4f6-1e0f-48fa-adab-865750ce597d',
+      revision: 0,
+      label: 'Peinture',
+      quantityText: null,
+      manualStoreFamilyId: 'supermarket',
+      manualAisleId: 'paint',
+      checkedAt: null,
+      createdAt: '2026-08-09T12:00:00.000Z',
+      updatedAt: '2026-08-09T12:00:00.000Z',
+      deletedAt: null,
+      createdByProfileId: 'f61f8f8b-8d09-4575-8e83-357618e881ac',
+      updatedByProfileId: 'f61f8f8b-8d09-4575-8e83-357618e881ac',
+      deviceId: '5945057a-0b59-4d3b-814f-9581be697098',
+      schemaVersion: 1,
+    });
+
+    expect(result.success).toBe(false);
   });
 });
 

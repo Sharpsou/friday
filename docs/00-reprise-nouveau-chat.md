@@ -69,12 +69,15 @@ Chemin : `D:\prog\friday`
 - navigation corrigée selon le retour utilisateur : `Maison` devient `Agenda` et `Courses` est une quatrième destination principale, sans sous-onglet intermédiaire ;
 - courses partagées candidates : la destination `Courses` permet d'ajouter un produit avec quantité facultative, le marquer acheté ou à reprendre et le supprimer ; `Aujourd'hui` résume les produits restants ; chaque action passe par le cache chiffré et la même outbox en ligne et hors ligne ;
 - les contrats partagés, la migration SQLite 5, la migration Dexie 2, le push/pull et les tombstones de courses sont couverts ; un correctif recopie aussi l'identité d'appareil de la session authentifiée avant synchronisation pour empêcher un rejet d'identité après appairage ;
+- l'édition au toucher est candidate dans le mode `Modifier` : tâche (titre, date, heure, durée, responsable et note, avec portée occurrence/série) et course (libellé, quantité et rayon manuel) passent par le cache chiffré et l'outbox, y compris hors ligne ; le bouton `Supprimer` reste directement visible ;
+- un rayon corrigé manuellement est porté par la course partagée et prioritaire sur le classement automatique ; la migration SQLite 7 ajoute les deux colonnes de surcharge manuelle ;
+- l'ADR-011 fixe la conservation des versions locale/canonique en conflit et la purge prudente, mais l'utilisateur reporte leur implémentation jusqu'à un signal d'usage réel ; aucune purge physique n'est activée et les tombstones restent conservés ;
 - classement par rayon candidat : un bouton `Classer par rayon` lance un job SQLite persistant par lots, visible dans tous les onglets et arrêtable ; la PWA peut être utilisée ou fermée pendant le traitement, et un job interrompu ne modifie jamais la liste ;
 - l'aperçu est corrigeable avant application, les corrections exactes sont apprises pour le foyer et les classifications des deux profils fusionnent par article/rayon ; la liste utilise une présentation unique regroupée par rayon, sans sous-onglets `Liste`/`Rayons`, et le cache Dexie chiffré la conserve hors ligne ;
 - la taxonomie `retail-fr-v1` couvre 11 familles de magasins et 25 rayons de supermarché. Le pipeline hybride applique les corrections exactes du foyer puis les règles courantes avant Ministral 3 8B ; chaque réponse porte l'index du produit. Le corpus local de 150 libellés atteint 99,3 % famille/rayon avec 96,7 % de couverture déterministe ; le corpus difficile atteint 88,9 % en 10,4 s à chaud lors de la mesure du 9 août 2026 ;
 - la décision complète est consignée dans `docs/adr/010-classement-courses-par-rayon.md`, la taxonomie dans `docs/reference/taxonomie-courses-retail-fr-v1.md` et l'exploitation dans `docs/runbooks/classement-courses.md` ;
 - le candidat avec les destinations distinctes `Agenda` et `Courses` a été redémarré sur `https://192.168.1.14:8443` le 9 août 2026 ; le healthcheck réussit et `/api/auth/state` confirme un foyer initialisé (`bootstrapRequired: false`) sans ouvrir de session à un client non authentifié ;
-- dernier contrôle complet du candidat du 9 août 2026 : `pnpm verify` réussi avec 75 tests unitaires/intégration et 17 scénarios Chrome mobile ; audit de production sans vulnérabilité npm connue ni problème de peer dependency ;
+- dernier contrôle complet du candidat du 9 août 2026 : `pnpm verify` réussi avec 80 tests unitaires/intégration et 19 scénarios Chrome mobile ; audit de production sans vulnérabilité npm connue ni problème de peer dependency ;
 - terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026 ; la recette physique responsable/filtre reste à confirmer ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
@@ -253,11 +256,10 @@ Le nouveau chat doit :
 
 1. lire `AGENTS.md`, ce document, les documents 09 et 10 ;
 2. constater l’état Git existant avec `git status -sb` et `git remote -v`, sans réinitialiser le dépôt ;
-3. suivre `docs/11-prochaines-etapes-apres-classement-courses.md` et créer d'abord l'ADR-011 sur les conflits et tombstones ;
-4. implémenter la résolution explicite des conflits par la voie locale/outbox, puis la purge conservatrice des tombstones seulement après acquittement des appareils actifs ;
-5. couvrir les deux choix de résolution, la suppression concurrente et la purge par tests unitaires/intégration et Chrome mobile à deux profils avec coupure réseau ;
-6. faire confirmer les recettes auth, courses et classement sans déclarer le comportement physique validé avant le retour utilisateur ;
-7. exécuter `pnpm verify`, redémarrer le runtime sans navigateur et fermer techniquement le Lot 1A avant le budget ou Calendar.
+3. suivre `docs/11-prochaines-etapes-apres-classement-courses.md` et observer les signaux de conflit/tombstone sans activer de purge ;
+4. faire confirmer les recettes auth, courses, classement et éditeurs sans déclarer le comportement physique validé avant le retour utilisateur ;
+5. discuter avec l'utilisateur le prochain lot : budget partagé recommandé, Calendar en lecture ou courte période d'usage Maison ;
+6. documenter la cutline retenue, puis exécuter `pnpm verify` et redémarrer le runtime sans navigateur après son implantation.
 
 Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directement : commit sur la branche active puis `git push origin main`. Ne pas considérer l’absence de `gh` comme un blocage au commit ou au push.
 

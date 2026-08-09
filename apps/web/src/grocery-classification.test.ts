@@ -16,6 +16,8 @@ function grocery(
     revision: 1,
     label,
     quantityText: null,
+    manualStoreFamilyId: null,
+    manualAisleId: null,
     checkedAt: null,
     createdAt: '2026-08-09T12:00:00.000Z',
     updatedAt: '2026-08-09T12:00:00.000Z',
@@ -91,5 +93,25 @@ describe('grocery aisle grouping', () => {
       'Poires',
       'Pommes',
     ]);
+  });
+
+  it('keeps a manual offline aisle ahead of an automatic classification', () => {
+    const item = grocery(
+      'da166bcc-38c4-4a17-859f-7491e1b2312f',
+      'Produit personnel',
+      'f61f8f8b-8d09-4575-8e83-357618e881ac',
+    );
+    item.manualStoreFamilyId = 'diy-garden';
+    item.manualAisleId = 'paint';
+
+    const groups = groupGroceriesByAisle(
+      [item],
+      [classification(item.id, 'produce')],
+    );
+
+    expect(groups[0]).toMatchObject({
+      familyLabel: 'Bricolage et jardin',
+      label: 'Peinture et droguerie',
+    });
   });
 });

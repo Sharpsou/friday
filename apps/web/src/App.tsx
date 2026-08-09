@@ -29,13 +29,17 @@ import {
   getOutboxCounts,
   listTasks,
   setLocalTaskStatus,
+  updateLocalTask,
+  updateLocalTaskSeries,
   type LocalTask,
+  type UpdateLocalTaskInput,
 } from './db/task-repository.js';
 import {
   createLocalGroceryItem,
   deleteLocalGroceryItem,
   listGroceryItems,
   setLocalGroceryItemChecked,
+  updateLocalGroceryItem,
   type LocalGroceryItem,
 } from './db/grocery-repository.js';
 import { listGroceryClassifications } from './db/grocery-classification-repository.js';
@@ -66,6 +70,7 @@ import {
 import { TaskCalendar } from './TaskCalendar.js';
 import { formatTaskRecurrence } from './task-recurrence.js';
 import { useGroceryClassification } from './use-grocery-classification.js';
+import { GroceryEditorDialog, TaskEditorDialog } from './ItemEditorDialogs.js';
 
 type Destination = 'today' | 'agenda' | 'groceries' | 'watch';
 type TaskView = 'list' | 'week' | 'month';
@@ -120,10 +125,16 @@ export function App() {
   const [groceryLabel, setGroceryLabel] = useState('');
   const [groceryQuantity, setGroceryQuantity] = useState('');
   const [editingGroceries, setEditingGroceries] = useState(false);
+  const [groceryPendingEdit, setGroceryPendingEdit] =
+    useState<LocalGroceryItem | null>(null);
   const [changingGroceryItemId, setChangingGroceryItemId] = useState<
     string | null
   >(null);
   const [editingTasks, setEditingTasks] = useState(false);
+  const [taskPendingEdit, setTaskPendingEdit] = useState<LocalTask | null>(
+    null,
+  );
+  const [savingEditor, setSavingEditor] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [taskPendingDeletion, setTaskPendingDeletion] =
     useState<LocalTask | null>(null);
@@ -517,6 +528,37 @@ export function App() {
     }
   }
 
+  async function saveTaskEdit(
+    input: UpdateLocalTaskInput,
+    scope: 'occurrence' | 'series',
+  ) {
+    if (!taskPendingEdit) return;
+    setSavingEditor(true);
+    try {
+      await cancelActiveSync();
+      setSyncing(false);
+      if (scope === 'series') {
+        await updateLocalTaskSeries(taskPendingEdit.id, input);
+      } else {
+        await updateLocalTask(taskPendingEdit.id, input);
+      }
+      setMessage(
+        scope === 'series'
+          ? 'Série modifiée sur cet appareil.'
+          : 'Tâche modifiée sur cet appareil.',
+      );
+      setTaskPendingEdit(null);
+      await reloadLocalState();
+      void synchronize();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : 'Modification impossible',
+      );
+    } finally {
+      setSavingEditor(false);
+    }
+  }
+
   async function changeGroceryItemState(itemId: string, checked: boolean) {
     setChangingGroceryItemId(itemId);
     try {
@@ -580,6 +622,31 @@ export function App() {
           ? error.message
           : 'Impossible de lancer le classement.',
       );
+    }
+  }
+
+  async function saveGroceryEdit(input: {
+    aisleId: string | null;
+    label: string;
+    quantityText: string;
+    storeFamilyId: string | null;
+  }) {
+    if (!groceryPendingEdit) return;
+    setSavingEditor(true);
+    try {
+      await cancelActiveSync();
+      setSyncing(false);
+      await updateLocalGroceryItem(groceryPendingEdit.id, input);
+      setMessage('Produit modifié sur cet appareil.');
+      setGroceryPendingEdit(null);
+      await reloadLocalState();
+      void synchronize();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : 'Modification impossible',
+      );
+    } finally {
+      setSavingEditor(false);
     }
   }
 
@@ -971,8 +1038,9 @@ export function App() {
                   <div className="edit-notice" role="status">
                     <strong>Mode modification</strong>
                     <span>
-                      Sélectionnez Supprimer sur une tâche. Pour une récurrence,
-                      choisissez une occurrence ou toute la série.
+                      Touchez une tâche pour la modifier, ou utilisez Supprimer
+                      directement. Les séries proposent une occurrence ou toute
+                      la série.
                     </span>
                   </div>
                 ) : (
@@ -1178,6 +1246,7 @@ export function App() {
                       deletingTaskId !== null || changingStatusTaskId !== null
                     }
                     onDelete={requestTaskDeletion}
+                    onEdit={setTaskPendingEdit}
                     onStatusChange={(taskId, status) =>
                       void changeTaskStatus(taskId, status)
                     }
@@ -1208,6 +1277,7 @@ export function App() {
                       deletingTaskId !== null || changingStatusTaskId !== null
                     }
                     onDelete={requestTaskDeletion}
+                    onEdit={setTaskPendingEdit}
                     onStatusChange={(taskId, status) =>
                       void changeTaskStatus(taskId, status)
                     }
@@ -1290,6 +1360,7 @@ export function App() {
                 void changeGroceryItemState(itemId, checked)
               }
               onDelete={(itemId) => void deleteGroceryItem(itemId)}
+              onEdit={setGroceryPendingEdit}
               onLabelChange={setGroceryLabel}
               onQuantityChange={setGroceryQuantity}
               onSubmit={(event) => void submitGroceryItem(event)}
@@ -1329,6 +1400,31 @@ export function App() {
             void applyGroceryAisleClassification(classifications)
           }
           onClose={() => setClassificationPreviewOpen(false)}
+        />
+      ) : null}
+
+      {taskPendingEdit ? (
+        <TaskEditorDialog
+          task={taskPendingEdit}
+          assigneeChoices={assigneeChoices}
+          busy={savingEditor}
+          onClose={() => setTaskPendingEdit(null)}
+          onSave={(input, scope) => void saveTaskEdit(input, scope)}
+        />
+      ) : null}
+
+      {groceryPendingEdit ? (
+        <GroceryEditorDialog
+          item={groceryPendingEdit}
+          automaticClassification={
+            groceryClassifications.find(
+              (classification) =>
+                classification.itemId === groceryPendingEdit.id,
+            ) ?? null
+          }
+          busy={savingEditor}
+          onClose={() => setGroceryPendingEdit(null)}
+          onSave={(input) => void saveGroceryEdit(input)}
         />
       ) : null}
 
@@ -1698,6 +1794,7 @@ function GroceryView({
   quantity,
   onCheckedChange,
   onDelete,
+  onEdit,
   onLabelChange,
   onQuantityChange,
   onSubmit,
@@ -1711,6 +1808,7 @@ function GroceryView({
   quantity: string;
   onCheckedChange: (itemId: string, checked: boolean) => void;
   onDelete: (itemId: string) => void;
+  onEdit: (item: LocalGroceryItem) => void;
   onLabelChange: (value: string) => void;
   onQuantityChange: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -1720,7 +1818,10 @@ function GroceryView({
       {editing ? (
         <div className="edit-notice" role="status">
           <strong>Mode modification</strong>
-          <span>Sélectionnez Supprimer sur un produit.</span>
+          <span>
+            Touchez un produit pour modifier son nom, sa quantité ou son rayon.
+            Le bouton Supprimer reste disponible directement.
+          </span>
         </div>
       ) : (
         <form className="quick-form grocery-form" onSubmit={onSubmit}>
@@ -1773,6 +1874,7 @@ function GroceryView({
                 editing={editing}
                 changingItemId={changingItemId}
                 onDelete={onDelete}
+                onEdit={onEdit}
                 onCheckedChange={onCheckedChange}
                 emptyMessage=""
               />
@@ -1794,6 +1896,7 @@ function GroceryView({
           editing={editing}
           changingItemId={changingItemId}
           onDelete={onDelete}
+          onEdit={onEdit}
           onCheckedChange={onCheckedChange}
           emptyMessage="Aucun produit acheté."
         />
@@ -1809,6 +1912,7 @@ function GroceryList({
   emptyMessage,
   onCheckedChange,
   onDelete,
+  onEdit,
 }: {
   items: readonly LocalGroceryItem[];
   changingItemId: string | null;
@@ -1816,6 +1920,7 @@ function GroceryList({
   emptyMessage: string;
   onCheckedChange: (itemId: string, checked: boolean) => void;
   onDelete: (itemId: string) => void;
+  onEdit: (item: LocalGroceryItem) => void;
 }) {
   if (items.length === 0) return <p className="empty-state">{emptyMessage}</p>;
 
@@ -1836,13 +1941,28 @@ function GroceryList({
                 <span aria-hidden="true">{checked ? '✓' : ''}</span>
               </button>
             ) : null}
-            <span className="grocery-copy">
-              <strong>{item.label}</strong>
-              {item.quantityText ? <small>{item.quantityText}</small> : null}
-              <small className={`task-sync is-${item.syncState}`}>
-                {TASK_SYNC_LABELS[item.syncState]}
-              </small>
-            </span>
+            {editing ? (
+              <button
+                className="item-edit-target grocery-copy"
+                type="button"
+                aria-label={`Modifier ${item.label}`}
+                onClick={() => onEdit(item)}
+              >
+                <strong>{item.label}</strong>
+                {item.quantityText ? <small>{item.quantityText}</small> : null}
+                <small className={`task-sync is-${item.syncState}`}>
+                  {TASK_SYNC_LABELS[item.syncState]}
+                </small>
+              </button>
+            ) : (
+              <span className="grocery-copy">
+                <strong>{item.label}</strong>
+                {item.quantityText ? <small>{item.quantityText}</small> : null}
+                <small className={`task-sync is-${item.syncState}`}>
+                  {TASK_SYNC_LABELS[item.syncState]}
+                </small>
+              </span>
+            )}
             {editing ? (
               <button
                 className="delete-task-button"
@@ -1870,6 +1990,7 @@ function TaskList({
   actionsDisabled = false,
   emptyMessage = 'Aucune tâche enregistrée.',
   onDelete,
+  onEdit,
   onStatusChange,
 }: {
   tasks: readonly LocalTask[];
@@ -1880,6 +2001,7 @@ function TaskList({
   actionsDisabled?: boolean;
   emptyMessage?: string;
   onDelete?: (task: LocalTask) => void;
+  onEdit?: (task: LocalTask) => void;
   onStatusChange?: (taskId: string, status: LocalTask['status']) => void;
 }) {
   if (tasks.length === 0) {
@@ -1897,26 +2019,30 @@ function TaskList({
         const recurrence = formatTaskRecurrence(task.recurrence);
         return (
           <li className={task.status === 'done' ? 'is-done' : ''} key={task.id}>
-            <span className="task-copy">
-              <strong>{task.title}</strong>
-              <span className="task-metadata">
-                {schedule ? (
-                  <small className="task-schedule">{schedule}</small>
-                ) : null}
-                <small className="task-assignee">
-                  {schedule ? `· ${assignee}` : assignee}
-                </small>
-                {recurrence ? (
-                  <small className="task-recurrence">· {recurrence}</small>
-                ) : null}
+            {editing && onEdit ? (
+              <button
+                className="item-edit-target task-copy"
+                type="button"
+                aria-label={`Modifier ${task.title}`}
+                onClick={() => onEdit(task)}
+              >
+                <TaskCopy
+                  task={task}
+                  schedule={schedule}
+                  assignee={assignee}
+                  recurrence={recurrence}
+                />
+              </button>
+            ) : (
+              <span className="task-copy">
+                <TaskCopy
+                  task={task}
+                  schedule={schedule}
+                  assignee={assignee}
+                  recurrence={recurrence}
+                />
               </span>
-              {task.note ? (
-                <small className="task-note">{task.note}</small>
-              ) : null}
-              <small className={`task-sync is-${task.syncState}`}>
-                {TASK_SYNC_LABELS[task.syncState]}
-              </small>
-            </span>
+            )}
             {!editing && onStatusChange ? (
               <button
                 className="task-status-button"
@@ -1952,6 +2078,37 @@ function TaskList({
         );
       })}
     </ul>
+  );
+}
+
+function TaskCopy({
+  assignee,
+  recurrence,
+  schedule,
+  task,
+}: {
+  assignee: string;
+  recurrence: string | null;
+  schedule: string | null;
+  task: LocalTask;
+}) {
+  return (
+    <>
+      <strong>{task.title}</strong>
+      <span className="task-metadata">
+        {schedule ? <small className="task-schedule">{schedule}</small> : null}
+        <small className="task-assignee">
+          {schedule ? `· ${assignee}` : assignee}
+        </small>
+        {recurrence ? (
+          <small className="task-recurrence">· {recurrence}</small>
+        ) : null}
+      </span>
+      {task.note ? <small className="task-note">{task.note}</small> : null}
+      <small className={`task-sync is-${task.syncState}`}>
+        {TASK_SYNC_LABELS[task.syncState]}
+      </small>
+    </>
   );
 }
 

@@ -58,7 +58,9 @@ Les corps et réponses sont validés par les schémas Zod du paquet `@friday/con
 
 Le job ne modifie jamais directement les courses. Il produit un aperçu que l'utilisateur peut corriger puis confirmer avec `POST /api/groceries/classifications/apply`. Cette application est transactionnelle et idempotente : une répétition de la même requête renvoie la première réponse enregistrée.
 
-Une correction humaine reçoit la source `manual`, la confiance `1` et devient une règle exacte partagée pour le foyer. Une proposition automatique ne remplace pas silencieusement une classification manuelle actuelle. Les deux profils écrivent dans la même classification par article ; il n'existe donc pas deux sections concurrentes à fusionner dans l'interface. Le journal de changements dédié distribue la valeur commune aux appareils avec son propre curseur.
+Une correction humaine faite dans l'aperçu reçoit la source `manual`, la confiance `1` et devient une règle exacte partagée pour le foyer. Une proposition automatique ne remplace pas silencieusement une classification manuelle actuelle. Les deux profils écrivent dans la même classification par article ; il n'existe donc pas deux sections concurrentes à fusionner dans l'interface. Le journal de changements dédié distribue la valeur commune aux appareils avec son propre curseur.
+
+Le mode `Modifier` de la liste permet aussi de choisir directement un rayon. Cette surcharge manuelle est portée par l'objet course, passe par le cache chiffré et l'outbox même hors ligne, et reste prioritaire sur toute classification automatique présente. Revenir à `Conserver le classement automatique` retire cette surcharge sans supprimer le résultat du dernier job. Cette correction directe n'alimente pas automatiquement la règle exacte du foyer : l'apprentissage reste lié à la confirmation explicite d'un aperçu.
 
 ### Frontière Ollama
 
@@ -68,7 +70,7 @@ Les libellés sont traités comme du contenu non fiable, pas comme des instructi
 
 ### Stockage et mode hors ligne
 
-SQLite conserve les jobs, classifications, règles apprises et changements. Dexie conserve uniquement les classifications synchronisées dans le cache local chiffré, ainsi qu'un curseur séparé et l'identifiant du job actif. La liste utilise une seule présentation : les articles sont regroupés selon leur classification et les autres restent dans `À classer`. Cette présentation déjà synchronisée reste consultable hors ligne ; démarrer, arrêter ou confirmer un classement exige le hub.
+SQLite conserve les courses et leur éventuelle surcharge manuelle, ainsi que les jobs, classifications, règles apprises et changements. Dexie conserve les courses et classifications synchronisées dans le cache local chiffré, avec un curseur de classification séparé et l'identifiant du job actif. La liste utilise une seule présentation : la surcharge manuelle est appliquée d'abord, puis la classification, et les autres articles restent dans `À classer`. Cette présentation reste consultable et corrigeable hors ligne ; démarrer, arrêter ou confirmer un job de classement exige le hub.
 
 Quand la page est visible, la PWA interroge le job actif toutes les deux secondes. Elle tente également de le retrouver toutes les dix secondes, au retour réseau et au retour au premier plan. Chaque requête expire après cinq secondes afin que l'indicateur ne bloque pas l'interface si le hub disparaît.
 

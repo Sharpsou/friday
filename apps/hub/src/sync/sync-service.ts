@@ -44,6 +44,8 @@ interface GroceryItemRow {
   revision: number;
   label: string;
   quantity_text: string | null;
+  manual_store_family_id: string | null;
+  manual_aisle_id: string | null;
   checked_at: string | null;
   created_at: string;
   updated_at: string;
@@ -249,11 +251,13 @@ export class SyncService {
     this.#database
       .prepare(
         `INSERT INTO grocery_items (
-           id, household_id, revision, label, quantity_text, checked_at,
+           id, household_id, revision, label, quantity_text,
+           manual_store_family_id, manual_aisle_id, checked_at,
            created_at, updated_at, deleted_at, created_by_profile_id,
            updated_by_profile_id, device_id, schema_version
          ) VALUES (
-           @id, @householdId, @revision, @label, @quantityText, @checkedAt,
+           @id, @householdId, @revision, @label, @quantityText,
+           @manualStoreFamilyId, @manualAisleId, @checkedAt,
            @createdAt, @updatedAt, @deletedAt, @createdByProfileId,
            @updatedByProfileId, @deviceId, @schemaVersion
          )
@@ -262,6 +266,8 @@ export class SyncService {
            revision = excluded.revision,
            label = excluded.label,
            quantity_text = excluded.quantity_text,
+           manual_store_family_id = excluded.manual_store_family_id,
+           manual_aisle_id = excluded.manual_aisle_id,
            checked_at = excluded.checked_at,
            updated_at = excluded.updated_at,
            deleted_at = excluded.deleted_at,

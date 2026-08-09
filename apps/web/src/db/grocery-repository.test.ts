@@ -8,6 +8,7 @@ import {
   deleteLocalGroceryItem,
   listGroceryItems,
   setLocalGroceryItemChecked,
+  updateLocalGroceryItem,
 } from './grocery-repository.js';
 import {
   applyAcks,
@@ -128,5 +129,28 @@ describe('local grocery repository', () => {
       syncState: 'acknowledged',
     });
     expect(await getCursor()).toBe(7);
+  });
+
+  it('edits the product and manual aisle through the offline outbox', async () => {
+    const item = await createLocalGroceryItem({ label: 'Yaourts' });
+
+    await updateLocalGroceryItem(item.id, {
+      label: 'Yaourts nature',
+      quantityText: 'x 8',
+      storeFamilyId: 'supermarket',
+      aisleId: 'dairy-eggs',
+    });
+
+    expect((await listGroceryItems())[0]).toMatchObject({
+      label: 'Yaourts nature',
+      quantityText: 'x 8',
+      manualStoreFamilyId: 'supermarket',
+      manualAisleId: 'dairy-eggs',
+      syncState: 'pending',
+    });
+    expect((await readPendingOperations()).at(-1)?.payload).toMatchObject({
+      manualStoreFamilyId: 'supermarket',
+      manualAisleId: 'dairy-eggs',
+    });
   });
 });

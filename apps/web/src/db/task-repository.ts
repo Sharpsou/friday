@@ -60,6 +60,29 @@ export interface CreateLocalTaskInput {
   title: string;
 }
 
+export interface UpdateLocalTaskInput {
+  assigneeProfileId?: string | null;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  durationMinutes?: number | null;
+  note?: string | null;
+  title: string;
+}
+
+function shiftLocalDate(value: string, days: number): string {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function localDateDifference(left: string, right: string): number {
+  return Math.round(
+    (Date.parse(`${left}T00:00:00Z`) - Date.parse(`${right}T00:00:00Z`)) /
+      86_400_000,
+  );
+}
+
 async function deterministicOccurrenceId(
   seriesId: string,
   dueDate: string,
@@ -395,6 +418,90 @@ export async function setLocalTaskStatus(
     },
     status === 'done',
   );
+}
+
+export async function updateLocalTask(
+  taskId: string,
+  input: UpdateLocalTaskInput,
+): Promise<TaskRecord> {
+  const title = normalizeTaskTitle(input.title);
+  if (!title) throw new Error('Le titre est obligatoire.');
+
+  return queueLocalTaskUpdate(taskId, (task) => {
+    if (task.deletedAt) throw new Error('Tâche introuvable.');
+    const dueDate = input.dueDate ?? null;
+    if (task.recurrence !== null && dueDate === null) {
+      throw new Error('Une occurrence récurrente doit conserver une date.');
+    }
+    return {
+      ...task,
+      title,
+      dueDate,
+      dueTime: dueDate ? (input.dueTime ?? null) : null,
+      durationMinutes:
+        dueDate && input.dueTime ? (input.durationMinutes ?? null) : null,
+      assigneeProfileId: input.assigneeProfileId ?? null,
+      note: normalizeTaskNote(input.note ?? ''),
+    };
+  });
+}
+
+export async function updateLocalTaskSeries(
+  taskId: string,
+  input: UpdateLocalTaskInput,
+): Promise<number> {
+  const title = normalizeTaskTitle(input.title);
+  if (!title) throw new Error('Le titre est obligatoire.');
+  const tasks = await listTasks();
+  const selectedTask = tasks.find((task) => task.id === taskId);
+  if (!selectedTask) throw new Error('Tâche introuvable.');
+  if (
+    selectedTask.recurrence === null ||
+    typeof selectedTask.recurrence === 'string' ||
+    !selectedTask.dueDate ||
+    !input.dueDate
+  ) {
+    await updateLocalTask(taskId, input);
+    return 1;
+  }
+
+  const recurrence = selectedTask.recurrence;
+  const dayShift = localDateDifference(input.dueDate, selectedTask.dueDate);
+  const seriesTasks = tasks.filter(
+    (task) =>
+      task.recurrence !== null &&
+      typeof task.recurrence === 'object' &&
+      task.recurrence.seriesId === recurrence.seriesId,
+  );
+
+  for (const task of seriesTasks) {
+    const shiftedDate = task.dueDate
+      ? shiftLocalDate(task.dueDate, dayShift)
+      : input.dueDate;
+    await queueLocalTaskUpdate(task.id, (storedTask) => ({
+      ...storedTask,
+      title,
+      dueDate: shiftedDate,
+      dueTime: input.dueTime ?? null,
+      durationMinutes: input.dueTime ? (input.durationMinutes ?? null) : null,
+      assigneeProfileId: input.assigneeProfileId ?? null,
+      note: normalizeTaskNote(input.note ?? ''),
+      recurrence:
+        storedTask.recurrence && typeof storedTask.recurrence === 'object'
+          ? {
+              ...storedTask.recurrence,
+              anchorDate: shiftLocalDate(
+                storedTask.recurrence.anchorDate,
+                dayShift,
+              ),
+              endDate: storedTask.recurrence.endDate
+                ? shiftLocalDate(storedTask.recurrence.endDate, dayShift)
+                : null,
+            }
+          : storedTask.recurrence,
+    }));
+  }
+  return seriesTasks.length;
 }
 
 export async function deleteLocalTask(taskId: string): Promise<void> {

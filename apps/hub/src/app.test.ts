@@ -63,6 +63,8 @@ function groceryOperation(): GroceryItemOperation {
       revision: 0,
       label: 'Lait',
       quantityText: '2 bouteilles',
+      manualStoreFamilyId: null,
+      manualAisleId: null,
       checkedAt: null,
       createdAt: now,
       updatedAt: now,

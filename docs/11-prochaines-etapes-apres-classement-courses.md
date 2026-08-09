@@ -6,7 +6,7 @@ Statut : plan d'exécution actif après le candidat de classement par rayon
 
 ## Point de départ
 
-Le candidat Lot 1A couvre maintenant les tâches planifiées et récurrentes, l'authentification fermée, les courses partagées offline-first et leur classement facultatif par rayon. Le classement utilise les règles du foyer, le glossaire local puis Ministral 3 8B pour les seuls libellés inconnus.
+Le candidat Lot 1A couvre maintenant les tâches planifiées et récurrentes, l'authentification fermée, les courses partagées offline-first et leur classement facultatif par rayon. En mode `Modifier`, toucher une tâche ouvre ses champs et toucher une course permet de corriger son libellé, sa quantité ou son rayon ; le bouton `Supprimer` reste visible directement. Ces modifications empruntent la voie locale chiffrée/outbox et la correction manuelle d'un rayon est prioritaire sur le classement automatique.
 
 Le protocole Ollama relie chaque entrée et chaque réponse par un index vérifié. Le mode de raisonnement est désactivé, le délai est de 120 secondes, le job reste arrêtable et aucune proposition partielle n'est appliquée. Le benchmark reproductible obtient 99,3 % sur 150 cas hybrides et 88,9 % sur neuf cas difficiles.
 
@@ -14,7 +14,7 @@ Ces preuves sont automatisées. Elles ne remplacent pas la recette physique sur 
 
 ## Étape 1 — Recette courte du classement sur Galaxy A17
 
-Cette recette peut être jouée pendant que l'étape 2 est développée :
+Cette recette peut être jouée indépendamment du report de l'étape 2 :
 
 1. recharger la PWA afin de recevoir le dernier service worker ;
 2. ignorer toute ancienne proposition Granite et lancer un nouveau classement ;
@@ -26,9 +26,9 @@ Cette recette peut être jouée pendant que l'étape 2 est développée :
 
 La procédure détaillée reste [la recette de classement Galaxy A17](recipes/galaxy-a17-lot-1a-grocery-classification.md). Ne déclarer ce checkpoint validé qu'après retour explicite de l'utilisateur.
 
-## Étape 2 — Conflits explicites et tombstones
+## Étape 2 — Conflits explicites et tombstones : report assumé
 
-Il s'agit de la prochaine cible d'implémentation automatisée. Avant de coder, créer l'ADR-011 qui fige les règles suivantes.
+L'[ADR-011](adr/011-conflits-et-cycle-de-vie-des-tombstones.md) est accepté comme filet de sécurité, mais son implémentation est reportée jusqu'à ce que l'usage réel à deux produise un conflit ou qu'un volume notable de tombstones justifie une purge. Les éditeurs locaux nécessaires sont construits et les suppressions restent conservées : aucune purge physique n'est activée en attendant.
 
 ### Conflits visibles
 
@@ -60,9 +60,9 @@ Le défaut conservateur à formaliser dans l'ADR-011 est :
 - migration SQLite N-1, tests unitaires/intégration et scénario Chrome mobile réussissent ;
 - `pnpm verify` réussit avant redéploiement.
 
-## Étape 3 — Fermeture physique du Lot 1A
+## Étape 3 — Checkpoint court sur appareils réels
 
-Après l'étape 2, rejouer ou terminer :
+Avant de choisir le prochain lot fonctionnel, rejouer ou terminer :
 
 - [authentification et appairage](recipes/galaxy-a17-lot-1a-auth.md) ;
 - [courses partagées](recipes/galaxy-a17-lot-1a-groceries.md) ;
@@ -70,23 +70,25 @@ Après l'étape 2, rejouer ou terminer :
 - checkpoints courts du tri, des responsables, des réglages et de la récurrence/note ;
 - contrôle de confiance : redémarrage complet hors réseau, retour en ligne, attente à zéro et absence de doublon.
 
-L'avertissement de certificat du RG405M et l'essai iPhone reporté ne constituent pas une preuve d'appairage. Le Lot 1A sort techniquement lorsque conflits et tombstones sont couverts ; sa validation familiale complète demande ensuite une recette réelle à deux appareils.
+L'avertissement de certificat du RG405M et l'essai iPhone reporté ne constituent pas une preuve d'appairage. La résolution avancée des conflits est une dette consciente, documentée et déclenchée par l'usage. La validation familiale complète demande encore une recette réelle à deux appareils ; elle ne peut pas être déduite des tests Chrome automatisés.
 
-## Étape 4 — Lot 1B après la porte Lot 1A
+## Étape 4 — Prochain lot à discuter
 
-Ne pas commencer cette étape avant la sortie technique précédente.
+Ordre recommandé, à confirmer avec l'utilisateur avant toute implantation :
 
-1. construire les catégories et fixtures déterministes du budget partagé ;
-2. distinguer objectif d'épargne, versement réel et reste disponible ;
-3. couvrir une dépense offline et sa convergence ;
-4. intégrer Google Calendar Maison en lecture avec cache offline ;
-5. conserver la saisie d'événement dans Google Calendar au MVP ;
-6. valider calculs, cache et reprise avant de commencer la veille ou l'assistant.
+1. faire une recette courte de l'éditeur sur A17 et, lorsque possible, appairer l'iPhone ;
+2. discuter puis cadrer le budget partagé : catégories, revenus, dépenses, objectif et versement réel d'épargne ;
+3. si le budget est retenu, construire d'abord ses calculs et fixtures déterministes, puis une dépense offline ;
+4. discuter ensuite Google Calendar Maison en lecture seule avec cache offline ;
+5. ne commencer la veille ou l'assistant qu'après ces choix et leurs preuves.
+
+Les alternatives à discuter sont donc : `budget d'abord` — recommandation actuelle conforme à la feuille de route —, `Calendar en lecture d'abord` si l'agenda externe est le besoin familial prioritaire, ou `courte période d'usage Maison` avant d'élargir le périmètre.
 
 ## Ordre exécutable résumé
 
 1. recette A17 du nouveau classement, dès que possible ;
-2. ADR-011 conflits/tombstones ;
-3. implémentation et tests deux profils avec coupure réseau ;
-4. redéploiement et fermeture physique du Lot 1A ;
-5. budget puis Calendar en lecture pour le Lot 1B.
+2. éditeurs locaux et ADR-011 conflits/tombstones — réalisés ;
+3. observer les conflits et le volume des tombstones, sans purge automatique ;
+4. recette courte A17/iPhone lorsque l'appareil est disponible ;
+5. discuter le choix entre budget, Calendar en lecture ou période d'usage Maison ;
+6. après décision, documenter la cutline du lot choisi avant de coder.
