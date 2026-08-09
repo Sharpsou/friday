@@ -762,6 +762,55 @@ test('edit mode keeps grocery delete visible and changes its aisle offline', asy
   await expect(page.getByText(updatedLabel)).toHaveCount(0);
 });
 
+test('shopping mode keeps only the grouped checklist and works offline', async ({
+  context,
+  page,
+}) => {
+  const label = `Pommes magasin ${crypto.randomUUID()}`;
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.getByRole('button', { name: 'Courses', exact: true }).click();
+  await page.getByLabel('Ajouter un produit').fill(label);
+  await page.getByLabel('Quantité facultative').fill('1 kg');
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: label }),
+  ).toContainText('Synchronisée avec le foyer');
+
+  await page.getByRole('button', { name: 'Modifier', exact: true }).click();
+  await page.getByRole('button', { name: `Modifier ${label}` }).click();
+  const editor = page.getByRole('dialog', { name: `Modifier ${label}` });
+  await editor.getByLabel('Rayon').selectOption('supermarket:produce');
+  await editor.getByRole('button', { name: 'Enregistrer' }).click();
+
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'En course' }).click();
+  const shoppingMode = page.getByRole('dialog', { name: 'En course' });
+  await expect(shoppingMode).toContainText('Fruits et légumes');
+  await expect(shoppingMode).toContainText('1 kg');
+  await expect(
+    page.getByRole('navigation', { name: 'Navigation principale' }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Ouvrir les réglages' }),
+  ).toHaveCount(0);
+
+  await shoppingMode.getByRole('button', { name: `Prendre ${label}` }).click();
+  await expect(shoppingMode).toContainText('Courses terminées');
+  await shoppingMode.getByRole('button', { name: 'Revenir à Friday' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Déjà acheté' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: label }),
+  ).toContainText('À synchroniser');
+
+  await context.setOffline(false);
+  await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
+  await page.getByRole('button', { name: `Supprimer ${label}` }).click();
+  await expect(page.getByText(label)).toHaveCount(0);
+});
+
 test('grocery classification stays visible in background and can be stopped', async ({
   page,
 }) => {

@@ -12,7 +12,7 @@ Lire dans cet ordre :
 
 Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’architecture.
 
-## État du workspace au 8 août 2026
+## État du workspace au 9 août 2026
 
 - Friday contient un monorepo pnpm TypeScript avec la PWA React/Vite, le hub Fastify/SQLite, les contrats partagés et les tests automatisés.
 - `D:\prog\friday` est déjà un dépôt Git sur la branche `main`.
@@ -63,21 +63,24 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 - Enregistrer toute installation future dans `docs/skills-register.md`.
 - Aucun skill tiers spécifique à Friday n’est installé à ce jour.
 
-## Prochaine cible d’implémentation
+## Point de reprise immédiat
 
 La porte go/no-go du Lot 0B est validée sur le Galaxy A17 : persistance après redémarrage hors réseau, retour de l’attente à zéro et convergence sans doublon confirmés par l’utilisateur le 8 août 2026.
 
 Le candidat du 9 août 2026 implémente terminer/rouvrir, date/heure/durée, responsable facultatif, note facultative, récurrence jour/semaine/N jours/mois/an bornée et les vues `Liste`/`Semaine`/`Mois`. Il ajoute l'authentification fermée Better Auth/SQLite avec un identifiant Friday simple sans adresse e-mail à fournir : bootstrap du propriétaire sur foyer vide, second adulte appairé par code court à usage unique, sessions liées aux appareils, synchronisation authentifiée et révocation. Les profils historiques sont conservés ; le cache local reste utilisable hors ligne, mais une révocation bloque seulement les futurs échanges serveur. `Maison` est renommé en destination `Agenda` et `Courses` devient une destination principale distincte, avec quantité facultative, achat/réouverture, suppression, résumé dans `Aujourd'hui` et synchronisation chiffrée par la même outbox. Terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l'A17 le 8 août 2026 ; l'authentification complète et les courses ne le sont pas encore physiquement.
 
-Le classement facultatif des courses par rayon utilise la taxonomie `retail-fr-v1`, des règles locales et apprises puis Ministral 3 8B pour les seuls libellés inconnus. Chaque entrée et réponse Ollama porte un index vérifié afin d'empêcher les décalages entre produits. Le job est persistant dans SQLite, reprend après redémarrage, affiche sa progression dans toute la PWA et peut être arrêté sans appliquer de résultat partiel. L'aperçu reste à confirmer avant partage ; la liste adopte ensuite une présentation unique regroupée par rayon, sans sous-onglets `Liste`/`Rayons`, conservée dans le cache chiffré. Sa recette physique est `docs/recipes/galaxy-a17-lot-1a-grocery-classification.md`.
+Le classement facultatif des courses par rayon utilise la taxonomie `retail-fr-v1`, des règles locales et apprises puis Ministral 3 8B pour les seuls libellés inconnus. Chaque entrée et réponse Ollama porte un index vérifié afin d'empêcher les décalages entre produits. Le job est persistant dans SQLite, reprend après redémarrage, affiche sa progression dans toute la PWA et peut être arrêté sans appliquer de résultat partiel. L'aperçu reste à confirmer avant partage ; la liste adopte ensuite une présentation unique regroupée par rayon, sans sous-onglets `Liste`/`Rayons`, conservée dans le cache chiffré. Le mode plein écran `En course` ne conserve que les rayons et les produits restants sous forme de grandes cibles cochables, y compris hors ligne.
 
-`pnpm verify` réussit sur ce candidat avec 75 tests unitaires/intégration et 17 scénarios Chrome mobile. L'audit de production ne signale aucune vulnérabilité npm connue.
+La détection de mise à jour PWA est maintenant persistante et relancée au démarrage, au retour au premier plan, au retour réseau et au clic sur l'état de connexion. L'utilisateur confirme ensuite avec `Mettre à jour`. Le comportement est automatisé mais pas encore validé physiquement sur iPhone.
 
-Le propriétaire a initialisé le foyer le 9 août 2026. L'appairage d'un second appareil n'est pas validé : le RG405M sous Firefox 151.0.3 atteint Friday mais conserve un avertissement de certificat, et l'essai iPhone est reporté. Ne pas convertir ces essais en preuve de recette auth. Le candidat avec les onglets distincts `Agenda` et `Courses` a été redémarré sur `:8443` ; le healthcheck réussit et `/api/auth/state` confirme `bootstrapRequired: false` sans session pour un client non authentifié.
+`pnpm verify` réussit sur ce candidat avec 85 tests unitaires/intégration et 20 scénarios Chrome mobile. Le candidat est construit, redémarré et joignable sur `https://192.168.1.14:8443` avec un healthcheck réussi.
 
-1. faire confirmer `docs/recipes/galaxy-a17-lot-1a-auth.md`, `docs/recipes/galaxy-a17-lot-1a-groceries.md` et `docs/recipes/galaxy-a17-lot-1a-grocery-classification.md`, sans bloquer entre-temps les travaux automatisés ;
-2. suivre `docs/11-prochaines-etapes-apres-classement-courses.md` : créer l'ADR-011, finaliser la résolution visible des conflits et le cycle de vie des tombstones, avec tests deux profils et coupure réseau ;
-3. fermer techniquement le Lot 1A avant de commencer le budget et Calendar en lecture ;
-4. après une évolution du runtime, reconstruire et redémarrer le hub sans ouvrir Chrome avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
+Le propriétaire a initialisé le foyer le 9 août 2026. L'appairage d'un second appareil n'est pas validé : le RG405M sous Firefox 151.0.3 atteint Friday mais conserve un avertissement de certificat. La recette iPhone attend le retour de la compagne de l'utilisateur et ne doit pas bloquer le travail documentaire ou le choix du lot suivant. Ne pas convertir ces essais en preuve de recette auth ou iPhone.
 
-Ne pas commencer le budget, Calendar, la veille ou l’assistant avant la sortie technique du Lot 1A.
+Le lot `En course` + fiabilisation des mises à jour PWA et sa documentation font partie de l'état à préserver. Les reprendre depuis Git et ne pas les réimplémenter ; inspecter `git status` et les derniers commits avant toute nouvelle modification.
+
+1. faire confirmer les recettes A17 courses/classement/`En course` sans bloquer les travaux automatisés ;
+2. lorsque la compagne est disponible, suivre `docs/recipes/iphone-pwa-update.md`, puis l'appairage et la recette offline sur l'iPhone ;
+3. laisser conflits et purge de tombstones en observation conformément à l'ADR-011 ; ne pas les implanter sans signal d'usage réel ;
+4. discuter avant implantation le prochain lot fonctionnel : budget partagé recommandé, Calendar en lecture ou courte période d'usage Maison ;
+5. après toute évolution du runtime, exécuter `pnpm verify`, puis reconstruire et redémarrer sans navigateur avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.

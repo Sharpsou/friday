@@ -2,93 +2,84 @@
 
 Date : 9 août 2026
 
-Statut : plan d'exécution actif après le candidat de classement par rayon
+Statut : plan de suivi actif pour reprendre sans nouvel audit général
 
-## Point de départ
+## Point de départ vérifié
 
-Le candidat Lot 1A couvre maintenant les tâches planifiées et récurrentes, l'authentification fermée, les courses partagées offline-first et leur classement facultatif par rayon. En mode `Modifier`, toucher une tâche ouvre ses champs et toucher une course permet de corriger son libellé, sa quantité ou son rayon ; le bouton `Supprimer` reste visible directement. Ces modifications empruntent la voie locale chiffrée/outbox et la correction manuelle d'un rayon est prioritaire sur le classement automatique.
+Le candidat Lot 1A couvre les tâches planifiées et récurrentes, l'authentification fermée, les courses partagées offline-first, leur classement facultatif par rayon et leur édition locale. Le bouton `En course` ajoute une vue magasin plein écran limitée aux rayons, aux produits restants, à la progression et aux grandes cibles cochables ; elle utilise le cache local et reste utilisable hors ligne.
 
-Le protocole Ollama relie chaque entrée et chaque réponse par un index vérifié. Le mode de raisonnement est désactivé, le délai est de 120 secondes, le job reste arrêtable et aucune proposition partielle n'est appliquée. Le benchmark reproductible obtient 99,3 % sur 150 cas hybrides et 88,9 % sur neuf cas difficiles.
+Le protocole Ollama relie chaque entrée et chaque réponse par un index vérifié. Ministral 3 8B ne traite que les libellés inconnus après les corrections du foyer et les règles déterministes. Le job est persistant, visible, arrêtable et n'applique jamais un résultat partiel.
 
-Ces preuves sont automatisées. Elles ne remplacent pas la recette physique sur Galaxy A17 ni l'appairage réel du second appareil.
+La mise à jour PWA n'utilise plus un événement ponctuel susceptible d'être perdu. Son état est conservé et la recherche est relancée au démarrage, au retour au premier plan, au retour réseau et au clic sur `Connecté` ou `Hors ligne`. Le rechargement reste soumis au bouton `Mettre à jour` afin de ne pas interrompre une saisie.
 
-## Étape 1 — Recette courte du classement sur Galaxy A17
+Le dernier `pnpm verify` réussit avec 85 tests unitaires/intégration, le build PWA/hub et 20 scénarios Chrome mobile. Le candidat a été reconstruit et redémarré sur `https://192.168.1.14:8443` ; le healthcheck HTTPS répond correctement.
 
-Cette recette peut être jouée indépendamment du report de l'étape 2 :
+## État Git à préserver
 
-1. recharger la PWA afin de recevoir le dernier service worker ;
-2. ignorer toute ancienne proposition Granite et lancer un nouveau classement ;
-3. vérifier que Friday reste utilisable pendant le job et que `Arrêter` ne laisse aucun résultat partiel ;
-4. relancer, corriger au moins un rayon puis appliquer ;
-5. vérifier la présentation unique par rayon, sans sélecteur `Liste`/`Rayons` ;
-6. fermer puis rouvrir la PWA et contrôler que le résultat partagé est retrouvé ;
-7. couper le réseau et vérifier que la dernière présentation synchronisée reste lisible.
+Le lot publié à préserver comprend :
 
-La procédure détaillée reste [la recette de classement Galaxy A17](recipes/galaxy-a17-lot-1a-grocery-classification.md). Ne déclarer ce checkpoint validé qu'après retour explicite de l'utilisateur.
+- mode `En course`, styles, test Chrome mobile et documentation associée ;
+- détection persistante des mises à jour PWA, contrôles explicites et tests unitaires ;
+- recette iPhone de mise à jour.
 
-## Étape 2 — Conflits explicites et tombstones : report assumé
+Un nouveau chat doit commencer par `git status -sb` et `git log -5 --oneline`, conserver ces fonctions et ne pas réimplémenter le lot.
 
-L'[ADR-011](adr/011-conflits-et-cycle-de-vie-des-tombstones.md) est accepté comme filet de sécurité, mais son implémentation est reportée jusqu'à ce que l'usage réel à deux produise un conflit ou qu'un volume notable de tombstones justifie une purge. Les éditeurs locaux nécessaires sont construits et les suppressions restent conservées : aucune purge physique n'est activée en attendant.
+## Étape 1 — Checkpoint court Galaxy A17
 
-### Conflits visibles
+Ce checkpoint ne bloque pas la discussion du lot suivant :
 
-- détecter une mutation dont `baseRevision` ne correspond plus à la révision canonique ;
-- conserver la version locale en conflit au lieu de l'écraser silencieusement ;
-- afficher le conflit uniquement lorsqu'il existe, avec la version de l'appareil et celle du foyer ;
-- permettre de garder la version du foyer ou de republier la version locale sur la révision canonique courante ;
-- faire passer la résolution par la même voie locale/outbox et la rendre idempotente ;
-- appliquer le même mécanisme aux tâches et aux courses, sans mélanger leurs interfaces métier.
+1. recevoir la nouvelle version et vérifier le libellé `Mettre à jour` ;
+2. lancer un classement, vérifier que Friday reste utilisable puis tester `Arrêter` ;
+3. appliquer un classement corrigé et vérifier la présentation unique par rayon ;
+4. ouvrir `En course`, cocher plusieurs produits puis sortir du mode ;
+5. recommencer hors réseau et vérifier que les coches restent en attente ;
+6. rétablir le hub, toucher l'état de connexion et vérifier l'attente à zéro sans doublon.
 
-### Cycle de vie des suppressions
+Les détails sont dans [la recette courses](recipes/galaxy-a17-lot-1a-groceries.md) et [la recette de classement](recipes/galaxy-a17-lot-1a-grocery-classification.md). Ne déclarer aucun comportement A17 validé sans retour physique explicite.
 
-Le défaut conservateur à formaliser dans l'ADR-011 est :
+## Étape 2 — iPhone différé sans bloquer la suite
 
-- un tombstone empêche toujours la résurrection d'un objet supprimé par un appareil en retard ;
-- il n'est éligible à la purge qu'après 90 jours ;
-- la purge exige aussi que chaque appareil actif et non révoqué ait dépassé le changement correspondant ;
-- un appareil révoqué ou un compte oublié ne bloque plus la purge ;
-- aucune purge n'est lancée si le suivi des curseurs par appareil n'est pas démontré ;
-- la purge est transactionnelle, journalisée et testée sur une copie de base avant activation périodique.
+L'utilisateur attend le retour de sa compagne pour reprendre l'iPhone. Aucune action physique n'est demandée avant cela et ce délai ne doit pas suspendre le travail automatisé.
 
-### Preuves attendues
+Lorsque l'appareil est disponible :
 
-- deux profils modifient le même objet pendant une coupure : aucune version ne disparaît ;
-- les deux choix de résolution convergent sans doublon après reconnexion ;
-- une suppression concurrente ne ressuscite pas l'objet ;
-- un appareil en retard reçoit encore le tombstone ;
-- un tombstone récent ou non acquitté n'est jamais purgé ;
-- migration SQLite N-1, tests unitaires/intégration et scénario Chrome mobile réussissent ;
-- `pnpm verify` réussit avant redéploiement.
+1. vérifier la confiance complète du certificat et l'origine exacte ;
+2. s'assurer que toute attente locale est à zéro avant une éventuelle réinstallation ;
+3. suivre [la recette de mise à jour iPhone](recipes/iphone-pwa-update.md) ;
+4. appairer le second adulte ;
+5. rejouer création, modification, suppression et courses hors ligne ;
+6. vérifier la convergence sur les deux profils sans doublon.
 
-## Étape 3 — Checkpoint court sur appareils réels
+La correction automatisée ne constitue pas une validation Safari/iPhone. Seul ce retour physique permettra de fermer ce checkpoint.
 
-Avant de choisir le prochain lot fonctionnel, rejouer ou terminer :
+## Étape 3 — Conflits et tombstones en observation
 
-- [authentification et appairage](recipes/galaxy-a17-lot-1a-auth.md) ;
-- [courses partagées](recipes/galaxy-a17-lot-1a-groceries.md) ;
-- classement des courses ;
-- checkpoints courts du tri, des responsables, des réglages et de la récurrence/note ;
-- contrôle de confiance : redémarrage complet hors réseau, retour en ligne, attente à zéro et absence de doublon.
+L'[ADR-011](adr/011-conflits-et-cycle-de-vie-des-tombstones.md) est rédigée et acceptée comme filet de sécurité. L'utilisateur a choisi de reporter la résolution avancée des conflits et la purge jusqu'à un signal d'usage réel.
 
-L'avertissement de certificat du RG405M et l'essai iPhone reporté ne constituent pas une preuve d'appairage. La résolution avancée des conflits est une dette consciente, documentée et déclenchée par l'usage. La validation familiale complète demande encore une recette réelle à deux appareils ; elle ne peut pas être déduite des tests Chrome automatisés.
+En attendant :
 
-## Étape 4 — Prochain lot à discuter
+- conserver les tombstones sans purge physique ;
+- surveiller pertes, résurrections, doublons et conflits pendant l'usage à deux ;
+- ne pas construire d'interface de résolution sans conflit constaté ;
+- ne pas activer de purge sans preuve de curseurs acquittés par chaque appareil actif.
 
-Ordre recommandé, à confirmer avec l'utilisateur avant toute implantation :
+Un conflit réel ou un volume notable de suppressions déclenchera une réévaluation de l'ADR-011, pas une implantation préventive silencieuse.
 
-1. faire une recette courte de l'éditeur sur A17 et, lorsque possible, appairer l'iPhone ;
-2. discuter puis cadrer le budget partagé : catégories, revenus, dépenses, objectif et versement réel d'épargne ;
-3. si le budget est retenu, construire d'abord ses calculs et fixtures déterministes, puis une dépense offline ;
-4. discuter ensuite Google Calendar Maison en lecture seule avec cache offline ;
-5. ne commencer la veille ou l'assistant qu'après ces choix et leurs preuves.
+## Étape 4 — Prochain lot fonctionnel à décider
 
-Les alternatives à discuter sont donc : `budget d'abord` — recommandation actuelle conforme à la feuille de route —, `Calendar en lecture d'abord` si l'agenda externe est le besoin familial prioritaire, ou `courte période d'usage Maison` avant d'élargir le périmètre.
+Le prochain choix produit doit être confirmé avec l'utilisateur avant implantation :
+
+1. **budget partagé — recommandation actuelle** : cadrer catégories, revenus, dépenses, objectif et versement réel d'épargne, puis construire les calculs et fixtures avant l'interface ;
+2. **Google Calendar Maison en lecture** : à choisir d'abord si la visibilité de l'agenda externe devient prioritaire ;
+3. **courte période d'usage Maison** : continuer tâches et courses sans élargir immédiatement le périmètre.
+
+La veille et l'assistant ne commencent pas avant ce choix et les preuves du lot retenu. Le budget ne doit pas être codé depuis les anciens documents ou classeurs : sa cutline et ses formules doivent d'abord être confirmées.
 
 ## Ordre exécutable résumé
 
-1. recette A17 du nouveau classement, dès que possible ;
-2. éditeurs locaux et ADR-011 conflits/tombstones — réalisés ;
-3. observer les conflits et le volume des tombstones, sans purge automatique ;
-4. recette courte A17/iPhone lorsque l'appareil est disponible ;
-5. discuter le choix entre budget, Calendar en lecture ou période d'usage Maison ;
-6. après décision, documenter la cutline du lot choisi avant de coder.
+1. effectuer la recette courte A17 dès que pratique ;
+2. décider entre budget, Calendar ou observation Maison ;
+3. documenter la cutline du choix avant de coder ;
+4. reprendre l'iPhone au retour de la compagne, sans bloquer les étapes 1 à 3 ;
+5. laisser conflits et tombstones en observation jusqu'à un signal réel ;
+6. pour chaque évolution : tests ciblés, `pnpm verify`, redémarrage du runtime sans navigateur, puis documentation de la preuve.

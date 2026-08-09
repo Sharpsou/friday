@@ -12,7 +12,7 @@ Le projet est en cours d’implémentation et peut être repris directement dans
 
 Les décisions produit, métier et techniques sont maintenant consolidées. Il reste volontairement quelques décisions de mise en place qui doivent être tranchées au moment où elles deviennent utiles ; elles ont toutes une valeur par défaut et un checkpoint défini.
 
-Le code Friday et son historique Git doivent être préservés. Le prochain chat doit commencer le Lot 1A à partir de l’état courant, pas recommencer le cadrage, réinitialiser le dépôt ou tenter de reprendre la branche Flutter de Home Mind.
+Le code Friday et son historique Git doivent être préservés. Le prochain chat doit reprendre le candidat Lot 1A déjà construit et déployé, incluant `En course` et la mise à jour PWA fiabilisée, pas recommencer le cadrage, réinitialiser le dépôt ou tenter de reprendre la branche Flutter de Home Mind.
 
 ## 2. Ordre de lecture et autorité documentaire
 
@@ -61,7 +61,7 @@ Chemin : `D:\prog\friday`
 - le choix de suppression récurrente a reçu un retour UX positif de l’utilisateur le 8 août 2026 ; sa recette physique complète hors ligne/reconnexion reste à confirmer avant de fermer le checkpoint Lot 1A ;
 - les réglages locaux limitent séparément le nombre de tâches affichées dans `Aujourd'hui` et dans chaque liste `Agenda`, sans changer les compteurs totaux ;
 - authentification fermée candidate : identifiant Friday simple sans adresse e-mail à fournir, Better Auth/SQLite, initialisation du propriétaire seulement sur foyer vide, inscription publique masquée, second adulte appairé par code de 8 chiffres valable 10 minutes et à usage unique ;
-- le propriétaire a initialisé le foyer le 9 août 2026 ; l'appairage d'un second appareil n'est pas encore validé physiquement : le RG405M sous Firefox 151.0.3 atteint Friday mais garde un avertissement de certificat, et l'essai iPhone est reporté ;
+- le propriétaire a initialisé le foyer le 9 août 2026 ; l'appairage d'un second appareil n'est pas encore validé physiquement : le RG405M sous Firefox 151.0.3 atteint Friday mais garde un avertissement de certificat, et la reprise de l'essai iPhone attend le retour de la compagne de l'utilisateur ;
 - chaque session est liée à un appareil et chaque synchronisation vérifie le foyer, le profil et l'appareil ; le propriétaire peut révoquer le second appareil puis le remplacer avec un nouveau code et la phrase secrète existante ;
 - après révocation, le propriétaire peut aussi oublier explicitement le compte du second adulte pour permettre une nouvelle identité ; les données partagées et le profil métier stable sont conservés ;
 - les cookies sont `HttpOnly`, `Secure` sur l'origine HTTPS et `SameSite=Strict` ; les mutations refusent les origines navigateur non approuvées, le secret serveur est généré hors dépôt et les événements sensibles sont journalisés ;
@@ -74,10 +74,12 @@ Chemin : `D:\prog\friday`
 - l'ADR-011 fixe la conservation des versions locale/canonique en conflit et la purge prudente, mais l'utilisateur reporte leur implémentation jusqu'à un signal d'usage réel ; aucune purge physique n'est activée et les tombstones restent conservés ;
 - classement par rayon candidat : un bouton `Classer par rayon` lance un job SQLite persistant par lots, visible dans tous les onglets et arrêtable ; la PWA peut être utilisée ou fermée pendant le traitement, et un job interrompu ne modifie jamais la liste ;
 - l'aperçu est corrigeable avant application, les corrections exactes sont apprises pour le foyer et les classifications des deux profils fusionnent par article/rayon ; la liste utilise une présentation unique regroupée par rayon, sans sous-onglets `Liste`/`Rayons`, et le cache Dexie chiffré la conserve hors ligne ;
+- un bouton `En course` ouvre une vue magasin plein écran qui ne conserve que les rayons, les produits restants, de grandes cibles cochables, une progression et la sortie ; elle réutilise le cache local et fonctionne hors ligne sans lancer Ollama ;
+- la détection de mise à jour PWA conserve désormais le signal même s'il arrive avant le montage de l'interface ; une recherche est lancée au démarrage, au retour au premier plan, au retour réseau et lors d'un clic sur l'état de connexion, puis l'utilisateur confirme avec `Mettre à jour` avant le rechargement ; cette correction automatisée reste à valider physiquement sur iPhone ;
 - la taxonomie `retail-fr-v1` couvre 11 familles de magasins et 25 rayons de supermarché. Le pipeline hybride applique les corrections exactes du foyer puis les règles courantes avant Ministral 3 8B ; chaque réponse porte l'index du produit. Le corpus local de 150 libellés atteint 99,3 % famille/rayon avec 96,7 % de couverture déterministe ; le corpus difficile atteint 88,9 % en 10,4 s à chaud lors de la mesure du 9 août 2026 ;
 - la décision complète est consignée dans `docs/adr/010-classement-courses-par-rayon.md`, la taxonomie dans `docs/reference/taxonomie-courses-retail-fr-v1.md` et l'exploitation dans `docs/runbooks/classement-courses.md` ;
 - le candidat avec les destinations distinctes `Agenda` et `Courses` a été redémarré sur `https://192.168.1.14:8443` le 9 août 2026 ; le healthcheck réussit et `/api/auth/state` confirme un foyer initialisé (`bootstrapRequired: false`) sans ouvrir de session à un client non authentifié ;
-- dernier contrôle complet du candidat du 9 août 2026 : `pnpm verify` réussi avec 80 tests unitaires/intégration et 19 scénarios Chrome mobile ; audit de production sans vulnérabilité npm connue ni problème de peer dependency ;
+- dernier contrôle complet du candidat du 9 août 2026 : `pnpm verify` réussi avec 85 tests unitaires/intégration et 20 scénarios Chrome mobile ; le runtime a ensuite été reconstruit, redémarré sans navigateur et son healthcheck HTTPS a réussi ;
 - terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026 ; la recette physique responsable/filtre reste à confirmer ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
@@ -255,11 +257,13 @@ Pack minimal proposé avant Lot 0 :
 Le nouveau chat doit :
 
 1. lire `AGENTS.md`, ce document, les documents 09 et 10 ;
-2. constater l’état Git existant avec `git status -sb` et `git remote -v`, sans réinitialiser le dépôt ;
-3. suivre `docs/11-prochaines-etapes-apres-classement-courses.md` et observer les signaux de conflit/tombstone sans activer de purge ;
-4. faire confirmer les recettes auth, courses, classement et éditeurs sans déclarer le comportement physique validé avant le retour utilisateur ;
-5. discuter avec l'utilisateur le prochain lot : budget partagé recommandé, Calendar en lecture ou courte période d'usage Maison ;
-6. documenter la cutline retenue, puis exécuter `pnpm verify` et redémarrer le runtime sans navigateur après son implantation.
+2. constater l'état publié et les éventuelles modifications locales avec `git status -sb` et `git log -5 --oneline`, sans réinitialiser le dépôt ;
+3. préserver le lot vérifié `En course` + mise à jour PWA et ne pas le refaire ;
+4. suivre `docs/11-prochaines-etapes-apres-classement-courses.md` ; les recettes A17 restent ouvertes mais ne bloquent pas le choix fonctionnel suivant ;
+5. attendre le retour de la compagne pour la recette iPhone, sans transformer ce délai en attente de développement ;
+6. laisser conflits et tombstones en observation conformément à l'ADR-011 ;
+7. discuter avec l'utilisateur le prochain lot : budget partagé recommandé, Calendar en lecture ou courte période d'usage Maison ;
+8. documenter la cutline retenue, puis exécuter `pnpm verify` et redémarrer le runtime sans navigateur après son implantation.
 
 Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directement : commit sur la branche active puis `git push origin main`. Ne pas considérer l’absence de `gh` comme un blocage au commit ou au push.
 
@@ -271,20 +275,18 @@ docs/09-decision-finale-pwa-mvp.md et
 docs/10-feuille-de-route-technique-implementation.md, puis suis
 docs/11-prochaines-etapes-apres-classement-courses.md.
 
-Reprends Friday au Lot 1A à partir du dépôt Git et du monorepo existants. Ne
+Reprends Friday à partir du dépôt Git et du monorepo existants. Ne
 réinitialise pas Git, ne recrée pas le projet, ne refais pas le cadrage général
 et ne modifie aucun projet source dans D:\prog. Vérifie d’abord l’état courant,
-Puis pars de l'état courant. Terminer/rouvrir et date/agenda sont validés sur
-l'A17. L'authentification fermée, l'appairage et les courses partagées sont
-candidats automatisés : fais confirmer les recettes `galaxy-a17-lot-1a-auth.md`
-et `galaxy-a17-lot-1a-groceries.md`, ainsi que la recette
-`galaxy-a17-lot-1a-grocery-classification.md`, sans inventer de preuve physique.
-Crée l'ADR-011, puis finalise la résolution visible des conflits et le cycle de
-vie conservateur des tombstones avant de commencer le budget ou Calendar.
-Exécute `pnpm verify`, redémarre le hub sans navigateur, documente
-chaque preuve et utilise Git directement
-pour les commits et les pushes ; l’absence éventuelle de GitHub CLI ne bloque pas
-ces opérations.
+puis préserve le lot publié `En course` + fiabilisation de la mise à jour PWA :
+il est déjà vérifié et déployé, il ne faut pas le réimplémenter. L'iPhone attend
+le retour de sa compagne et ne bloque pas la suite. Ne revendique aucune preuve
+physique A17/iPhone non confirmée. L'ADR-011
+existe déjà ; conflits et tombstones restent en observation jusqu'à un signal
+d'usage réel. Demande à l'utilisateur de choisir entre budget partagé
+(recommandé), Calendar en lecture ou courte période d'usage Maison avant de coder
+le prochain lot. Après toute implantation, exécute `pnpm verify`, redémarre le hub
+sans navigateur et documente la preuve.
 ```
 
 ## 11. Checklist de reprise
@@ -302,7 +304,7 @@ ces opérations.
 
 ## 12. Contrôles réalisés et limites
 
-Contrôles automatiques réussis le 8 août 2026, actualisés sur le candidat Lot 1A du 9 août 2026 :
+Contrôles automatiques actualisés sur le candidat Lot 1A du 9 août 2026 :
 
 - documentation active, README et instructions agent contrôlés ;
 - aucun lien Markdown local manquant ;
@@ -312,7 +314,7 @@ Contrôles automatiques réussis le 8 août 2026, actualisés sur le candidat Lo
 - aucune signature évidente de clé privée, token OpenAI ou clé Google dans les documents ;
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
 - présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
-- `pnpm verify` réussi avec 75 tests unitaires/intégration, le build PWA/hub et 17 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi avec 85 tests unitaires/intégration, le build PWA/hub et 20 scénarios E2E Google Chrome mobile ;
 - health checks local et LAN réussis après redémarrage sans navigateur.
 
 Ce que cet audit ne prétend pas avoir validé :
@@ -324,6 +326,7 @@ Ce que cet audit ne prétend pas avoir validé :
 - parcours physique A17 du tri chronologique corrigé dans les quatre vues ;
 - parcours physique A17 de la note facultative et des occurrences récurrentes hors ligne ;
 - parcours physique A17 des courses en ligne/hors ligne puis sur un second appareil ;
+- parcours physique A17 du mode `En course` et de la nouvelle relance de mise à jour ;
 - appairage et révocation physiques d'un second appareil ;
 - création ou autorisations du compte Google Maison ;
 - configuration Google Drive Desktop ou BitLocker ;

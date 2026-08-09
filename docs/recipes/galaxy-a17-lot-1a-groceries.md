@@ -22,6 +22,9 @@
 6. Fermer de force puis rouvrir Friday hors ligne : `Pain`, `Lait`, leur quantité et leurs sections doivent être conservés.
 7. Rétablir le hub et le réseau : l'attente doit revenir à zéro, sans doublon.
 8. Passer en mode `Modifier`, couper à nouveau le réseau et supprimer `Pain`. Après rechargement puis reconnexion, il doit rester absent.
+9. Avec plusieurs produits restants, appuyer sur `En course` : l'en-tête, les réglages, la navigation et les formulaires doivent disparaître au profit de la seule liste regroupée par rayon.
+10. Toujours hors ligne, toucher un produit dans ce mode : il doit disparaître immédiatement, la progression doit avancer et le dernier produit doit afficher `Courses terminées`.
+11. Appuyer sur `Revenir à Friday` ou `Quitter` : la liste complète doit retrouver les produits cochés dans `Déjà acheté`, puis les synchroniser au retour du réseau.
 
 ## Partage sur le second appareil
 
@@ -38,7 +41,8 @@ Ce parcours se joue seulement après l'appairage réussi de `galaxy-a17-lot-1a-a
 - repository local : création chiffrée, achat/réouverture ordonnés, suppression par tombstone, accusé serveur et pull distant ;
 - hub : journal partagé, idempotence, révision et propagation d'une course authentifiée ;
 - Chrome mobile : ajout avec quantité, résumé `Aujourd'hui`, achat hors ligne, rechargement et convergence ;
-- commande de contrôle finale : `pnpm verify` avec 58 tests unitaires/intégration et 15 scénarios Chrome mobile.
+- Chrome mobile : mode magasin isolé, rayons conservés, grandes cases cochables, progression et sortie hors ligne ;
+- commande de contrôle finale : `pnpm verify` avec 80 tests unitaires/intégration et 20 scénarios Chrome mobile.
 
 ## Résultat à consigner
 

@@ -76,6 +76,8 @@ Quand la page est visible, la PWA interroge le job actif toutes les deux seconde
 
 La vue suit l'ordre générique de la taxonomie, place les éléments non classés à la fin et replie les produits achetés. Cet ordre n'essaie pas de représenter le plan réel de chaque magasin au MVP.
 
+Le bouton `En course`, placé à côté de `Classer par rayon`, ouvre une vue plein écran dédiée au magasin. Elle réutilise exactement ces groupes et la mutation locale d'achat, mais masque navigation, formulaires, réglages, états techniques et produits déjà achetés. Chaque ligne entière devient une grande cible cochable ; la progression et le nombre restant sont les seuls indicateurs. Ce mode ne lance aucun classement et reste entièrement utilisable hors ligne avec le dernier ordre disponible.
+
 ## Conséquences
 
 Le chemin courant est rapide et déterministe pour la majorité des articles, tandis que les libellés personnels restent traitables. Ollama peut être indisponible sans bloquer les courses ; seuls les libellés qui nécessitent le modèle font alors échouer la proposition, que l'utilisateur peut relancer.

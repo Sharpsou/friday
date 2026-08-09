@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 
 import type {
   AuthDevice,
@@ -51,7 +58,12 @@ import {
   groupGroceriesByAisle,
   type GroceryAisleGroup,
 } from './grocery-classification-groups.js';
-import { updateServiceWorker } from './pwa.js';
+import {
+  checkForAppUpdate,
+  getAppUpdateSnapshot,
+  subscribeToAppUpdates,
+  updateServiceWorker,
+} from './pwa.js';
 import { syncGroceryClassifications } from './sync/grocery-classification-client.js';
 import {
   AuthenticationRequiredError,
@@ -70,6 +82,7 @@ import {
 import { TaskCalendar } from './TaskCalendar.js';
 import { formatTaskRecurrence } from './task-recurrence.js';
 import { useGroceryClassification } from './use-grocery-classification.js';
+import { ShoppingMode } from './ShoppingMode.js';
 import { GroceryEditorDialog, TaskEditorDialog } from './ItemEditorDialogs.js';
 
 type Destination = 'today' | 'agenda' | 'groceries' | 'watch';
@@ -125,6 +138,9 @@ export function App() {
   const [groceryLabel, setGroceryLabel] = useState('');
   const [groceryQuantity, setGroceryQuantity] = useState('');
   const [editingGroceries, setEditingGroceries] = useState(false);
+  const [shoppingModeInitialCount, setShoppingModeInitialCount] = useState<
+    number | null
+  >(null);
   const [groceryPendingEdit, setGroceryPendingEdit] =
     useState<LocalGroceryItem | null>(null);
   const [changingGroceryItemId, setChangingGroceryItemId] = useState<
@@ -175,7 +191,11 @@ export function App() {
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const updateAvailable = useSyncExternalStore(
+    subscribeToAppUpdates,
+    getAppUpdateSnapshot,
+    getAppUpdateSnapshot,
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const groceryInputRef = useRef<HTMLInputElement>(null);
   const scheduleDetailsRef = useRef<HTMLDetailsElement>(null);
@@ -267,6 +287,7 @@ export function App() {
     window.queueMicrotask(() => {
       void reloadLocalState();
       void synchronize();
+      void checkForAppUpdate();
       void loadAppPreferences().then((storedPreferences) => {
         setPreferences(storedPreferences);
         setPreferencesDraft(storedPreferences);
@@ -311,7 +332,9 @@ export function App() {
       onlineSyncTimer = window.setTimeout(() => {
         void (async () => {
           await cancelActiveSync();
-          if (navigator.onLine) await synchronize(true);
+          if (navigator.onLine) {
+            await Promise.all([synchronize(true), checkForAppUpdate()]);
+          }
         })();
       }, 300);
     };
@@ -322,13 +345,14 @@ export function App() {
       setSyncing(false);
     };
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') void synchronize();
+      if (document.visibilityState === 'visible') {
+        void synchronize();
+        void checkForAppUpdate();
+      }
     };
-    const onUpdate = () => setUpdateAvailable(true);
 
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
-    window.addEventListener('friday:update-available', onUpdate);
     document.addEventListener('visibilitychange', onVisibility);
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') void synchronize();
@@ -337,7 +361,6 @@ export function App() {
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
-      window.removeEventListener('friday:update-available', onUpdate);
       document.removeEventListener('visibilitychange', onVisibility);
       window.clearTimeout(onlineSyncTimer);
       window.clearInterval(timer);
@@ -387,6 +410,11 @@ export function App() {
     () =>
       groupGroceriesByAisle(unpurchasedGroceryItems, groceryClassifications),
     [groceryClassifications, unpurchasedGroceryItems],
+  );
+
+  const closeShoppingMode = useCallback(
+    () => setShoppingModeInitialCount(null),
+    [],
   );
 
   async function submitTask(event: React.FormEvent<HTMLFormElement>) {
@@ -804,6 +832,18 @@ export function App() {
   const authenticatedSession = authSession;
   if (!authenticatedSession) return <AuthGate auth={auth} />;
 
+  if (shoppingModeInitialCount !== null) {
+    return (
+      <ShoppingMode
+        groups={groceryAisleGroups}
+        initialItemCount={shoppingModeInitialCount}
+        changingItemId={changingGroceryItemId}
+        onCheck={(item) => void changeGroceryItemState(item.id, true)}
+        onClose={closeShoppingMode}
+      />
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -812,7 +852,10 @@ export function App() {
           <button
             className={`status-pill ${connectionTone}`}
             type="button"
-            onClick={() => void synchronize()}
+            onClick={() => {
+              void synchronize();
+              void checkForAppUpdate(true);
+            }}
             disabled={syncing}
           >
             <span aria-hidden="true" />
@@ -1320,6 +1363,16 @@ export function App() {
 
             <div className="grocery-classification-toolbar">
               <button
+                className="shopping-mode-button"
+                type="button"
+                disabled={unpurchasedGroceryItems.length === 0}
+                onClick={() =>
+                  setShoppingModeInitialCount(unpurchasedGroceryItems.length)
+                }
+              >
+                En course
+              </button>
+              <button
                 className="classify-groceries-button"
                 type="button"
                 disabled={
@@ -1385,7 +1438,7 @@ export function App() {
         <aside className="update-banner" aria-live="polite">
           <span>Une mise à jour est prête.</span>
           <button type="button" onClick={() => void updateServiceWorker(true)}>
-            Installer
+            Mettre à jour
           </button>
         </aside>
       )}

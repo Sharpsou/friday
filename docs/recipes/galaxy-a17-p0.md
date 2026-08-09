@@ -82,7 +82,7 @@ Consigner la version, l'heure, le nombre d'opérations en attente, la dernière 
 Ces contrôles ne bloquent plus le démarrage du Lot 1A :
 
 1. pendant une prochaine période hors réseau, fermer et rouvrir Friday deux fois puis renseigner la ligne 7 ;
-2. lors de la prochaine bannière de mise à jour PWA, toucher `Installer`, vérifier qu’aucune tâche ne disparaît puis renseigner la ligne 8 ;
+2. lors de la prochaine bannière de mise à jour PWA, toucher `Mettre à jour`, vérifier qu’aucune tâche ne disparaît puis renseigner la ligne 8 ;
 3. rejouer ponctuellement un cycle arrêt/redémarrage du hub pendant le développement du Lot 1A.
 
 La prochaine implémentation active est l’état terminé/rouvert d’une tâche, suivie de sa date et de son heure.
