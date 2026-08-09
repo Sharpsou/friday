@@ -1,10 +1,14 @@
 import Dexie from 'dexie';
 
 import {
+  GroceryItemRecordSchema,
+  SyncOperationSchema,
   TaskOperationSchema,
   TaskRecordSchema,
   type Change,
+  type GroceryItemRecord,
   type OperationAck,
+  type SyncOperation,
   type TaskOperation,
   type TaskRecord,
   type TaskRecurrenceRule,
@@ -21,15 +25,25 @@ import {
   encryptJson,
   generateDeviceKey,
 } from '../crypto/vault.js';
-import { CURRENT_PROFILE_ID } from '../task-assignee.js';
+import {
+  getCurrentLocalProfileId,
+  getLocalDeviceId,
+} from '../auth/auth-client.js';
 import { compareTasksBySchedule } from '../task-sort.js';
-import { fridayDb, type OutboxRow, type TaskRow } from './friday-db.js';
+import { groceryItemAad, outboxAad, taskAad } from './encryption-context.js';
+import {
+  fridayDb,
+  type GroceryItemRow,
+  type OutboxRow,
+  type TaskRow,
+} from './friday-db.js';
 
 const HOUSEHOLD_ID = '1030b4f6-1e0f-48fa-adab-865750ce597d';
 
 interface DeviceContext {
   deviceId: string;
   key: CryptoKey;
+  profileId: string;
 }
 
 export type LocalTask = TaskRecord & {
@@ -62,21 +76,11 @@ async function deterministicOccurrenceId(
   return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
 }
 
-function taskAad(taskId: string, deviceId: string): string {
-  return `tasks:${taskId}:1:${deviceId}`;
-}
-
-function outboxAad(operationId: string, deviceId: string): string {
-  return `outbox:${operationId}:1:${deviceId}`;
-}
-
 export async function getDeviceContext(): Promise<DeviceContext> {
-  const storedDeviceId = (await fridayDb.settings.get('deviceId'))?.value;
-  const deviceId =
-    typeof storedDeviceId === 'string' ? storedDeviceId : crypto.randomUUID();
-  if (typeof storedDeviceId !== 'string') {
-    await fridayDb.settings.put({ key: 'deviceId', value: deviceId });
-  }
+  const [deviceId, profileId] = await Promise.all([
+    getLocalDeviceId(),
+    getCurrentLocalProfileId(),
+  ]);
 
   let key = (await fridayDb.keys.get('device-aes-key'))?.value;
   if (!key) {
@@ -84,7 +88,7 @@ export async function getDeviceContext(): Promise<DeviceContext> {
     await fridayDb.keys.put({ id: 'device-aes-key', value: key });
   }
 
-  return { deviceId, key };
+  return { deviceId, key, profileId };
 }
 
 export async function createLocalTask(
@@ -96,7 +100,7 @@ export async function createLocalTask(
     throw new Error('Le titre est obligatoire.');
   }
 
-  const { deviceId, key } = await getDeviceContext();
+  const { deviceId, key, profileId } = await getDeviceContext();
   const now = new Date().toISOString();
   const dueDate = taskInput.dueDate ?? null;
   const task = TaskRecordSchema.parse({
@@ -121,8 +125,8 @@ export async function createLocalTask(
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
-    createdByProfileId: CURRENT_PROFILE_ID,
-    updatedByProfileId: CURRENT_PROFILE_ID,
+    createdByProfileId: profileId,
+    updatedByProfileId: profileId,
     deviceId,
     schemaVersion: 1,
   });
@@ -157,7 +161,7 @@ export async function createLocalTask(
       protocolVersion: 1,
       operationId: crypto.randomUUID(),
       deviceId,
-      profileId: CURRENT_PROFILE_ID,
+      profileId,
       entityType: 'task',
       entityId: occurrence.id,
       operation: 'upsert',
@@ -212,7 +216,7 @@ async function queueLocalTaskUpdate(
   update: (task: TaskRecord, updatedAt: string) => TaskRecord | null,
   generateNextOccurrence = false,
 ): Promise<TaskRecord> {
-  const { deviceId, key } = await getDeviceContext();
+  const { deviceId, key, profileId } = await getDeviceContext();
   const row = await fridayDb.tasks.get(taskId);
   if (!row) {
     throw new Error('Tâche introuvable.');
@@ -244,14 +248,14 @@ async function queueLocalTaskUpdate(
     ...changedTask,
     revision: baseRevision,
     updatedAt: now,
-    updatedByProfileId: CURRENT_PROFILE_ID,
+    updatedByProfileId: profileId,
     deviceId,
   });
   const operation = TaskOperationSchema.parse({
     protocolVersion: 1,
     operationId: crypto.randomUUID(),
     deviceId,
-    profileId: CURRENT_PROFILE_ID,
+    profileId,
     entityType: 'task',
     entityId: task.id,
     operation: 'upsert',
@@ -401,7 +405,7 @@ export async function deleteLocalTask(taskId: string): Promise<void> {
 }
 
 export async function deleteLocalTaskSeries(taskId: string): Promise<number> {
-  const { deviceId, key } = await getDeviceContext();
+  const { deviceId, key, profileId } = await getDeviceContext();
   const selectedRow = await fridayDb.tasks.get(taskId);
   if (!selectedRow) throw new Error('Tâche introuvable.');
 
@@ -466,13 +470,13 @@ export async function deleteLocalTaskSeries(taskId: string): Promise<number> {
         deviceId,
         revision: baseRevision,
         updatedAt,
-        updatedByProfileId: CURRENT_PROFILE_ID,
+        updatedByProfileId: profileId,
       });
       const operation = TaskOperationSchema.parse({
         protocolVersion: 1,
         operationId: crypto.randomUUID(),
         deviceId,
-        profileId: CURRENT_PROFILE_ID,
+        profileId,
         entityType: 'task',
         entityId: task.id,
         operation: 'upsert',
@@ -537,7 +541,7 @@ export async function listTasks(): Promise<LocalTask[]> {
     .toSorted(compareTasksBySchedule);
 }
 
-export async function readPendingOperations(): Promise<TaskOperation[]> {
+export async function readPendingOperations(): Promise<SyncOperation[]> {
   const { deviceId, key } = await getDeviceContext();
   const rows = await fridayDb.outbox
     .where('state')
@@ -545,8 +549,8 @@ export async function readPendingOperations(): Promise<TaskOperation[]> {
     .sortBy('createdAt');
   return Promise.all(
     rows.map(async (row) =>
-      TaskOperationSchema.parse(
-        await decryptJson<TaskOperation>(
+      SyncOperationSchema.parse(
+        await decryptJson<SyncOperation>(
           key,
           row.encryptedPayload,
           outboxAad(row.operationId, deviceId),
@@ -571,36 +575,69 @@ export async function markOperations(
 
 export async function applyAcks(acks: readonly OperationAck[]): Promise<void> {
   const { deviceId, key } = await getDeviceContext();
-  const taskUpdates = await Promise.all(
+  const entityUpdates = await Promise.all(
     acks.map(async (ack) => {
-      const row = await fridayDb.tasks.get(ack.entityId);
-      if (!row) return null;
+      const [taskRow, groceryRow] = await Promise.all([
+        fridayDb.tasks.get(ack.entityId),
+        fridayDb.groceryItems.get(ack.entityId),
+      ]);
+      if (!taskRow && !groceryRow) return null;
       if (ack.status === 'conflict') {
+        const existingRow = taskRow ?? groceryRow;
+        if (!existingRow) return null;
         return {
+          entityType: taskRow ? ('task' as const) : ('grocery_item' as const),
           id: ack.entityId,
-          encrypted: row.encrypted,
-          revision: row.revision,
+          encrypted: existingRow.encrypted,
+          revision: existingRow.revision,
           syncState: 'conflict' as const,
         };
       }
 
-      const task = TaskRecordSchema.parse(
-        await decryptJson<TaskRecord>(
+      if (taskRow) {
+        const task = TaskRecordSchema.parse(
+          await decryptJson<TaskRecord>(
+            key,
+            taskRow.encrypted,
+            taskAad(taskRow.id, deviceId),
+          ),
+        );
+        const acknowledgedTask = TaskRecordSchema.parse({
+          ...task,
+          revision: ack.serverRevision,
+        });
+        return {
+          entityType: 'task' as const,
+          id: ack.entityId,
+          encrypted: await encryptJson(
+            key,
+            acknowledgedTask,
+            taskAad(taskRow.id, deviceId),
+          ),
+          revision: ack.serverRevision,
+          syncState: 'acknowledged' as const,
+        };
+      }
+
+      if (!groceryRow) return null;
+      const groceryItem = GroceryItemRecordSchema.parse(
+        await decryptJson<GroceryItemRecord>(
           key,
-          row.encrypted,
-          taskAad(row.id, deviceId),
+          groceryRow.encrypted,
+          groceryItemAad(groceryRow.id, deviceId),
         ),
       );
-      const acknowledgedTask = TaskRecordSchema.parse({
-        ...task,
+      const acknowledgedGroceryItem = GroceryItemRecordSchema.parse({
+        ...groceryItem,
         revision: ack.serverRevision,
       });
       return {
+        entityType: 'grocery_item' as const,
         id: ack.entityId,
         encrypted: await encryptJson(
           key,
-          acknowledgedTask,
-          taskAad(row.id, deviceId),
+          acknowledgedGroceryItem,
+          groceryItemAad(groceryRow.id, deviceId),
         ),
         revision: ack.serverRevision,
         syncState: 'acknowledged' as const,
@@ -610,20 +647,26 @@ export async function applyAcks(acks: readonly OperationAck[]): Promise<void> {
 
   await fridayDb.transaction(
     'rw',
+    fridayDb.groceryItems,
     fridayDb.outbox,
     fridayDb.tasks,
     async () => {
       for (const [index, ack] of acks.entries()) {
         const syncState =
           ack.status === 'applied' ? 'acknowledged' : 'conflict';
-        const taskUpdate = taskUpdates[index];
+        const entityUpdate = entityUpdates[index];
         await fridayDb.outbox.update(ack.operationId, { state: syncState });
-        if (taskUpdate) {
-          await fridayDb.tasks.update(taskUpdate.id, {
-            encrypted: taskUpdate.encrypted,
-            revision: taskUpdate.revision,
-            syncState: taskUpdate.syncState,
-          });
+        if (entityUpdate) {
+          const update = {
+            encrypted: entityUpdate.encrypted,
+            revision: entityUpdate.revision,
+            syncState: entityUpdate.syncState,
+          };
+          if (entityUpdate.entityType === 'task') {
+            await fridayDb.tasks.update(entityUpdate.id, update);
+          } else {
+            await fridayDb.groceryItems.update(entityUpdate.id, update);
+          }
         }
       }
     },
@@ -635,28 +678,40 @@ export async function applyChanges(
   cursor: number,
 ): Promise<void> {
   const { deviceId, key } = await getDeviceContext();
-  const rows: TaskRow[] = await Promise.all(
-    changes.map(async (change) => ({
-      encrypted: await encryptJson(
-        key,
-        change.payload,
-        taskAad(change.entityId, deviceId),
-      ),
-      id: change.entityId,
-      revision: change.payload.revision,
-      syncState: 'acknowledged' as const,
-      updatedAt: change.payload.updatedAt,
-    })),
+  const encryptedChanges = await Promise.all(
+    changes.map(async (change) => {
+      const aad =
+        change.entityType === 'task'
+          ? taskAad(change.entityId, deviceId)
+          : groceryItemAad(change.entityId, deviceId);
+      return {
+        entityType: change.entityType,
+        row: {
+          encrypted: await encryptJson(key, change.payload, aad),
+          id: change.entityId,
+          revision: change.payload.revision,
+          syncState: 'acknowledged' as const,
+          updatedAt: change.payload.updatedAt,
+        },
+      };
+    }),
   );
+  const taskRows: TaskRow[] = [];
+  const groceryRows: GroceryItemRow[] = [];
+  for (const change of encryptedChanges) {
+    if (change.entityType === 'task') taskRows.push(change.row);
+    else groceryRows.push(change.row);
+  }
 
   await fridayDb.transaction(
     'rw',
+    fridayDb.groceryItems,
     fridayDb.tasks,
     fridayDb.settings,
     async () => {
-      if (rows.length > 0) {
-        await fridayDb.tasks.bulkPut(rows);
-      }
+      if (taskRows.length > 0) await fridayDb.tasks.bulkPut(taskRows);
+      if (groceryRows.length > 0)
+        await fridayDb.groceryItems.bulkPut(groceryRows);
       await fridayDb.settings.put({ key: 'cursor', value: cursor });
     },
   );

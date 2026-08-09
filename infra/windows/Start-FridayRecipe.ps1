@@ -152,6 +152,12 @@ else {
 
 $env:FRIDAY_DATA_DIR = $dataDirectory
 $env:FRIDAY_PORT = '8443'
+$env:FRIDAY_PUBLIC_ORIGIN = if ($lanReady) { $phoneUrl } else { $localUrl }
+$trustedOrigins = @($localUrl)
+if ($phoneUrl) {
+  $trustedOrigins += $phoneUrl
+}
+$env:FRIDAY_TRUSTED_ORIGINS = $trustedOrigins -join ','
 if ($tlsReady) {
   $env:FRIDAY_HOST = if ($lanReady) { '0.0.0.0' } else { '127.0.0.1' }
   $env:FRIDAY_TLS_CERT_PATH = $certificatePath

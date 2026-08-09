@@ -86,6 +86,7 @@ Chaque ticket de développement doit référencer au moins un identifiant ci-des
 | FR-TASK-02 | Terminer, rouvrir, modifier et supprimer logiquement une tâche, en ligne ou hors ligne. |
 | FR-TASK-03 | Gérer une récurrence quotidienne, hebdomadaire ou mensuelle sans doublon d’occurrence. |
 | FR-GROCERY-01 | Ajouter, cocher, modifier et retirer une course partagée hors ligne. |
+| FR-GROCERY-02 | Classer sur demande les courses par rayon via un job persistant, arrêtable et confirmé avant application, sans bloquer la liste. |
 | FR-BUDGET-01 | Saisir dépenses dans frais fixes, courses, santé, loisirs ou extras. |
 | FR-BUDGET-02 | Saisir revenus réguliers ou extra. |
 | FR-BUDGET-03 | Saisir objectif et versement réel d’épargne, puis afficher progression mensuelle, cumul et taux. |
@@ -131,7 +132,7 @@ Chaque ticket de développement doit référencer au moins un identifiant ci-des
 | UX-01 | Tâche créée en moins de 10 secondes. |
 | UX-02 | Dépense créée en moins de 15 secondes. |
 | UX-03 | Retour visuel immédiat après écriture locale, sans attendre le hub. |
-| UX-04 | Navigation principale limitée à Aujourd’hui, Maison, Veille et bouton `+`. |
+| UX-04 | Navigation principale limitée à Aujourd’hui, Agenda, Courses, Veille et bouton `+`. |
 | PERF-01 | Réouverture offline utilisable en moins de 2 secondes après cache chaud. |
 | PERF-02 | Interaction locale courante perceptuellement instantanée ; cible p95 sous 100 ms hors rendu. |
 | PERF-03 | État de synchronisation mis à jour dans les 2 secondes suivant une réponse du hub. |
@@ -141,7 +142,7 @@ Chaque ticket de développement doit référencer au moins un identifiant ci-des
 ```mermaid
 flowchart LR
     subgraph PHONE["Galaxy A17 — PWA installée"]
-        UI["React : Aujourd’hui / Maison / Veille"]
+        UI["React : Aujourd’hui / Agenda / Courses / Veille"]
         SW["Service worker Workbox"]
         IDB["Dexie / IndexedDB\npayloads chiffrés + outbox"]
         UI <--> IDB
@@ -179,7 +180,7 @@ flowchart LR
 | hub | Fastify 5 + TypeScript | API légère, validation/serialization par schémas. | NestJS, GraphQL, bus de messages. |
 | contrats | Zod 4 comme schéma source + export JSON Schema | Validation partagée Web/hub et format structuré Ollama. | Types TypeScript seuls sans validation runtime. |
 | base hub | SQLite en WAL via `better-sqlite3` | Transactions simples, FTS5, sauvegarde facile, support Node 24 mature. | `node:sqlite` tant qu’il reste Release Candidate ; ORM lourd. |
-| authentification | Better Auth, SQLite, email/mot de passe, inscription fermée | Évite une implémentation de mot de passe/session artisanale ; sessions révocables. | OAuth social et serveur d’email au MVP. |
+| authentification | Better Auth, SQLite, identifiant Friday/phrase secrète, inscription fermée | Évite une implémentation de mot de passe/session artisanale ; sessions révocables, sans demander d’adresse e-mail. | OAuth social et serveur d’e-mail au MVP. |
 | tests | Vitest + Playwright + recette A17 | Fonctions pures, intégration API/DB, service worker et vrais parcours. | Appium ou ferme d’appareils avant iPhone. |
 | IA | client HTTP Ollama depuis le hub | Une seule stack applicative, Ollama non exposé. | Python de production, notebooks, LangGraph, multi-agent. |
 | sauvegarde | `age` + dossier Google Drive Desktop | Chiffrement indépendant de Friday, restauration simple, aucune API Drive nécessaire. | Écriture directe des mobiles dans Drive. |
@@ -269,7 +270,7 @@ Règles transverses :
 |---|---|---|
 | foyer | `households`, `profiles`, `devices` | foyer unique, deux profils adultes, appareil lié et révocation |
 | tâches | `tasks`, `task_occurrences` | titre, date, responsable, note, règle simple, état, clé d’occurrence |
-| courses | `grocery_items` | libellé, quantité facultative, état, ordre |
+| courses | `grocery_items`, `grocery_classifications`, `grocery_classification_rules`, `grocery_classification_jobs` | libellé, quantité, état, rayon partagé, règle apprise et job persistant |
 | budget | `budget_entries`, `budget_recurring_templates`, `savings_months` | direction, catégorie fermée, montant, date, récurrence, cible/versement réel |
 | agenda | `calendar_events` | identifiant Google, début/fin, titre, mise à jour, fenêtre de cache |
 | veille | `watch_topics`, `watch_sources`, `articles`, `profile_article_states`, `digests` | préférences par profil, provenance, déduplication, états de lecture |
@@ -299,6 +300,8 @@ La priorité, la catégorie, la pièce, l’énergie, la sensibilité et les dé
 - fusion par identifiant, jamais par ressemblance de texte au MVP.
 
 « Lait » ajouté deux fois reste deux lignes tant que l’utilisateur ne fusionne pas : une déduplication automatique approximative serait plus surprenante qu’utile.
+
+Le classement facultatif par rayon utilise la taxonomie versionnée `retail-fr-v1`. Les corrections exactes du foyer puis les règles courantes sont appliquées avant d'envoyer les seuls libellés inconnus à Ministral 3 8B. Chaque entrée et réponse porte un index vérifié pour empêcher tout décalage entre produits. Le résultat reste une proposition corrigeable ; une correction humaine gagne toujours et devient une règle partagée. Le job SQLite travaille par lots de 30, survit à la fermeture de la PWA, reprend après redémarrage du hub et peut être annulé sans effet partiel.
 
 ### 5.5 Budget
 
@@ -386,6 +389,11 @@ Le serveur n’utilise jamais `clientCreatedAt` pour décider qui a raison. Il v
 | `POST /api/pairing/complete` | lie une session et un appareil au profil choisi |
 | `POST /api/devices/:id/revoke` | révoque l’appareil et ses sessions |
 | `POST /api/assistant/proposals` | crée une proposition IA, sans mutation métier |
+| `POST /api/groceries/classification-proposals` | lance ou retrouve le job de classement actif du foyer |
+| `GET /api/groceries/classification-proposals/:jobId` | lit progression, erreur ou proposition |
+| `POST /api/groceries/classification-proposals/:jobId/cancel` | arrête le job sans appliquer de résultat partiel |
+| `POST /api/groceries/classifications/apply` | confirme un aperçu corrigeable de façon idempotente |
+| `GET /api/groceries/classifications?after=` | synchronise le cache chiffré des rayons avec un curseur séparé |
 
 Les routes métier de lecture peuvent être ajoutées pour le PC, mais toutes les mutations PWA passent par le même pipeline d’opérations.
 
@@ -484,11 +492,11 @@ Changer de nom ou d’IP change l’origine Web et rend l’ancien stockage inac
 ### 8.1 Configuration MVP
 
 - Better Auth avec `better-sqlite3` ;
-- inscription publique désactivée après création des deux comptes ;
-- email/mot de passe local, sans dépendre de Gmail pour se connecter ;
+- inscription publique non exposée ; bootstrap du propriétaire possible uniquement tant que le foyer est vide, puis second adulte autorisé par code à usage unique ;
+- identifiant Friday simple et phrase secrète locale, sans adresse e-mail à saisir ni dépendance à Gmail ; Better Auth utilise en interne une adresse technique dérivée par hachage et jamais exposée ;
 - cookie de session `HttpOnly`, `Secure`, `SameSite=Strict` ;
 - sessions stockées en base et révocables ;
-- durée longue compatible avec l’usage familial, mais réauthentification exigée pour l’administration, la restauration et l’affichage de la clé de récupération ;
+- session de 30 jours compatible avec l’usage familial ; réauthentification fraîche à ajouter avant la restauration et l’affichage de la future clé de récupération ;
 - limitation du nombre de tentatives et journal d’événements d’authentification ;
 - aucun secret de session accessible au JavaScript de la PWA.
 
@@ -500,7 +508,7 @@ Le mode offline n’authentifie pas auprès du PC. Il déverrouille seulement la
 - tâches, courses, agenda et budget sont accessibles aux deux adultes ;
 - préférences, états et digests de veille sont filtrés par `profileId` ;
 - l’assistant reçoit un contexte déjà filtré ; le prompt n’est jamais le mécanisme d’autorisation ;
-- les opérations d’administration exigent le rôle `admin` et une session fraîche ;
+- les opérations d’administration courantes exigent le rôle `owner` ; la réauthentification fraîche reste requise pour les futures opérations critiques de restauration et de récupération ;
 - une révocation refuse le prochain push/pull et demande un réappairage.
 
 ## 9. Jobs, Google et sauvegardes
@@ -516,7 +524,7 @@ Pas de Redis ni de queue externe. Une table `jobs` et un worker dans le hub suff
 - journal `job_runs` ;
 - limite d’une génération Ollama lourde à la fois.
 
-Jobs initiaux : Calendar, collecte RSS, analyse d’article, génération digest, sauvegarde, purge et compactage.
+Jobs initiaux : classement des courses, Calendar, collecte RSS, analyse d’article, génération digest, sauvegarde, purge et compactage.
 
 ### 9.2 Google Calendar
 
@@ -613,7 +621,8 @@ Un spike embeddings n’est autorisé que si, sur un corpus réel d’au moins 3
 ### 11.1 Navigation
 
 - **Aujourd’hui** : prochain événement, tâches du jour, courses restantes, budget du mois, briefing disponible ;
-- **Maison** : onglets Tâches, Courses, Budget ;
+- **Agenda** : tâches et rendez-vous en vues Liste, Semaine et Mois ;
+- **Courses** : liste partagée, quantité facultative, état acheté et présentation unique regroupée par rayon ;
 - **Veille** : digest, articles et thèmes du profil ;
 - bouton `+` persistant : Tâche, Course, Dépense/Revenu, Capture.
 
@@ -669,6 +678,7 @@ Pas de jargon comptable, pas de conseil produit par LLM et pas de graphique sans
 - service worker mis à jour pendant une session ;
 - stockage ou quota refusé ;
 - Ollama absent, lent, JSON invalide ou modèle manquant ;
+- classement de courses arrêté, repris après redémarrage, rendu périmé par une modification et fusionné entre deux profils ;
 - flux RSS cassé et article contenant une prompt injection ;
 - Calendar indisponible sans disparition du cache ;
 - sauvegarde puis restauration sur base vide.
@@ -774,7 +784,7 @@ Travaux :
 - modèle complet des tâches simples et occurrences récurrentes ;
 - courses partagées ;
 - conflits visibles et tombstones ;
-- navigation Aujourd’hui/Maison/Veille ;
+- navigation Aujourd’hui/Agenda/Courses/Veille ;
 - raccourci `+`, formulaires tactiles et états offline ;
 - tests de contrats, concurrence et migrations.
 
@@ -788,7 +798,7 @@ Ordre d’exécution après fermeture du Lot 0B :
 4. implémenter l’authentification fermée et l’appairage avant les données réelles ou l’usage à deux ;
 5. ajouter les courses partagées, puis finaliser conflits et tombstones.
 
-État d’exécution au 8 août 2026, sur le candidat construit après `f310e2c` : les points 1 et 2 sont implémentés avec la même voie locale/outbox, y compris heure et durée facultatives, migration SQLite N−1 et affichages `Liste`/`Semaine`/`Mois`. Le point 3 est candidat avec deux responsables pilotes stables, note facultative et récurrence quotidienne, hebdomadaire, tous les N jours, mensuelle ou annuelle, bornée par une date de fin. Toutes les occurrences sont créées avec des identifiants déterministes dans une transaction locale/outbox unique et apparaissent immédiatement dans les trois vues. La suppression récurrente permet de retirer une occurrence ou toute la série, avec tombstones locaux groupés pour la série. Les réglages locaux couvrent aussi noms, palettes et limites distinctes pour `Aujourd'hui` et `Maison`. Les profils réels restent réservés à l’authentification/appairage. Terminer/rouvrir et date/agenda sont validés physiquement sur l’A17. Les recettes courtes du tri, des responsables, des réglages et de la récurrence/note restent les checkpoints immédiats ; après validation, la prochaine cible est le point 4, authentification et appairage.
+État d’exécution au 9 août 2026 : les points 1 à 3 sont candidats avec la même voie locale/outbox, y compris heure/durée, responsables, note, récurrence bornée, occurrences futures et suppression unitaire ou de série. Le point 4 est implémenté avec Better Auth/SQLite, identifiant Friday simple sans adresse e-mail à fournir, bootstrap fermé du propriétaire, appairage du second adulte par code de 8 chiffres valable 10 minutes et à usage unique, sessions liées aux appareils, contrôle d'identité de push/pull, révocation et remplacement de l'appareil révoqué. Après révocation, le propriétaire peut aussi oublier explicitement l'ancien compte adulte et créer une nouvelle identité sans supprimer les données partagées. Le propriétaire a initialisé le foyer ; l'appairage physique d'un second appareil reste à valider. Le point 5 couvre les courses partagées et leur classement facultatif : libellé/quantité, achat/réouverture, tombstone, résumé `Aujourd'hui`, cache chiffré, outbox, taxonomie `retail-fr-v1`, règles apprises, job SQLite persistant/arrêtable et présentation unique regroupée par rayon. Les migrations passent à SQLite 6 et Dexie 3 sans modifier le protocole de course existant. Après indexation des entrées/réponses, le corpus local de 150 libellés atteint 99,3 % famille/rayon avec 96,7 % traités par règles ; le corpus difficile atteint 88,9 % avec Ministral 3 8B en 10,4 secondes à chaud. Gemma 4 12B atteint 77,8 % en 36 secondes et reste écarté du runtime quotidien. Le cache local d'un appareil lié reste utilisable hors ligne et Ollama ne bloque jamais les mutations. Les recettes `galaxy-a17-lot-1a-auth.md`, `galaxy-a17-lot-1a-groceries.md` et `galaxy-a17-lot-1a-grocery-classification.md` restent à confirmer physiquement. La prochaine cible technique est détaillée dans `docs/11-prochaines-etapes-apres-classement-courses.md` : ADR-011, conflits explicites, tombstones conservateurs et fermeture du Lot 1A avant le budget et Calendar.
 
 ### Lot 1B — budget et agenda (1 à 3 heures)
 
@@ -885,7 +895,7 @@ La borne basse suppose peu de retours UX et une intégration Google directe. Cet
 
 Ne pas commencer en parallèle le design complet, le RAG, l’import bancaire ou une app native. Le risque principal est la fiabilité offline/sync, il doit être éliminé en premier.
 
-## 16. ADR à créer
+## 16. Registre des ADR
 
 | ADR | Décision | État |
 |---|---|---|
@@ -893,11 +903,12 @@ Ne pas commencer en parallèle le design complet, le RAG, l’import bancaire ou
 | ADR-002 | Dexie/IndexedDB et service worker `injectManifest` | confirmé par la porte A17 du 08/08/2026 |
 | ADR-003 | journal d’opérations, idempotence et conflits | accepté ; détails validés par tests P0 |
 | ADR-004 | SQLite `better-sqlite3`, WAL et migrations SQL numérotées | accepté |
-| ADR-005 | Better Auth, inscription fermée et liaison appareil | à valider par threat model |
+| ADR-005 | Better Auth, inscription fermée et liaison appareil | accepté ; candidat automatisé, recette physique en attente |
 | ADR-006 | Web Crypto, clé non extractible, limites XSS | à confirmer par spike |
 | ADR-007 | compte de service Calendar ou OAuth local | trancher lors de P1B |
 | ADR-008 | backup SQLite + `age` + Drive Desktop | à prouver par restauration P3 |
 | ADR-009 | Granite rapide, Gemma fond, FTS5 sans embeddings | accepté pour P2 |
+| ADR-010 | classement facultatif des courses par taxonomie, règles et Ollama | accepté ; candidat automatisé, recette physique en attente |
 
 Une ADR contient : contexte, options réelles, décision, conséquences, preuve, retour arrière et date de révision.
 

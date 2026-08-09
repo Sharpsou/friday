@@ -22,10 +22,10 @@ La mise au point et la recette MVP utilisent le PC et le Samsung Galaxy A17. La 
 
 ## MVP retenu
 
-- trois destinations : `Aujourd'hui`, `Maison`, `Veille` ;
+- quatre destinations : `Aujourd'hui`, `Agenda`, `Courses`, `Veille` ;
 - comptes adultes et données Maison partagées ;
 - tâches minimales, rappels visibles et récurrence simple ;
-- courses partagées ;
+- courses partagées, avec classement facultatif par rayon en arrière-plan ;
 - budget partagé : frais fixes, courses, santé, loisirs, extras, revenus réguliers/extra et épargne mensuelle ;
 - calendrier Google Maison en lecture et cache offline ;
 - veille RSS/Atom configurable par profil ;
@@ -38,9 +38,16 @@ La construction est pilotée en temps agentique : environ **8 à 16 heures cumul
 ## Documentation
 
 - [Point de reprise pour un nouveau chat](docs/00-reprise-nouveau-chat.md) — **commencer ici**
-- [Suivi et recette active Galaxy A17](docs/recipes/galaxy-a17-p0.md) — **checkpoint actuel**
+- [Recette du socle offline Galaxy A17](docs/recipes/galaxy-a17-p0.md) — porte Lot 0B validée
 - [Feuille de route technique et d’implémentation](docs/10-feuille-de-route-technique-implementation.md) — **support d’exécution actuel**
+- [Prochaines étapes après le classement des courses](docs/11-prochaines-etapes-apres-classement-courses.md) — **plan actif**
 - [Décision finale PWA MVP](docs/09-decision-finale-pwa-mvp.md) — **référence produit actuelle**
+- [ADR du classement des courses par rayon](docs/adr/010-classement-courses-par-rayon.md)
+- [Taxonomie `retail-fr-v1`](docs/reference/taxonomie-courses-retail-fr-v1.md)
+- [Runbook du classement des courses](docs/runbooks/classement-courses.md)
+- [Recette A17 du classement des courses](docs/recipes/galaxy-a17-lot-1a-grocery-classification.md)
+- [Recette A17 de l’authentification et de l’appairage](docs/recipes/galaxy-a17-lot-1a-auth.md) — **checkpoint physique**
+- [Recette A17 des courses partagées](docs/recipes/galaxy-a17-lot-1a-groceries.md) — **checkpoint physique**
 - [Étude PWA offline](docs/08-option-pwa-offline.md) — étude ayant conduit à la décision
 - [Décisions précédentes](docs/07-decisions-apres-reponses.md) — historique avant bascule PWA
 - [Questions, réponses et points ouverts](docs/06-questions.md)
@@ -60,6 +67,8 @@ Commandes principales :
 pnpm install --frozen-lockfile
 pnpm verify
 pnpm dev
+# évaluation locale facultative, Ollama requis
+pnpm --filter @friday/hub eval:grocery-classification
 ```
 
 Sous Windows, le raccourci de recette s’installe avec :
@@ -76,6 +85,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-Fr
 
 L'installateur place également sur le Bureau `Friday - Lancer ou redemarrer`, qui exécute cette commande sans navigateur ni terminal visible et confirme son résultat, ainsi que `Friday - Arreter le service`, qui coupe uniquement le hub Friday pour la recette hors ligne.
 
-La porte go/no-go offline/synchronisation du Lot 0B est validée sur le Galaxy A17 : persistance après redémarrage hors réseau et convergence sans doublon confirmées. Le développement actif passe au Lot 1A dans cet ordre : terminer/rouvrir une tâche, date/heure, responsable, récurrence et note, puis courses partagées. Les lignes 7 et 8 de la recette A17 restent des contrôles de confiance non bloquants.
+La porte go/no-go offline/synchronisation du Lot 0B est validée sur le Galaxy A17. Le candidat Lot 1A couvre terminer/rouvrir, date/heure/durée, responsable, récurrence bornée, note, authentification fermée par identifiant Friday et courses partagées offline-first. Le classement facultatif des courses par rayon combine les corrections du foyer, des règles locales et Ministral 3 8B via un job persistant arrêtable ; chaque réponse modèle est reliée à l'index du produit pour empêcher les décalages. La liste reste utilisable pendant le traitement. Le foyer propriétaire est initialisé, mais l'appairage physique d'un second appareil reste à confirmer ; la recette iPhone est reportée. Les checkpoints sont `docs/recipes/galaxy-a17-lot-1a-auth.md`, `docs/recipes/galaxy-a17-lot-1a-groceries.md` et `docs/recipes/galaxy-a17-lot-1a-grocery-classification.md`. Le plan actif est `docs/11-prochaines-etapes-apres-classement-courses.md` : recette courte du classement, ADR-011, résolution explicite des conflits et cycle de vie prudent des tombstones, puis fermeture du Lot 1A avant le budget et Calendar.
 
 Pour reprendre dans un nouveau chat, ouvrir `D:\prog\friday` et utiliser le prompt fourni dans le document 00. Le fichier `AGENTS.md` protège les décisions essentielles et les projets sources.

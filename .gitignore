@@ -1,4 +1,5 @@
 .analysis/
+.codex-remote-attachments/
 
 # Dépendances et builds
 node_modules/

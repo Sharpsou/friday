@@ -28,6 +28,7 @@ export default defineConfig({
     env: {
       ...process.env,
       FRIDAY_DATABASE_PATH: ':memory:',
+      FRIDAY_AUTH_ATTEMPT_LIMIT: '1000',
       FRIDAY_HOST: '127.0.0.1',
       FRIDAY_PORT: port,
     },

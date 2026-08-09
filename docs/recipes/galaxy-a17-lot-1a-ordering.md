@@ -13,7 +13,7 @@ Créer volontairement trois tâches dans cet ordre :
 2. une tâche demain sans heure ;
 3. une tâche aujourd'hui à `09:00`.
 
-Résultat attendu dans `Aujourd'hui` et `Maison > Liste` :
+Résultat attendu dans `Aujourd'hui` et `Agenda > Liste` :
 
 1. aujourd'hui à `09:00` ;
 2. aujourd'hui à `18:00` ;
@@ -24,7 +24,7 @@ Passer ensuite dans `Semaine` puis `Mois`. Pour chaque jour, la tâche sans heur
 | Vérification                           | Résultat/date |
 | -------------------------------------- | ------------- |
 | ordre dans `Aujourd'hui`               |               |
-| ordre dans `Maison > Liste`            |               |
+| ordre dans `Agenda > Liste`            |               |
 | ordre dans `Semaine`                   |               |
 | ordre dans le détail du jour de `Mois` |               |
 

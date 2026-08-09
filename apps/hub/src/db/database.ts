@@ -45,9 +45,215 @@ const MIGRATION_002 = `
     CHECK (duration_minutes IS NULL OR duration_minutes BETWEEN 1 AND 1440);
 `;
 
+const MIGRATION_003 = `
+  CREATE TABLE IF NOT EXISTS "user" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "email" TEXT NOT NULL UNIQUE,
+    "emailVerified" INTEGER NOT NULL,
+    "image" TEXT,
+    "createdAt" DATE NOT NULL,
+    "updatedAt" DATE NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS "session" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "expiresAt" DATE NOT NULL,
+    "token" TEXT NOT NULL UNIQUE,
+    "createdAt" DATE NOT NULL,
+    "updatedAt" DATE NOT NULL,
+    "ipAddress" TEXT,
+    "userAgent" TEXT,
+    "userId" TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+    "deviceId" TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS "account" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "accountId" TEXT NOT NULL,
+    "providerId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+    "accessToken" TEXT,
+    "refreshToken" TEXT,
+    "idToken" TEXT,
+    "accessTokenExpiresAt" DATE,
+    "refreshTokenExpiresAt" DATE,
+    "scope" TEXT,
+    "password" TEXT,
+    "createdAt" DATE NOT NULL,
+    "updatedAt" DATE NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS "verification" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "identifier" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "expiresAt" DATE NOT NULL,
+    "createdAt" DATE NOT NULL,
+    "updatedAt" DATE NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS "session_userId_idx" ON "session" ("userId");
+  CREATE INDEX IF NOT EXISTS "session_deviceId_idx" ON "session" ("deviceId");
+  CREATE INDEX IF NOT EXISTS "account_userId_idx" ON "account" ("userId");
+  CREATE INDEX IF NOT EXISTS "verification_identifier_idx" ON "verification" ("identifier");
+
+  CREATE TABLE IF NOT EXISTS households (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS household_members (
+    user_id TEXT PRIMARY KEY REFERENCES "user" ("id") ON DELETE CASCADE,
+    household_id TEXT NOT NULL REFERENCES households (id) ON DELETE CASCADE,
+    profile_id TEXT NOT NULL UNIQUE,
+    role TEXT NOT NULL CHECK (role IN ('owner', 'adult')),
+    created_at TEXT NOT NULL,
+    UNIQUE (household_id, role)
+  );
+
+  CREATE TABLE IF NOT EXISTS friday_devices (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+    household_id TEXT NOT NULL REFERENCES households (id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    revoked_at TEXT,
+    UNIQUE (user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS pairing_codes (
+    id TEXT PRIMARY KEY,
+    household_id TEXT NOT NULL REFERENCES households (id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL UNIQUE,
+    created_by_user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    used_by_user_id TEXT REFERENCES "user" ("id") ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS auth_audit_log (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    event TEXT NOT NULL,
+    user_id TEXT,
+    device_id TEXT,
+    ip_address TEXT,
+    detail TEXT,
+    created_at TEXT NOT NULL
+  );
+`;
+
+const MIGRATION_004 = `
+  ALTER TABLE household_members ADD COLUMN login_identifier TEXT;
+
+  UPDATE household_members
+     SET login_identifier = (
+       SELECT substr(u.email, 1, instr(u.email, '@') - 1)
+         FROM "user" u
+        WHERE u.id = household_members.user_id
+     )
+   WHERE login_identifier IS NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS household_members_login_identifier_idx
+    ON household_members (lower(login_identifier))
+    WHERE login_identifier IS NOT NULL;
+`;
+
+const MIGRATION_005 = `
+  CREATE TABLE IF NOT EXISTS grocery_items (
+    id TEXT PRIMARY KEY,
+    household_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    label TEXT NOT NULL,
+    quantity_text TEXT,
+    checked_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT,
+    created_by_profile_id TEXT NOT NULL,
+    updated_by_profile_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    schema_version INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS grocery_items_household_checked_idx
+    ON grocery_items (household_id, checked_at, created_at);
+`;
+
+const MIGRATION_006 = `
+  CREATE TABLE IF NOT EXISTS grocery_classification_jobs (
+    id TEXT PRIMARY KEY,
+    household_id TEXT NOT NULL,
+    taxonomy_id TEXT NOT NULL,
+    requested_by_profile_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (
+      status IN ('queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled')
+    ),
+    progress_completed INTEGER NOT NULL DEFAULT 0,
+    progress_total INTEGER NOT NULL DEFAULT 0,
+    snapshot_json TEXT NOT NULL,
+    result_json TEXT,
+    applied_response_json TEXT,
+    applied_at TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    cancel_requested INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    expires_at TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS grocery_classification_jobs_active_idx
+    ON grocery_classification_jobs (household_id, taxonomy_id, status, created_at);
+
+  CREATE TABLE IF NOT EXISTS grocery_classifications (
+    item_id TEXT PRIMARY KEY REFERENCES grocery_items (id) ON DELETE CASCADE,
+    household_id TEXT NOT NULL,
+    taxonomy_id TEXT NOT NULL,
+    store_family_id TEXT NOT NULL,
+    aisle_id TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('llm', 'rule', 'manual')),
+    confidence REAL NOT NULL CHECK (confidence BETWEEN 0 AND 1),
+    item_revision INTEGER NOT NULL,
+    label_fingerprint TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by_profile_id TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS grocery_classifications_household_idx
+    ON grocery_classifications (household_id, taxonomy_id, store_family_id, aisle_id);
+
+  CREATE TABLE IF NOT EXISTS grocery_classification_rules (
+    household_id TEXT NOT NULL,
+    taxonomy_id TEXT NOT NULL,
+    normalized_label TEXT NOT NULL,
+    store_family_id TEXT NOT NULL,
+    aisle_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by_profile_id TEXT NOT NULL,
+    PRIMARY KEY (household_id, taxonomy_id, normalized_label)
+  );
+
+  CREATE TABLE IF NOT EXISTS grocery_classification_change_log (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    household_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+`;
+
 const MIGRATIONS = [
   { sql: MIGRATION_001, version: 1 },
   { sql: MIGRATION_002, version: 2 },
+  { sql: MIGRATION_003, version: 3 },
+  { sql: MIGRATION_004, version: 4 },
+  { sql: MIGRATION_005, version: 5 },
+  { sql: MIGRATION_006, version: 6 },
 ] as const;
 
 export function migrateDatabase(

@@ -1,5 +1,48 @@
 import { expect, test } from '@playwright/test';
 
+const E2E_OWNER_DEVICE_ID = '5945057a-0b59-4d3b-814f-9581be697098';
+const E2E_OWNER_IDENTIFIER = 'adulte1';
+const E2E_OWNER_PASSWORD = 'phrase-secrete-friday';
+
+test.beforeEach(async ({ page }) => {
+  const state = await page.request.get('/api/auth/state');
+  const statePayload = (await state.json()) as { bootstrapRequired: boolean };
+  const bootstrapRequired = statePayload.bootstrapRequired;
+  const response = await page.request.post(
+    bootstrapRequired ? '/api/auth/bootstrap' : '/api/auth/login',
+    {
+      data: bootstrapRequired
+        ? {
+            deviceId: E2E_OWNER_DEVICE_ID,
+            deviceName: 'Chrome mobile de test',
+            identifier: E2E_OWNER_IDENTIFIER,
+            name: 'Adulte 1',
+            password: E2E_OWNER_PASSWORD,
+          }
+        : {
+            deviceId: E2E_OWNER_DEVICE_ID,
+            identifier: E2E_OWNER_IDENTIFIER,
+            password: E2E_OWNER_PASSWORD,
+          },
+    },
+  );
+  expect(response.ok(), await response.text()).toBe(true);
+  await page.addInitScript((deviceId) => {
+    const randomUuid = crypto.randomUUID.bind(crypto);
+    let deviceIdentityGenerated = false;
+    Object.defineProperty(crypto, 'randomUUID', {
+      configurable: true,
+      value: () => {
+        if (!deviceIdentityGenerated) {
+          deviceIdentityGenerated = true;
+          return deviceId;
+        }
+        return randomUuid();
+      },
+    });
+  }, E2E_OWNER_DEVICE_ID);
+});
+
 test('a new offline task stays pending while an older task remains shared', async ({
   context,
   page,
@@ -14,7 +57,7 @@ test('a new offline task stays pending while an older task remains shared', asyn
   await expect(
     page.getByRole('heading', { name: 'Tâches en cours' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
 
   await page.getByLabel('Nouvelle tâche').fill(sharedTitle);
   await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
@@ -33,7 +76,7 @@ test('a new offline task stays pending while an older task remains shared', asyn
   await expect(sharedTask).toContainText('Synchronisée avec le foyer');
 
   await page.reload();
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await expect(
     page.getByRole('listitem').filter({ hasText: offlineTitle }),
   ).toContainText('À synchroniser');
@@ -54,7 +97,7 @@ test('edit mode deletes a task offline without confirmation', async ({
   const title = `Tâche à supprimer ${crypto.randomUUID()}`;
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
 
   await page.getByLabel('Nouvelle tâche').fill(title);
   await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
@@ -73,7 +116,7 @@ test('edit mode deletes a task offline without confirmation', async ({
   await expect(page.getByText('1 modification en attente')).toBeVisible();
 
   await page.reload();
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await expect(page.getByText(title)).toHaveCount(0);
 
   await context.setOffline(false);
@@ -89,7 +132,7 @@ test('a task can be finished and reopened online and offline without duplication
   const title = `Tâche à terminer ${crypto.randomUUID()}`;
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
 
   await page.getByLabel('Nouvelle tâche').fill(title);
   await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
@@ -123,7 +166,7 @@ test('a task can be finished and reopened online and offline without duplication
   ).toContainText('À synchroniser');
 
   await page.reload();
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Tâches terminées' }),
   ).toContainText(title);
@@ -137,7 +180,7 @@ test('a task can be finished and reopened online and offline without duplication
   ).not.toContainText(title);
 
   await page.reload();
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Tâches en cours' }),
   ).toContainText(title);
@@ -171,7 +214,7 @@ test('tasks stay chronological in today, list, week and month views', async ({
 
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
 
   for (const task of [
     { title: lateTitle, date: today, time: '18:00' },
@@ -205,7 +248,7 @@ test('tasks stay chronological in today, list, week and month views', async ({
     todayItems.findIndex((text) => text.includes(earlyTitle)),
   ).toBeLessThan(todayItems.findIndex((text) => text.includes(lateTitle)));
 
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await page.getByRole('button', { name: 'Semaine', exact: true }).click();
   const weekCalendar = page.getByRole('region', { name: 'Agenda des tâches' });
   const weekText = await weekCalendar.textContent();
@@ -231,7 +274,7 @@ test('date-only tasks and timed appointments persist offline', async ({
   const appointmentTitle = `Rendez-vous ${crypto.randomUUID()}`;
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await page.getByText('Détails facultatifs').click();
 
   await page.getByLabel('Nouvelle tâche').fill(datedTitle);
@@ -256,7 +299,7 @@ test('date-only tasks and timed appointments persist offline', async ({
   await expect(appointment).toContainText('À synchroniser');
 
   await page.reload();
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await expect(
     page.getByRole('listitem').filter({ hasText: appointmentTitle }),
   ).toContainText('16 août 2026 à 14:30 · 45 min');
@@ -282,7 +325,7 @@ test('week and month views expose dated tasks and prepare quick add', async ({
 
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await page.getByText('Détails facultatifs').click();
   await page.getByLabel('Nouvelle tâche').fill(title);
   await page.getByLabel('Date').fill(today);
@@ -315,7 +358,7 @@ test('responsible person persists offline and filters the agenda', async ({
 
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await page.getByText('Détails facultatifs').click();
   await page.getByLabel('Nouvelle tâche').fill(unassignedTitle);
   await page.getByLabel('Date').fill(today);
@@ -346,7 +389,7 @@ test('responsible person persists offline and filters the agenda', async ({
   await expect(calendar).not.toContainText(unassignedTitle);
 
   await page.reload();
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await expect(
     page.getByRole('listitem').filter({ hasText: assignedTitle }),
   ).toContainText('Moi');
@@ -381,7 +424,7 @@ test('optional notes and recurring tasks persist offline without duplicate occur
 
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
 
   await page.getByText('Détails facultatifs').click();
   await page.getByLabel('Nouvelle tâche').fill(noteOnlyTitle);
@@ -432,7 +475,7 @@ test('optional notes and recurring tasks persist offline without duplicate occur
   ).toContainText('Tous les 3 jours');
 
   await page.reload();
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await expect(page.getByText(recurringTitle)).toHaveCount(3);
 
   await context.setOffline(false);
@@ -458,7 +501,7 @@ test('a recurring task can delete one occurrence or its whole series offline', a
 
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await context.setOffline(true);
   await page.getByText('Détails facultatifs').click();
   await page.getByLabel('Nouvelle tâche').fill(title);
@@ -492,7 +535,7 @@ test('a recurring task can delete one occurrence or its whole series offline', a
   await expect(page.getByText(title)).toHaveCount(0);
 
   await page.reload();
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await expect(page.getByText(title)).toHaveCount(0);
   await context.setOffline(false);
   await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
@@ -513,12 +556,12 @@ test('local settings rename responsible people and persist the color palette', a
   await dialog.getByLabel('Premier responsable').fill('Alice');
   await dialog.getByLabel('Deuxième responsable').fill('Bob');
   await dialog.getByLabel('Aujourd’hui').fill('7');
-  await dialog.getByLabel('Chaque liste Maison').fill('15');
+  await dialog.getByLabel('Chaque liste Agenda').fill('15');
   await dialog.getByLabel('Océan').check();
   await dialog.getByRole('button', { name: 'Enregistrer' }).click();
 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'ocean');
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await page.getByText('Détails facultatifs').click();
   await page.getByLabel('Nouvelle tâche').fill(title);
   await page
@@ -532,22 +575,22 @@ test('local settings rename responsible people and persist the color palette', a
 
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'ocean');
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
   await expect(
     page.getByRole('listitem').filter({ hasText: title }),
   ).toContainText('Alice');
   await page.getByRole('button', { name: 'Ouvrir les réglages' }).click();
   await expect(page.getByLabel('Aujourd’hui')).toHaveValue('7');
-  await expect(page.getByLabel('Chaque liste Maison')).toHaveValue('15');
+  await expect(page.getByLabel('Chaque liste Agenda')).toHaveValue('15');
 });
 
-test('local settings limit today and home task lists', async ({ page }) => {
+test('local settings limit today and agenda task lists', async ({ page }) => {
   await page.route('**/api/sync/pull?**', async (route) => {
     await route.fulfill({ json: { changes: [], cursor: 0 } });
   });
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
 
   for (const title of ['Limite une', 'Limite deux', 'Limite trois']) {
     const taskTitle = page.getByLabel('Nouvelle tâche');
@@ -564,7 +607,7 @@ test('local settings limit today and home task lists', async ({ page }) => {
   await page.getByRole('button', { name: 'Ouvrir les réglages' }).click();
   const dialog = page.getByRole('dialog', { name: 'Réglages' });
   await dialog.getByLabel('Aujourd’hui').fill('1');
-  await dialog.getByLabel('Chaque liste Maison').fill('2');
+  await dialog.getByLabel('Chaque liste Agenda').fill('2');
   await dialog.getByRole('button', { name: 'Enregistrer' }).click();
 
   await expect(
@@ -577,13 +620,247 @@ test('local settings limit today and home task lists', async ({ page }) => {
   ).toHaveCount(1);
 });
 
+test('shared groceries persist through an offline purchase cycle', async ({
+  context,
+  page,
+}) => {
+  const label = `Lait ${crypto.randomUUID()}`;
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  const navigation = page.getByRole('navigation', {
+    name: 'Navigation principale',
+  });
+  await expect(navigation.getByRole('button')).toHaveCount(4);
+  await expect(
+    navigation.getByRole('button', { name: 'Agenda', exact: true }),
+  ).toBeVisible();
+  await expect(
+    navigation.getByRole('button', { name: 'Maison', exact: true }),
+  ).toHaveCount(0);
+  await navigation
+    .getByRole('button', { name: 'Courses', exact: true })
+    .click();
+
+  await page.getByLabel('Ajouter un produit').fill(label);
+  await page.getByLabel('Quantité facultative').fill('2 bouteilles');
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  const item = page.getByRole('listitem').filter({ hasText: label });
+  await expect(item).toContainText('2 bouteilles');
+  await expect(item).toContainText('Synchronisée avec le foyer');
+
+  await page.getByRole('button', { name: 'Aujourd’hui' }).click();
+  const grocerySummary = page.getByRole('region', { name: 'Courses' });
+  await expect(grocerySummary).toContainText('1 produit à acheter');
+  await expect(grocerySummary).toContainText(label);
+  await grocerySummary.getByRole('button', { name: 'Voir la liste' }).click();
+
+  await context.setOffline(true);
+  await page
+    .getByRole('button', { name: `Marquer comme acheté ${label}` })
+    .click();
+  await expect(item).toContainText('À synchroniser');
+  await expect(
+    page.getByRole('heading', { name: 'Déjà acheté' }),
+  ).toBeVisible();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Courses', exact: true }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: label }),
+  ).toContainText('À synchroniser');
+
+  await context.setOffline(false);
+  await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: label }),
+  ).toContainText('Synchronisée avec le foyer');
+});
+
+test('grocery classification stays visible in background and can be stopped', async ({
+  page,
+}) => {
+  const label = `Produit fond ${crypto.randomUUID()}`;
+  const jobId = '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const job = (status: 'running' | 'cancelling' | 'cancelled') => ({
+    id: jobId,
+    taxonomyId: 'retail-fr-v1',
+    status,
+    progress: { completed: status === 'running' ? 1 : 0, total: 12 },
+    proposal: null,
+    error: null,
+    createdAt: '2026-08-09T12:00:00.000Z',
+    updatedAt: '2026-08-09T12:00:01.000Z',
+    expiresAt: status === 'cancelled' ? '2026-08-10T12:00:00.000Z' : null,
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Courses', exact: true }).click();
+  await page.getByLabel('Ajouter un produit').fill(label);
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: label }),
+  ).toContainText('Synchronisée avec le foyer');
+
+  await page.route(
+    '**/api/groceries/classification-proposals**',
+    async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith('/cancel')) {
+        await route.fulfill({ json: job('cancelled') });
+        return;
+      }
+      await route.fulfill({ json: job('running') });
+    },
+  );
+
+  await page.getByRole('button', { name: 'Classer par rayon' }).click();
+  await expect(page.getByText(/Classement en arrière-plan/u)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
+  await expect(page.getByText(/Classement en arrière-plan/u)).toBeVisible();
+  await page.getByRole('button', { name: 'Arrêter' }).click();
+  await expect(page.getByText('Classement interrompu')).toBeVisible();
+});
+
+test('a corrected aisle proposal is applied in the single grouped list', async ({
+  page,
+}) => {
+  const label = `Croquettes Nouchka ${crypto.randomUUID()}`;
+  const jobId = '5a72afdd-bd91-4c53-a2b1-af342922896a';
+  let groceryItemId = '';
+  let applied = false;
+  let appliedClassification: Record<string, unknown> | null = null;
+  page.on('request', (request) => {
+    if (!request.url().includes('/api/sync/push')) return;
+    const payload = request.postDataJSON() as {
+      operations?: Array<{
+        entityType: string;
+        entityId: string;
+        payload: { label?: string };
+      }>;
+    };
+    const groceryOperation = payload.operations?.find(
+      (operation) =>
+        operation.entityType === 'grocery_item' &&
+        operation.payload.label === label,
+    );
+    if (groceryOperation) groceryItemId = groceryOperation.entityId;
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Courses', exact: true }).click();
+  await page.getByLabel('Ajouter un produit').fill(label);
+  await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: label }),
+  ).toContainText('Synchronisée avec le foyer');
+  expect(groceryItemId).not.toBe('');
+  await expect(
+    page.getByRole('button', { name: 'Rayons', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'À classer', exact: true }),
+  ).toBeVisible();
+
+  await page.route(
+    '**/api/groceries/classifications?after=*',
+    async (route) => {
+      await route.fulfill({
+        json: {
+          cursor: applied ? 1 : 0,
+          changes:
+            applied && appliedClassification
+              ? [{ cursor: 1, classification: appliedClassification }]
+              : [],
+        },
+      });
+    },
+  );
+  await page.route('**/api/groceries/classifications/apply', async (route) => {
+    const request = route.request().postDataJSON() as {
+      classifications: Array<{
+        aisleId: string;
+        itemId: string;
+        storeFamilyId: string;
+      }>;
+    };
+    const choice = request.classifications[0];
+    if (!choice) throw new Error('Classement appliqué absent.');
+    appliedClassification = {
+      itemId: choice.itemId,
+      storeFamilyId: choice.storeFamilyId,
+      aisleId: choice.aisleId,
+      taxonomyId: 'retail-fr-v1',
+      source: 'manual',
+      confidence: 1,
+      itemRevision: 1,
+      labelFingerprint:
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      revision: 1,
+      updatedAt: '2026-08-09T12:02:00.000Z',
+      updatedByProfileId: 'f61f8f8b-8d09-4575-8e83-357618e881ac',
+    };
+    applied = true;
+    await route.fulfill({
+      json: {
+        classifications: [appliedClassification],
+        skippedItemIds: [],
+        cursor: 1,
+      },
+    });
+  });
+  await page.route(
+    '**/api/groceries/classification-proposals',
+    async (route) => {
+      await route.fulfill({
+        json: {
+          id: jobId,
+          taxonomyId: 'retail-fr-v1',
+          status: 'completed',
+          progress: { completed: 1, total: 1 },
+          proposal: [
+            {
+              itemId: groceryItemId,
+              label,
+              groceryRevision: 1,
+              labelFingerprint:
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              storeFamilyId: 'pet-store',
+              aisleId: 'food',
+              confidence: 0.82,
+              source: 'llm',
+              expectedClassificationRevision: null,
+            },
+          ],
+          error: null,
+          createdAt: '2026-08-09T12:00:00.000Z',
+          updatedAt: '2026-08-09T12:01:00.000Z',
+          expiresAt: '2026-08-10T12:01:00.000Z',
+        },
+      });
+    },
+  );
+
+  await page.getByRole('button', { name: 'Classer par rayon' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Vérifier les rayons' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Type de magasin').selectOption('supermarket');
+  await dialog.getByLabel('Rayon').selectOption('pets');
+  await dialog.getByRole('button', { name: 'Appliquer' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Animaux' })).toBeVisible();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: label }),
+  ).toBeVisible();
+});
+
 test('local deletion stays available while the hub request is stalled', async ({
   page,
 }) => {
   const title = `Tâche pendant synchro ${crypto.randomUUID()}`;
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
-  await page.getByRole('button', { name: 'Maison', exact: true }).click();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
 
   await page.getByLabel('Nouvelle tâche').fill(title);
   await page.getByRole('button', { name: 'Ajouter', exact: true }).click();
@@ -652,4 +929,97 @@ test('a stalled hub request does not leave the connection status pending', async
   } finally {
     releasePull();
   }
+});
+
+test('the owner pairs the second adult with a one-time code', async ({
+  browser,
+  page,
+}) => {
+  await page.goto('/');
+  await page.evaluate(async () => navigator.serviceWorker.ready);
+  await page.getByRole('button', { name: 'Ouvrir les réglages' }).click();
+  const settings = page.getByRole('dialog', { name: 'Réglages' });
+  await settings
+    .getByRole('button', { name: 'Ajouter le second adulte' })
+    .click();
+  const code = (
+    await settings.locator('.pairing-code strong').textContent()
+  )?.trim();
+  expect(code).toMatch(/^\d{8}$/u);
+
+  const secondContext = await browser.newContext({
+    viewport: { width: 412, height: 915 },
+  });
+  try {
+    const secondDeviceId = '51c048d0-17c7-4c43-8706-1727d16f2bd7';
+    await secondContext.addInitScript((deviceId) => {
+      const randomUuid = crypto.randomUUID.bind(crypto);
+      let deviceIdentityGenerated = false;
+      Object.defineProperty(crypto, 'randomUUID', {
+        configurable: true,
+        value: () => {
+          if (!deviceIdentityGenerated) {
+            deviceIdentityGenerated = true;
+            return deviceId;
+          }
+          return randomUuid();
+        },
+      });
+    }, secondDeviceId);
+    const secondPage = await secondContext.newPage();
+    await secondPage.goto(page.url());
+    await secondPage.getByRole('button', { name: 'J’ai un code' }).click();
+    await secondPage.getByLabel('Code à 8 chiffres').fill(code ?? '');
+    await secondPage.getByLabel('Prénom ou nom').fill('Adulte 2');
+    await secondPage.getByLabel('Identifiant Friday').fill('adulte2');
+    await secondPage.getByLabel('Phrase secrète').fill('autre-phrase-secrete');
+    await secondPage.getByLabel('Nom de cet appareil').fill('iPhone de test');
+    await secondPage
+      .getByRole('button', { name: 'Appairer cet appareil' })
+      .click();
+
+    await expect(
+      secondPage.getByRole('button', { name: 'Agenda', exact: true }),
+    ).toBeVisible();
+    await secondPage
+      .getByRole('button', { name: 'Agenda', exact: true })
+      .click();
+    await secondPage
+      .getByLabel('Nouvelle tâche')
+      .fill('Tâche du second adulte');
+    await secondPage
+      .getByRole('button', { name: 'Ajouter', exact: true })
+      .click();
+    await expect(
+      secondPage
+        .getByRole('listitem')
+        .filter({ hasText: 'Tâche du second adulte' }),
+    ).toContainText('Synchronisée avec le foyer');
+    await secondPage
+      .getByRole('button', { name: 'Ouvrir les réglages' })
+      .click();
+    await expect(
+      secondPage.getByRole('dialog', { name: 'Réglages' }),
+    ).toContainText('Connecté comme Adulte 2');
+  } finally {
+    await secondContext.close();
+  }
+
+  await settings.getByRole('button', { name: 'Fermer les réglages' }).click();
+  await page.getByRole('button', { name: 'Ouvrir les réglages' }).click();
+  const secondDevice = settings
+    .getByRole('listitem')
+    .filter({ hasText: 'iPhone de test' });
+  await secondDevice.getByRole('button', { name: 'Révoquer' }).click();
+  await settings
+    .getByRole('button', { name: 'Oublier le second adulte' })
+    .click();
+  await expect(settings).toContainText(
+    'Les données partagées et les tâches attribuées au second adulte restent conservées.',
+  );
+  await settings.getByRole('button', { name: 'Confirmer l’oubli' }).click();
+  await expect(settings).toContainText('Second adulte oublié.');
+  await expect(
+    settings.getByRole('button', { name: 'Ajouter le second adulte' }),
+  ).toBeVisible();
 });

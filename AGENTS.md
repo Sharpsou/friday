@@ -38,7 +38,7 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 - Google Drive ne sert qu’aux sauvegardes chiffrées, jamais au runtime ou à la synchronisation mobile.
 - Ollama reste sur `localhost` et n’est jamais requis pour Maison, budget ou synchronisation.
 - FTS5 avant embeddings ; pas de RAG, multi-agent, domotique ou banque connectée au MVP.
-- Interface principale : Aujourd’hui, Maison, Veille et bouton `+`.
+- Interface principale : Aujourd’hui, Agenda, Courses, Veille et bouton `+`.
 - Direction visuelle : « futur discret » ; en-tête réduit à `Friday`, textes factuels, état de connexion compact.
 - États de connexion visibles : `Connecté`, `Connexion…`, `Hors ligne`. Une indisponibilité du hub et une absence de réseau partagent volontairement le libellé utilisateur `Hors ligne`.
 - Tâche minimale : titre ; date, responsable, récurrence et note facultatifs.
@@ -67,11 +67,17 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 
 La porte go/no-go du Lot 0B est validée sur le Galaxy A17 : persistance après redémarrage hors réseau, retour de l’attente à zéro et convergence sans doublon confirmés par l’utilisateur le 8 août 2026.
 
-Le candidat construit après `f310e2c` implémente terminer/rouvrir, date/heure/durée, responsable facultatif, note facultative, récurrence jour/semaine/N jours/mois/an bornée par une date de fin et les vues `Liste`/`Semaine`/`Mois`. Toutes les occurrences sont créées avec des identifiants déterministes dans une transaction locale/outbox et sont immédiatement visibles ; leur suppression propose une occurrence ou toute la série. Les réglages locaux couvrent noms, palettes et limites distinctes des listes `Aujourd'hui`/`Maison`. Après un retour A17, les tâches sont triées par date puis heure dans toutes les vues, avec les tâches sans date en dernier. Les profils réels restent réservés à l’appairage. Terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026.
+Le candidat du 9 août 2026 implémente terminer/rouvrir, date/heure/durée, responsable facultatif, note facultative, récurrence jour/semaine/N jours/mois/an bornée et les vues `Liste`/`Semaine`/`Mois`. Il ajoute l'authentification fermée Better Auth/SQLite avec un identifiant Friday simple sans adresse e-mail à fournir : bootstrap du propriétaire sur foyer vide, second adulte appairé par code court à usage unique, sessions liées aux appareils, synchronisation authentifiée et révocation. Les profils historiques sont conservés ; le cache local reste utilisable hors ligne, mais une révocation bloque seulement les futurs échanges serveur. `Maison` est renommé en destination `Agenda` et `Courses` devient une destination principale distincte, avec quantité facultative, achat/réouverture, suppression, résumé dans `Aujourd'hui` et synchronisation chiffrée par la même outbox. Terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l'A17 le 8 août 2026 ; l'authentification complète et les courses ne le sont pas encore physiquement.
 
-1. faire confirmer les recettes physiques `docs/recipes/galaxy-a17-lot-1a-ordering.md`, `docs/recipes/galaxy-a17-lot-1a-assignee.md`, `docs/recipes/galaxy-a17-lot-1a-settings.md` et `docs/recipes/galaxy-a17-lot-1a-recurrence-note.md` ;
-2. traiter ensuite l’authentification fermée et l’appairage avant toute donnée réelle ou utilisation à deux ;
-3. ajouter ensuite les courses partagées, puis finaliser conflits et tombstones ;
+Le classement facultatif des courses par rayon utilise la taxonomie `retail-fr-v1`, des règles locales et apprises puis Ministral 3 8B pour les seuls libellés inconnus. Chaque entrée et réponse Ollama porte un index vérifié afin d'empêcher les décalages entre produits. Le job est persistant dans SQLite, reprend après redémarrage, affiche sa progression dans toute la PWA et peut être arrêté sans appliquer de résultat partiel. L'aperçu reste à confirmer avant partage ; la liste adopte ensuite une présentation unique regroupée par rayon, sans sous-onglets `Liste`/`Rayons`, conservée dans le cache chiffré. Sa recette physique est `docs/recipes/galaxy-a17-lot-1a-grocery-classification.md`.
+
+`pnpm verify` réussit sur ce candidat avec 75 tests unitaires/intégration et 17 scénarios Chrome mobile. L'audit de production ne signale aucune vulnérabilité npm connue.
+
+Le propriétaire a initialisé le foyer le 9 août 2026. L'appairage d'un second appareil n'est pas validé : le RG405M sous Firefox 151.0.3 atteint Friday mais conserve un avertissement de certificat, et l'essai iPhone est reporté. Ne pas convertir ces essais en preuve de recette auth. Le candidat avec les onglets distincts `Agenda` et `Courses` a été redémarré sur `:8443` ; le healthcheck réussit et `/api/auth/state` confirme `bootstrapRequired: false` sans session pour un client non authentifié.
+
+1. faire confirmer `docs/recipes/galaxy-a17-lot-1a-auth.md`, `docs/recipes/galaxy-a17-lot-1a-groceries.md` et `docs/recipes/galaxy-a17-lot-1a-grocery-classification.md`, sans bloquer entre-temps les travaux automatisés ;
+2. suivre `docs/11-prochaines-etapes-apres-classement-courses.md` : créer l'ADR-011, finaliser la résolution visible des conflits et le cycle de vie des tombstones, avec tests deux profils et coupure réseau ;
+3. fermer techniquement le Lot 1A avant de commencer le budget et Calendar en lecture ;
 4. après une évolution du runtime, reconstruire et redémarrer le hub sans ouvrir Chrome avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
 
 Ne pas commencer le budget, Calendar, la veille ou l’assistant avant la sortie technique du Lot 1A.

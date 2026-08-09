@@ -25,11 +25,16 @@ let activeSync: Promise<SyncResult> | null = null;
 let activeSyncController: AbortController | null = null;
 const SYNC_TIMEOUT_MS = 5_000;
 
+export class AuthenticationRequiredError extends Error {}
+
 async function parseJson<T>(
   response: Response,
   parser: { parse(value: unknown): T },
 ) {
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new AuthenticationRequiredError('Authentification requise.');
+    }
     throw new Error(`Synchronisation refusée (${response.status}).`);
   }
   return parser.parse(await response.json());

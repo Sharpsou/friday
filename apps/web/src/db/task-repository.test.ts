@@ -13,7 +13,10 @@ import {
   resetDatabaseForTests,
   setLocalTaskStatus,
 } from './task-repository.js';
-import { CURRENT_PROFILE_ID } from '../task-assignee.js';
+import {
+  CURRENT_PROFILE_ID,
+  OTHER_ADULT_PROFILE_ID,
+} from '../task-assignee.js';
 
 beforeEach(async () => {
   await fridayDb.open();
@@ -108,6 +111,19 @@ describe('local task repository', () => {
     expect(task).toMatchObject({ dueDate: null, note: 'Demander un devis' });
   });
 
+  it('attributes new local operations to the authenticated profile', async () => {
+    await fridayDb.settings.put({
+      key: 'currentProfileId',
+      value: OTHER_ADULT_PROFILE_ID,
+    });
+
+    const task = await createLocalTask('Tâche du second adulte');
+    const [operation] = await readPendingOperations();
+
+    expect(task.createdByProfileId).toBe(OTHER_ADULT_PROFILE_ID);
+    expect(operation?.profileId).toBe(OTHER_ADULT_PROFILE_ID);
+  });
+
   it('materializes a bounded recurring series without duplicate on completion', async () => {
     const task = await createLocalTask({
       title: 'Arroser les plantes',
@@ -190,7 +206,8 @@ describe('local task repository', () => {
 
     const operations = await readPendingOperations();
     const deletions = operations.filter(
-      (operation) => operation.payload.deletedAt !== null,
+      (operation) =>
+        operation.entityType === 'task' && operation.payload.deletedAt !== null,
     );
     expect(deletedCount).toBe(3);
     expect(await listTasks()).toHaveLength(0);
@@ -199,6 +216,7 @@ describe('local task repository', () => {
     expect(
       new Set(
         deletions.map((operation) =>
+          operation.entityType === 'task' &&
           typeof operation.payload.recurrence === 'object'
             ? operation.payload.recurrence?.seriesId
             : null,

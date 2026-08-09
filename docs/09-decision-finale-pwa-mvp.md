@@ -29,11 +29,12 @@ L'iPhone 11 Pro Max n'est plus dans le chemin critique du MVP. Il sera testé pl
 
 ### Navigation
 
-Trois destinations :
+Quatre destinations :
 
 1. **Aujourd'hui** : agenda, tâches dues, état des courses, budget et briefing ;
-2. **Maison** : tâches, courses et budget ;
-3. **Veille** : digest et thèmes du profil actif.
+2. **Agenda** : tâches, rendez-vous et vues liste/semaine/mois ;
+3. **Courses** : liste partagée et produits déjà achetés ;
+4. **Veille** : digest et thèmes du profil actif.
 
 Un bouton `+` permanent ouvre la saisie rapide.
 
@@ -51,6 +52,8 @@ Un bouton `+` permanent ouvre la saisie rapide.
 - quantité facultative ;
 - case à cocher ;
 - liste commune au foyer.
+- classement facultatif par rayon, déclenché manuellement et confirmé avant application ;
+- traitement Ollama en arrière-plan, arrêtable et sans blocage de la liste.
 
 ### Budget partagé
 
@@ -327,7 +330,7 @@ Porte de sortie : une tâche créée offline survit à un redémarrage du télé
 
 ### P1 — Friday Maison : environ 3 à 6 heures agentiques
 
-- navigation Aujourd'hui/Maison/Veille ;
+- navigation Aujourd'hui/Agenda/Courses/Veille ;
 - tâches ;
 - courses ;
 - budget défini ;

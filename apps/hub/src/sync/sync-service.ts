@@ -1,11 +1,15 @@
 import type Database from 'better-sqlite3';
 
 import {
+  GroceryItemRecordSchema,
+  TaskRecordSchema,
   type Change,
+  type GroceryItemOperation,
+  type GroceryItemRecord,
   type OperationAck,
   type PullResponse,
   type PushResponse,
-  type TaskOperation,
+  type SyncOperation,
   type TaskRecord,
 } from '@friday/contracts';
 
@@ -34,9 +38,25 @@ interface AppliedOperationRow {
   result_json: string;
 }
 
+interface GroceryItemRow {
+  id: string;
+  household_id: string;
+  revision: number;
+  label: string;
+  quantity_text: string | null;
+  checked_at: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  created_by_profile_id: string;
+  updated_by_profile_id: string;
+  device_id: string;
+  schema_version: 1;
+}
+
 interface ChangeRow {
   sequence: number;
-  entity_type: 'task';
+  entity_type: 'grocery_item' | 'task';
   entity_id: string;
   operation: 'upsert';
   payload_json: string;
@@ -49,7 +69,7 @@ export class SyncService {
     this.#database = database;
   }
 
-  push(operations: readonly TaskOperation[]): PushResponse {
+  push(operations: readonly SyncOperation[]): PushResponse {
     const acks = operations.map((operation) => this.#apply(operation));
     return { acks, cursor: this.#currentCursor() };
   }
@@ -65,13 +85,25 @@ export class SyncService {
       )
       .all(after) as ChangeRow[];
 
-    const changes: Change[] = rows.map((row) => ({
-      cursor: row.sequence,
-      entityType: row.entity_type,
-      entityId: row.entity_id,
-      operation: row.operation,
-      payload: JSON.parse(row.payload_json) as TaskRecord,
-    }));
+    const changes: Change[] = rows.map((row) => {
+      const common = {
+        cursor: row.sequence,
+        entityId: row.entity_id,
+        operation: row.operation,
+      } as const;
+      if (row.entity_type === 'grocery_item') {
+        return {
+          ...common,
+          entityType: 'grocery_item',
+          payload: GroceryItemRecordSchema.parse(JSON.parse(row.payload_json)),
+        };
+      }
+      return {
+        ...common,
+        entityType: 'task',
+        payload: TaskRecordSchema.parse(JSON.parse(row.payload_json)),
+      };
+    });
 
     return {
       changes,
@@ -79,7 +111,7 @@ export class SyncService {
     };
   }
 
-  #apply(operation: TaskOperation): OperationAck {
+  #apply(operation: SyncOperation): OperationAck {
     return this.#database.transaction(() => {
       const prior = this.#database
         .prepare(
@@ -89,6 +121,10 @@ export class SyncService {
 
       if (prior) {
         return JSON.parse(prior.result_json) as OperationAck;
+      }
+
+      if (operation.entityType === 'grocery_item') {
+        return this.#applyGroceryItem(operation);
       }
 
       const current = this.#database
@@ -180,6 +216,84 @@ export class SyncService {
       this.#remember(operation.operationId, ack);
       return ack;
     })();
+  }
+
+  #applyGroceryItem(operation: GroceryItemOperation): OperationAck {
+    const current = this.#database
+      .prepare('SELECT * FROM grocery_items WHERE id = ?')
+      .get(operation.entityId) as GroceryItemRow | undefined;
+
+    if ((current?.revision ?? 0) !== operation.baseRevision) {
+      const conflict: OperationAck = {
+        operationId: operation.operationId,
+        entityId: operation.entityId,
+        status: 'conflict',
+        serverRevision: current?.revision ?? 0,
+        conflictReason: 'revision_mismatch',
+      };
+      this.#remember(operation.operationId, conflict);
+      return conflict;
+    }
+
+    const now = new Date().toISOString();
+    const revision = (current?.revision ?? 0) + 1;
+    const canonical: GroceryItemRecord = {
+      ...operation.payload,
+      revision,
+      createdAt: current?.created_at ?? now,
+      updatedAt: now,
+      updatedByProfileId: operation.profileId,
+      deviceId: operation.deviceId,
+    };
+
+    this.#database
+      .prepare(
+        `INSERT INTO grocery_items (
+           id, household_id, revision, label, quantity_text, checked_at,
+           created_at, updated_at, deleted_at, created_by_profile_id,
+           updated_by_profile_id, device_id, schema_version
+         ) VALUES (
+           @id, @householdId, @revision, @label, @quantityText, @checkedAt,
+           @createdAt, @updatedAt, @deletedAt, @createdByProfileId,
+           @updatedByProfileId, @deviceId, @schemaVersion
+         )
+         ON CONFLICT(id) DO UPDATE SET
+           household_id = excluded.household_id,
+           revision = excluded.revision,
+           label = excluded.label,
+           quantity_text = excluded.quantity_text,
+           checked_at = excluded.checked_at,
+           updated_at = excluded.updated_at,
+           deleted_at = excluded.deleted_at,
+           updated_by_profile_id = excluded.updated_by_profile_id,
+           device_id = excluded.device_id,
+           schema_version = excluded.schema_version`,
+      )
+      .run(canonical);
+
+    this.#database
+      .prepare(
+        `INSERT INTO change_log (
+           entity_type, entity_id, operation, payload_json, created_at
+         ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        'grocery_item',
+        operation.entityId,
+        'upsert',
+        JSON.stringify(canonical),
+        now,
+      );
+
+    const ack: OperationAck = {
+      operationId: operation.operationId,
+      entityId: operation.entityId,
+      status: 'applied',
+      serverRevision: revision,
+      conflictReason: null,
+    };
+    this.#remember(operation.operationId, ack);
+    return ack;
   }
 
   #remember(operationId: string, ack: OperationAck): void {

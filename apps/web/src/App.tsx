@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import type {
+  AuthDevice,
+  AuthMember,
+  GroceryClassificationRecord,
+} from '@friday/contracts';
+
+import { AuthGate } from './auth/AuthGate.js';
+import {
+  createPairingCode,
+  forgetAdult,
+  listAuthDevices,
+  listAuthMembers,
+  revokeAuthDevice,
+} from './auth/auth-client.js';
+import { useClosedAuth } from './auth/use-closed-auth.js';
 import {
   applyAppTheme,
   DEFAULT_APP_PREFERENCES,
@@ -16,8 +31,29 @@ import {
   setLocalTaskStatus,
   type LocalTask,
 } from './db/task-repository.js';
+import {
+  createLocalGroceryItem,
+  deleteLocalGroceryItem,
+  listGroceryItems,
+  setLocalGroceryItemChecked,
+  type LocalGroceryItem,
+} from './db/grocery-repository.js';
+import { listGroceryClassifications } from './db/grocery-classification-repository.js';
+import {
+  GroceryClassificationDialog,
+  GroceryClassificationIndicator,
+} from './GroceryClassification.js';
+import {
+  groupGroceriesByAisle,
+  type GroceryAisleGroup,
+} from './grocery-classification-groups.js';
 import { updateServiceWorker } from './pwa.js';
-import { cancelActiveSync, syncNow } from './sync/sync-client.js';
+import { syncGroceryClassifications } from './sync/grocery-classification-client.js';
+import {
+  AuthenticationRequiredError,
+  cancelActiveSync,
+  syncNow,
+} from './sync/sync-client.js';
 import {
   getAssigneeChoices,
   getAssigneeFilters,
@@ -29,8 +65,9 @@ import {
 } from './task-assignee.js';
 import { TaskCalendar } from './TaskCalendar.js';
 import { formatTaskRecurrence } from './task-recurrence.js';
+import { useGroceryClassification } from './use-grocery-classification.js';
 
-type Destination = 'today' | 'home' | 'watch';
+type Destination = 'today' | 'agenda' | 'groceries' | 'watch';
 type TaskView = 'list' | 'week' | 'month';
 type RecurrenceChoice =
   'none' | 'daily' | 'weekly' | 'custom-days' | 'monthly' | 'yearly';
@@ -68,9 +105,24 @@ function formatTaskSchedule(task: LocalTask): string | null {
 }
 
 export function App() {
+  const auth = useClosedAuth();
+  const authSession = auth.session;
+  const refreshAuth = auth.refresh;
   const [destination, setDestination] = useState<Destination>('today');
   const [taskView, setTaskView] = useState<TaskView>('list');
   const [tasks, setTasks] = useState<LocalTask[]>([]);
+  const [groceryItems, setGroceryItems] = useState<LocalGroceryItem[]>([]);
+  const [groceryClassifications, setGroceryClassifications] = useState<
+    GroceryClassificationRecord[]
+  >([]);
+  const [classificationPreviewOpen, setClassificationPreviewOpen] =
+    useState(false);
+  const [groceryLabel, setGroceryLabel] = useState('');
+  const [groceryQuantity, setGroceryQuantity] = useState('');
+  const [editingGroceries, setEditingGroceries] = useState(false);
+  const [changingGroceryItemId, setChangingGroceryItemId] = useState<
+    string | null
+  >(null);
   const [editingTasks, setEditingTasks] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [taskPendingDeletion, setTaskPendingDeletion] =
@@ -95,6 +147,16 @@ export function App() {
     DEFAULT_APP_PREFERENCES,
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [authDevices, setAuthDevices] = useState<AuthDevice[]>([]);
+  const [authMembers, setAuthMembers] = useState<AuthMember[]>([]);
+  const [pairingCode, setPairingCode] = useState<{
+    code: string;
+    expiresAt: string;
+  } | null>(null);
+  const [authManagementMessage, setAuthManagementMessage] = useState<
+    string | null
+  >(null);
+  const [confirmAdultForget, setConfirmAdultForget] = useState(false);
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
@@ -104,9 +166,11 @@ export function App() {
   const [syncing, setSyncing] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const groceryInputRef = useRef<HTMLInputElement>(null);
   const scheduleDetailsRef = useRef<HTMLDetailsElement>(null);
   const settingsCloseRef = useRef<HTMLButtonElement>(null);
   const deletionCancelRef = useRef<HTMLButtonElement>(null);
+  const groceryClassification = useGroceryClassification(authSession !== null);
 
   const assigneeLabels = useMemo(
     () => ({
@@ -125,11 +189,16 @@ export function App() {
   );
 
   const reloadLocalState = useCallback(async () => {
-    const [localTasks, counts] = await Promise.all([
-      listTasks(),
-      getOutboxCounts(),
-    ]);
+    const [localTasks, localGroceryItems, localGroceryClassifications, counts] =
+      await Promise.all([
+        listTasks(),
+        listGroceryItems(),
+        listGroceryClassifications(),
+        getOutboxCounts(),
+      ]);
     setTasks(localTasks);
+    setGroceryItems(localGroceryItems);
+    setGroceryClassifications(localGroceryClassifications);
     setPending(counts.pending);
     setConflicts(counts.conflicts);
     return localTasks;
@@ -137,6 +206,10 @@ export function App() {
 
   const synchronize = useCallback(
     async (forceAttempt = false) => {
+      if (!authSession) {
+        setHubReachable(null);
+        return;
+      }
       if (!forceAttempt && !navigator.onLine) {
         setHubReachable(false);
         await reloadLocalState();
@@ -146,10 +219,14 @@ export function App() {
       setSyncing(true);
       try {
         const result = await syncNow();
+        await syncGroceryClassifications().catch(() => undefined);
         setHubReachable(true);
         setLastSync(result.syncedAt);
         await reloadLocalState();
-      } catch {
+      } catch (error) {
+        if (error instanceof AuthenticationRequiredError) {
+          await refreshAuth();
+        }
         const browserOnline = navigator.onLine;
         setOnline(browserOnline);
         setHubReachable(false);
@@ -158,8 +235,22 @@ export function App() {
         setSyncing(false);
       }
     },
-    [reloadLocalState],
+    [authSession, refreshAuth, reloadLocalState],
   );
+
+  const reloadAuthManagement = useCallback(async () => {
+    if (!authSession || !navigator.onLine) return;
+    try {
+      const [members, devices] = await Promise.all([
+        listAuthMembers(),
+        listAuthDevices(),
+      ]);
+      setAuthMembers(members);
+      setAuthDevices(devices);
+    } catch {
+      // The cached profile remains sufficient for offline task access.
+    }
+  }, [authSession]);
 
   useEffect(() => {
     window.queueMicrotask(() => {
@@ -173,6 +264,10 @@ export function App() {
     });
     if (navigator.storage?.persist) void navigator.storage.persist();
   }, [reloadLocalState, synchronize]);
+
+  useEffect(() => {
+    window.queueMicrotask(() => void reloadAuthManagement());
+  }, [reloadAuthManagement]);
 
   useEffect(() => {
     if (!settingsOpen) return;
@@ -264,9 +359,30 @@ export function App() {
     };
   }, [filteredTasks]);
 
+  const { purchasedGroceryItems, unpurchasedGroceryItems } = useMemo(() => {
+    const purchased: LocalGroceryItem[] = [];
+    const unpurchased: LocalGroceryItem[] = [];
+    for (const item of groceryItems) {
+      if (item.checkedAt) purchased.push(item);
+      else unpurchased.push(item);
+    }
+    return {
+      purchasedGroceryItems: purchased,
+      unpurchasedGroceryItems: unpurchased,
+    };
+  }, [groceryItems]);
+
+  const groceryAisleGroups = useMemo(
+    () =>
+      groupGroceriesByAisle(unpurchasedGroceryItems, groceryClassifications),
+    [groceryClassifications, unpurchasedGroceryItems],
+  );
+
   async function submitTask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
+      await cancelActiveSync();
+      setSyncing(false);
       await createLocalTask({
         assigneeProfileId: getAssigneeProfileId(assigneeChoice),
         title,
@@ -379,17 +495,148 @@ export function App() {
     }
   }
 
+  async function submitGroceryItem(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      await cancelActiveSync();
+      setSyncing(false);
+      await createLocalGroceryItem({
+        label: groceryLabel,
+        quantityText: groceryQuantity,
+      });
+      setGroceryLabel('');
+      setGroceryQuantity('');
+      setMessage('Produit ajouté sur cet appareil.');
+      await reloadLocalState();
+      void synchronize();
+      window.setTimeout(() => groceryInputRef.current?.focus(), 0);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : 'Ajout du produit impossible',
+      );
+    }
+  }
+
+  async function changeGroceryItemState(itemId: string, checked: boolean) {
+    setChangingGroceryItemId(itemId);
+    try {
+      await cancelActiveSync();
+      setSyncing(false);
+      await setLocalGroceryItemChecked(itemId, checked);
+      setMessage(
+        checked
+          ? 'Produit marqué comme acheté sur cet appareil.'
+          : 'Produit remis dans la liste sur cet appareil.',
+      );
+      await reloadLocalState();
+      void synchronize();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : 'Modification impossible',
+      );
+    } finally {
+      setChangingGroceryItemId(null);
+    }
+  }
+
+  async function deleteGroceryItem(itemId: string) {
+    setChangingGroceryItemId(itemId);
+    try {
+      await cancelActiveSync();
+      setSyncing(false);
+      await deleteLocalGroceryItem(itemId);
+      setMessage('Produit supprimé sur cet appareil.');
+      await reloadLocalState();
+      if (groceryItems.length <= 1) setEditingGroceries(false);
+      void synchronize();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : 'Suppression impossible',
+      );
+    } finally {
+      setChangingGroceryItemId(null);
+    }
+  }
+
+  async function startGroceryAisleClassification() {
+    if (!navigator.onLine || hubReachable === false) {
+      setMessage(
+        'Le classement par rayon nécessite le hub. La liste reste disponible hors ligne.',
+      );
+      return;
+    }
+    try {
+      await synchronize(true);
+      const job = await groceryClassification.start();
+      setMessage(
+        job.status === 'completed'
+          ? 'Le classement est prêt à être vérifié.'
+          : 'Le classement tourne en arrière-plan. Vous pouvez continuer à utiliser Friday.',
+      );
+      if (job.status === 'completed') setClassificationPreviewOpen(true);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Impossible de lancer le classement.',
+      );
+    }
+  }
+
+  async function stopGroceryAisleClassification() {
+    try {
+      const job = await groceryClassification.cancel();
+      setMessage(
+        job?.status === 'cancelled'
+          ? 'Classement interrompu. La liste n’a pas été modifiée.'
+          : 'Arrêt du classement demandé.',
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Impossible d’arrêter le classement.',
+      );
+    }
+  }
+
+  async function applyGroceryAisleClassification(
+    classifications: Parameters<typeof groceryClassification.apply>[0],
+  ) {
+    try {
+      const response = await groceryClassification.apply(classifications);
+      const classificationCacheUpdated = await syncGroceryClassifications()
+        .then(() => true)
+        .catch(() => false);
+      await reloadLocalState();
+      setClassificationPreviewOpen(false);
+      setMessage(
+        !classificationCacheUpdated
+          ? 'Classement appliqué. Il apparaîtra après la prochaine synchronisation.'
+          : response.skippedItemIds.length === 0
+            ? 'Classement appliqué et partagé avec le foyer.'
+            : `Classement appliqué. ${response.skippedItemIds.length.toString()} produit${response.skippedItemIds.length > 1 ? 's modifiés ont' : ' modifié a'} été ignoré${response.skippedItemIds.length > 1 ? 's' : ''}.`,
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Impossible d’appliquer le classement.',
+      );
+    }
+  }
+
   function openQuickAdd() {
     setEditingTasks(false);
     setTaskView('list');
-    setDestination('home');
+    setDestination('agenda');
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }
 
   function openQuickAddForDate(date: string) {
     setEditingTasks(false);
     setTaskView('list');
-    setDestination('home');
+    setDestination('agenda');
     setDueDate(date);
     setDueTime('');
     setDurationMinutes('');
@@ -401,9 +648,61 @@ export function App() {
     }, 0);
   }
 
+  function openGroceryQuickAdd() {
+    setEditingGroceries(false);
+    setDestination('groceries');
+    window.setTimeout(() => groceryInputRef.current?.focus(), 0);
+  }
+
   function openSettings() {
     setPreferencesDraft(preferences);
+    setAuthManagementMessage(null);
+    setConfirmAdultForget(false);
     setSettingsOpen(true);
+    void reloadAuthManagement();
+  }
+
+  async function generatePairingCode() {
+    try {
+      setPairingCode(await createPairingCode());
+      setAuthManagementMessage(
+        'Code créé. Il est valable dix minutes et une seule fois.',
+      );
+    } catch (error) {
+      setAuthManagementMessage(
+        error instanceof Error ? error.message : 'Création du code impossible.',
+      );
+    }
+  }
+
+  async function revokeDevice(deviceId: string) {
+    try {
+      await revokeAuthDevice(deviceId);
+      setAuthManagementMessage('Appareil révoqué. Ses sessions sont fermées.');
+      await reloadAuthManagement();
+    } catch (error) {
+      setAuthManagementMessage(
+        error instanceof Error ? error.message : 'Révocation impossible.',
+      );
+    }
+  }
+
+  async function forgetSecondAdult() {
+    try {
+      await forgetAdult();
+      setConfirmAdultForget(false);
+      setPairingCode(null);
+      setAuthManagementMessage(
+        'Second adulte oublié. Vous pouvez maintenant créer un nouveau code.',
+      );
+      await reloadAuthManagement();
+    } catch (error) {
+      setAuthManagementMessage(
+        error instanceof Error
+          ? error.message
+          : 'Suppression du second adulte impossible.',
+      );
+    }
   }
 
   async function submitPreferences(event: React.FormEvent<HTMLFormElement>) {
@@ -435,6 +734,9 @@ export function App() {
         ? 'is-online'
         : 'is-offline';
 
+  const authenticatedSession = authSession;
+  if (!authenticatedSession) return <AuthGate auth={auth} />;
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -463,6 +765,20 @@ export function App() {
         </div>
       </header>
 
+      {groceryClassification.job ? (
+        <GroceryClassificationIndicator
+          busy={groceryClassification.busy}
+          job={groceryClassification.job}
+          onDismiss={() => void groceryClassification.dismiss()}
+          onOpen={() => {
+            setDestination('groceries');
+            setClassificationPreviewOpen(true);
+          }}
+          onRetry={() => void startGroceryAisleClassification()}
+          onStop={() => void stopGroceryAisleClassification()}
+        />
+      ) : null}
+
       <main>
         {destination === 'today' && (
           <section className="screen" aria-labelledby="today-title">
@@ -476,8 +792,8 @@ export function App() {
               <p>
                 {message ??
                   (activeTasks.length === 0
-                    ? 'Ajoutez une tâche depuis Maison.'
-                    : 'Consultez ou modifiez la liste dans Maison.')}
+                    ? 'Ajoutez une tâche depuis Agenda.'
+                    : 'Consultez ou modifiez la liste dans Agenda.')}
               </p>
             </div>
 
@@ -506,6 +822,40 @@ export function App() {
               />
             </section>
 
+            <section
+              className="panel grocery-summary-panel"
+              aria-label="Courses"
+            >
+              <div className="section-heading">
+                <div>
+                  <span className="eyebrow">Courses</span>
+                  <h3 id="groceries-summary-title">
+                    {unpurchasedGroceryItems.length === 0
+                      ? 'Liste à jour'
+                      : `${unpurchasedGroceryItems.length} produit${unpurchasedGroceryItems.length > 1 ? 's' : ''} à acheter`}
+                  </h3>
+                </div>
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => {
+                    setEditingGroceries(false);
+                    setDestination('groceries');
+                  }}
+                >
+                  Voir la liste
+                </button>
+              </div>
+              <p>
+                {unpurchasedGroceryItems.length === 0
+                  ? 'Aucun produit restant.'
+                  : unpurchasedGroceryItems
+                      .slice(0, 3)
+                      .map((item) => item.label)
+                      .join(' · ')}
+              </p>
+            </section>
+
             {conflicts > 0 ? (
               <aside className="conflict-notice" aria-live="polite">
                 <div>
@@ -519,7 +869,7 @@ export function App() {
                       : 'Des tâches ont changé sur plusieurs appareils.'}
                   </span>
                 </div>
-                <button type="button" onClick={() => setDestination('home')}>
+                <button type="button" onClick={() => setDestination('agenda')}>
                   Voir
                 </button>
               </aside>
@@ -549,16 +899,16 @@ export function App() {
           </section>
         )}
 
-        {destination === 'home' && (
-          <section className="screen" aria-labelledby="home-title">
+        {destination === 'agenda' && (
+          <section className="screen" aria-labelledby="agenda-title">
             <div className="section-heading page-heading">
               <div>
-                <span className="eyebrow">Maison</span>
-                <h2 id="home-title">Agenda</h2>
+                <span className="eyebrow">Planification</span>
+                <h2 id="agenda-title">Agenda</h2>
               </div>
               <div className="page-actions">
                 <span className="count-badge">{filteredTasks.length}</span>
-                {taskView === 'list' && filteredTasks.length > 0 && (
+                {taskView === 'list' && filteredTasks.length > 0 ? (
                   <button
                     className="edit-toggle"
                     type="button"
@@ -567,7 +917,7 @@ export function App() {
                   >
                     {editingTasks ? 'Terminer' : 'Modifier'}
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
 
@@ -876,6 +1226,77 @@ export function App() {
           </section>
         )}
 
+        {destination === 'groceries' && (
+          <section className="screen" aria-labelledby="groceries-title">
+            <div className="section-heading page-heading">
+              <div>
+                <span className="eyebrow">Liste partagée</span>
+                <h2 id="groceries-title">Courses</h2>
+              </div>
+              <div className="page-actions">
+                <span className="count-badge">{groceryItems.length}</span>
+                {groceryItems.length > 0 ? (
+                  <button
+                    className="edit-toggle"
+                    type="button"
+                    aria-pressed={editingGroceries}
+                    onClick={() => setEditingGroceries((current) => !current)}
+                  >
+                    {editingGroceries ? 'Terminer' : 'Modifier'}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="grocery-classification-toolbar">
+              <button
+                className="classify-groceries-button"
+                type="button"
+                disabled={
+                  unpurchasedGroceryItems.length === 0 ||
+                  groceryClassification.busy ||
+                  ['queued', 'running', 'cancelling'].includes(
+                    groceryClassification.job?.status ?? '',
+                  )
+                }
+                title={
+                  !online || hubReachable !== true
+                    ? 'Le classement nécessite le hub.'
+                    : undefined
+                }
+                onClick={() => {
+                  if (groceryClassification.job?.status === 'completed') {
+                    setClassificationPreviewOpen(true);
+                  } else {
+                    void startGroceryAisleClassification();
+                  }
+                }}
+              >
+                {groceryClassification.job?.status === 'completed'
+                  ? 'Vérifier le classement'
+                  : 'Classer par rayon'}
+              </button>
+            </div>
+
+            <GroceryView
+              aisleGroups={groceryAisleGroups}
+              changingItemId={changingGroceryItemId}
+              editing={editingGroceries}
+              inputRef={groceryInputRef}
+              label={groceryLabel}
+              purchasedItems={purchasedGroceryItems}
+              quantity={groceryQuantity}
+              onCheckedChange={(itemId, checked) =>
+                void changeGroceryItemState(itemId, checked)
+              }
+              onDelete={(itemId) => void deleteGroceryItem(itemId)}
+              onLabelChange={setGroceryLabel}
+              onQuantityChange={setGroceryQuantity}
+              onSubmit={(event) => void submitGroceryItem(event)}
+            />
+          </section>
+        )}
+
         {destination === 'watch' && (
           <section className="screen centered" aria-labelledby="watch-title">
             <div className="placeholder-mark">V</div>
@@ -897,6 +1318,19 @@ export function App() {
           </button>
         </aside>
       )}
+
+      {classificationPreviewOpen &&
+      groceryClassification.job?.status === 'completed' ? (
+        <GroceryClassificationDialog
+          busy={groceryClassification.busy}
+          items={groceryItems}
+          job={groceryClassification.job}
+          onApply={(classifications) =>
+            void applyGroceryAisleClassification(classifications)
+          }
+          onClose={() => setClassificationPreviewOpen(false)}
+        />
+      ) : null}
 
       {taskPendingDeletion ? (
         <div
@@ -984,6 +1418,119 @@ export function App() {
             </div>
             <form onSubmit={(event) => void submitPreferences(event)}>
               <fieldset>
+                <legend>Foyer et appareils</legend>
+                <p>
+                  Connecté comme {authenticatedSession.member.name} ·{' '}
+                  {authenticatedSession.member.role === 'owner'
+                    ? 'Propriétaire'
+                    : 'Adulte'}
+                </p>
+                {authenticatedSession.member.role === 'owner' &&
+                !authDevices.some(
+                  (device) => !device.current && !device.revokedAt,
+                ) ? (
+                  <button
+                    className="secondary-button auth-settings-button"
+                    type="button"
+                    onClick={() => void generatePairingCode()}
+                  >
+                    {authMembers.length < 2
+                      ? 'Ajouter le second adulte'
+                      : 'Réappairer le second adulte'}
+                  </button>
+                ) : null}
+                {pairingCode ? (
+                  <div className="pairing-code" role="status">
+                    <span>Code temporaire</span>
+                    <strong>{pairingCode.code}</strong>
+                    <small>
+                      Expire à{' '}
+                      {new Date(pairingCode.expiresAt).toLocaleTimeString(
+                        'fr-FR',
+                        { hour: '2-digit', minute: '2-digit' },
+                      )}
+                    </small>
+                  </div>
+                ) : null}
+                {authDevices.length > 0 ? (
+                  <ul className="auth-device-list">
+                    {authDevices.map((device) => (
+                      <li key={device.id}>
+                        <span>
+                          <strong>{device.name}</strong>
+                          <small>
+                            {device.memberName}
+                            {device.current ? ' · Cet appareil' : ''}
+                            {device.revokedAt ? ' · Révoqué' : ''}
+                          </small>
+                        </span>
+                        {authenticatedSession.member.role === 'owner' &&
+                        !device.current &&
+                        !device.revokedAt ? (
+                          <button
+                            type="button"
+                            onClick={() => void revokeDevice(device.id)}
+                          >
+                            Révoquer
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {authenticatedSession.member.role === 'owner' &&
+                authMembers.some((member) => member.role === 'adult') &&
+                !authDevices.some(
+                  (device) => !device.current && !device.revokedAt,
+                ) ? (
+                  confirmAdultForget ? (
+                    <div className="adult-forget-confirmation" role="alert">
+                      <p>
+                        L’identifiant et la phrase secrète de l’ancien adulte
+                        seront supprimés. Les données partagées et les tâches
+                        attribuées au second adulte restent conservées.
+                      </p>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmAdultForget(false)}
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          className="delete-series-button"
+                          type="button"
+                          onClick={() => void forgetSecondAdult()}
+                        >
+                          Confirmer l’oubli
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      className="secondary-button auth-settings-button"
+                      type="button"
+                      onClick={() => setConfirmAdultForget(true)}
+                    >
+                      Oublier le second adulte
+                    </button>
+                  )
+                ) : null}
+                {authManagementMessage ? (
+                  <p role="status">{authManagementMessage}</p>
+                ) : null}
+                <button
+                  className="secondary-button auth-settings-button"
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    void auth.logout();
+                  }}
+                >
+                  Se déconnecter
+                </button>
+              </fieldset>
+              <fieldset>
                 <legend>Responsables</legend>
                 <p>
                   Les noms changent seulement l’affichage. Les tâches gardent
@@ -1070,7 +1617,7 @@ export function App() {
                   />
                 </label>
                 <label htmlFor="home-task-limit">
-                  <span>Chaque liste Maison</span>
+                  <span>Chaque liste Agenda</span>
                   <input
                     id="home-task-limit"
                     type="number"
@@ -1107,7 +1654,9 @@ export function App() {
       <button
         className="fab"
         type="button"
-        onClick={openQuickAdd}
+        onClick={
+          destination === 'groceries' ? openGroceryQuickAdd : openQuickAdd
+        }
         aria-label="Ajouter rapidement"
       >
         +
@@ -1120,9 +1669,14 @@ export function App() {
           onClick={() => setDestination('today')}
         />
         <NavButton
-          active={destination === 'home'}
-          label="Maison"
-          onClick={() => setDestination('home')}
+          active={destination === 'agenda'}
+          label="Agenda"
+          onClick={() => setDestination('agenda')}
+        />
+        <NavButton
+          active={destination === 'groceries'}
+          label="Courses"
+          onClick={() => setDestination('groceries')}
         />
         <NavButton
           active={destination === 'watch'}
@@ -1131,6 +1685,179 @@ export function App() {
         />
       </nav>
     </div>
+  );
+}
+
+function GroceryView({
+  aisleGroups,
+  changingItemId,
+  editing,
+  inputRef,
+  label,
+  purchasedItems,
+  quantity,
+  onCheckedChange,
+  onDelete,
+  onLabelChange,
+  onQuantityChange,
+  onSubmit,
+}: {
+  aisleGroups: readonly GroceryAisleGroup[];
+  changingItemId: string | null;
+  editing: boolean;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  label: string;
+  purchasedItems: readonly LocalGroceryItem[];
+  quantity: string;
+  onCheckedChange: (itemId: string, checked: boolean) => void;
+  onDelete: (itemId: string) => void;
+  onLabelChange: (value: string) => void;
+  onQuantityChange: (value: string) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <>
+      {editing ? (
+        <div className="edit-notice" role="status">
+          <strong>Mode modification</strong>
+          <span>Sélectionnez Supprimer sur un produit.</span>
+        </div>
+      ) : (
+        <form className="quick-form grocery-form" onSubmit={onSubmit}>
+          <label htmlFor="grocery-label">Ajouter un produit</label>
+          <div className="grocery-input-row">
+            <input
+              ref={inputRef}
+              id="grocery-label"
+              value={label}
+              maxLength={200}
+              autoComplete="off"
+              placeholder="Ex. Lait"
+              onChange={(event) => onLabelChange(event.target.value)}
+            />
+            <input
+              aria-label="Quantité facultative"
+              value={quantity}
+              maxLength={80}
+              autoComplete="off"
+              placeholder="Quantité (facultatif)"
+              onChange={(event) => onQuantityChange(event.target.value)}
+            />
+            <button type="submit" disabled={!label.trim()}>
+              Ajouter
+            </button>
+          </div>
+          <p>Le produit apparaît immédiatement, même hors connexion.</p>
+        </form>
+      )}
+
+      {aisleGroups.length === 0 ? (
+        <section className="panel grocery-panel">
+          <p className="empty-state">La liste de courses est vide.</p>
+        </section>
+      ) : (
+        <div className="grocery-aisle-groups" aria-label="Courses par rayon">
+          {aisleGroups.map((group) => (
+            <section className="panel grocery-panel aisle-panel" key={group.id}>
+              <div className="task-section-heading">
+                <div>
+                  {group.familyLabel ? (
+                    <small>{group.familyLabel}</small>
+                  ) : null}
+                  <h3>{group.label}</h3>
+                </div>
+                <span className="count-badge">{group.items.length}</span>
+              </div>
+              <GroceryList
+                items={group.items}
+                editing={editing}
+                changingItemId={changingItemId}
+                onDelete={onDelete}
+                onCheckedChange={onCheckedChange}
+                emptyMessage=""
+              />
+            </section>
+          ))}
+        </div>
+      )}
+
+      <section
+        className="panel grocery-panel purchased-grocery-panel"
+        aria-labelledby="grocery-purchased-title"
+      >
+        <div className="task-section-heading">
+          <h3 id="grocery-purchased-title">Déjà acheté</h3>
+          <span className="count-badge">{purchasedItems.length}</span>
+        </div>
+        <GroceryList
+          items={purchasedItems}
+          editing={editing}
+          changingItemId={changingItemId}
+          onDelete={onDelete}
+          onCheckedChange={onCheckedChange}
+          emptyMessage="Aucun produit acheté."
+        />
+      </section>
+    </>
+  );
+}
+
+function GroceryList({
+  items,
+  changingItemId,
+  editing,
+  emptyMessage,
+  onCheckedChange,
+  onDelete,
+}: {
+  items: readonly LocalGroceryItem[];
+  changingItemId: string | null;
+  editing: boolean;
+  emptyMessage: string;
+  onCheckedChange: (itemId: string, checked: boolean) => void;
+  onDelete: (itemId: string) => void;
+}) {
+  if (items.length === 0) return <p className="empty-state">{emptyMessage}</p>;
+
+  return (
+    <ul className="grocery-list">
+      {items.map((item) => {
+        const checked = item.checkedAt !== null;
+        return (
+          <li className={checked ? 'is-checked' : ''} key={item.id}>
+            {!editing ? (
+              <button
+                className="grocery-check-button"
+                type="button"
+                aria-label={`${checked ? 'Remettre' : 'Marquer comme acheté'} ${item.label}`}
+                disabled={changingItemId !== null}
+                onClick={() => onCheckedChange(item.id, !checked)}
+              >
+                <span aria-hidden="true">{checked ? '✓' : ''}</span>
+              </button>
+            ) : null}
+            <span className="grocery-copy">
+              <strong>{item.label}</strong>
+              {item.quantityText ? <small>{item.quantityText}</small> : null}
+              <small className={`task-sync is-${item.syncState}`}>
+                {TASK_SYNC_LABELS[item.syncState]}
+              </small>
+            </span>
+            {editing ? (
+              <button
+                className="delete-task-button"
+                type="button"
+                aria-label={`Supprimer ${item.label}`}
+                disabled={changingItemId !== null}
+                onClick={() => onDelete(item.id)}
+              >
+                {changingItemId === item.id ? 'Suppression…' : 'Supprimer'}
+              </button>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

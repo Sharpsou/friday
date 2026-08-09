@@ -20,7 +20,7 @@ Ouvrir Friday depuis l'icône installée sur l'A17 et attendre l'état `Connect�
 
 | Étape | Action                                                                            | Résultat attendu                                                                                             | Résultat/date |
 | ----: | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------- |
-|     1 | dans `Maison`, créer une tâche avec son titre seulement                           | la tâche apparaît sans date et finit par afficher `Synchronisée avec le foyer`                               |               |
+|     1 | dans `Agenda`, créer une tâche avec son titre seulement                           | la tâche apparaît sans date et finit par afficher `Synchronisée avec le foyer`                               |               |
 |     2 | ouvrir `Date, rendez-vous et responsable`, saisir un titre et une date sans heure | la tâche affiche la date en toutes lettres, sans heure ni durée                                              |               |
 |     3 | toucher successivement `Semaine` puis `Mois`                                      | la tâche datée apparaît au bon jour ; la semaine et le mois restent lisibles sans défilement horizontal      |               |
 |     4 | sélectionner un jour libre puis toucher `+ Ajouter pour ce jour`                  | Friday revient à `Liste`, ouvre les options et préremplit la date choisie                                    |               |
