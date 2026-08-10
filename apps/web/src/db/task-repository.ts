@@ -1,6 +1,11 @@
 import Dexie from 'dexie';
 
 import {
+  BudgetEntryRecordSchema,
+  BudgetEnvelopeRecordSchema,
+  BudgetPlannedExpenseRecordSchema,
+  BudgetRecurringTemplateRecordSchema,
+  BudgetSavingsMonthRecordSchema,
   GroceryItemRecordSchema,
   SyncOperationSchema,
   TaskOperationSchema,
@@ -30,9 +35,15 @@ import {
   getLocalDeviceId,
 } from '../auth/auth-client.js';
 import { compareTasksBySchedule } from '../task-sort.js';
-import { groceryItemAad, outboxAad, taskAad } from './encryption-context.js';
+import {
+  budgetAad,
+  groceryItemAad,
+  outboxAad,
+  taskAad,
+} from './encryption-context.js';
 import {
   fridayDb,
+  type BudgetRow,
   type GroceryItemRow,
   type OutboxRow,
   type TaskRow,
@@ -684,20 +695,69 @@ export async function applyAcks(acks: readonly OperationAck[]): Promise<void> {
   const { deviceId, key } = await getDeviceContext();
   const entityUpdates = await Promise.all(
     acks.map(async (ack) => {
-      const [taskRow, groceryRow] = await Promise.all([
+      const [taskRow, groceryRow, ...budgetRows] = await Promise.all([
         fridayDb.tasks.get(ack.entityId),
         fridayDb.groceryItems.get(ack.entityId),
+        fridayDb.budgetEntries.get(ack.entityId),
+        fridayDb.budgetEnvelopes.get(ack.entityId),
+        fridayDb.budgetPlannedExpenses.get(ack.entityId),
+        fridayDb.budgetRecurringTemplates.get(ack.entityId),
+        fridayDb.budgetSavingsMonths.get(ack.entityId),
       ]);
-      if (!taskRow && !groceryRow) return null;
+      const budgetTypes = [
+        'budget_entry',
+        'budget_envelope',
+        'budget_planned_expense',
+        'budget_recurring_template',
+        'budget_savings_month',
+      ] as const;
+      const budgetIndex = budgetRows.findIndex(Boolean);
+      const budgetRow = budgetIndex >= 0 ? budgetRows[budgetIndex] : undefined;
+      const budgetType =
+        budgetIndex >= 0 ? budgetTypes[budgetIndex] : undefined;
+      if (!taskRow && !groceryRow && !budgetRow) return null;
       if (ack.status === 'conflict') {
-        const existingRow = taskRow ?? groceryRow;
+        const existingRow = taskRow ?? groceryRow ?? budgetRow;
         if (!existingRow) return null;
         return {
-          entityType: taskRow ? ('task' as const) : ('grocery_item' as const),
+          entityType: taskRow
+            ? ('task' as const)
+            : groceryRow
+              ? ('grocery_item' as const)
+              : budgetType!,
           id: ack.entityId,
           encrypted: existingRow.encrypted,
           revision: existingRow.revision,
           syncState: 'conflict' as const,
+        };
+      }
+
+      if (budgetRow && budgetType) {
+        const schema = {
+          budget_entry: BudgetEntryRecordSchema,
+          budget_envelope: BudgetEnvelopeRecordSchema,
+          budget_planned_expense: BudgetPlannedExpenseRecordSchema,
+          budget_recurring_template: BudgetRecurringTemplateRecordSchema,
+          budget_savings_month: BudgetSavingsMonthRecordSchema,
+        }[budgetType];
+        const record = schema.parse(
+          await decryptJson(
+            key,
+            budgetRow.encrypted,
+            budgetAad(budgetType, budgetRow.id, deviceId),
+          ),
+        );
+        const acknowledged = { ...record, revision: ack.serverRevision };
+        return {
+          entityType: budgetType,
+          id: ack.entityId,
+          encrypted: await encryptJson(
+            key,
+            acknowledged,
+            budgetAad(budgetType, budgetRow.id, deviceId),
+          ),
+          revision: ack.serverRevision,
+          syncState: 'acknowledged' as const,
         };
       }
 
@@ -754,9 +814,16 @@ export async function applyAcks(acks: readonly OperationAck[]): Promise<void> {
 
   await fridayDb.transaction(
     'rw',
-    fridayDb.groceryItems,
-    fridayDb.outbox,
-    fridayDb.tasks,
+    [
+      fridayDb.groceryItems,
+      fridayDb.budgetEntries,
+      fridayDb.budgetEnvelopes,
+      fridayDb.budgetPlannedExpenses,
+      fridayDb.budgetRecurringTemplates,
+      fridayDb.budgetSavingsMonths,
+      fridayDb.outbox,
+      fridayDb.tasks,
+    ],
     async () => {
       for (const [index, ack] of acks.entries()) {
         const syncState =
@@ -771,8 +838,24 @@ export async function applyAcks(acks: readonly OperationAck[]): Promise<void> {
           };
           if (entityUpdate.entityType === 'task') {
             await fridayDb.tasks.update(entityUpdate.id, update);
-          } else {
+          } else if (entityUpdate.entityType === 'grocery_item') {
             await fridayDb.groceryItems.update(entityUpdate.id, update);
+          } else if (entityUpdate.entityType === 'budget_entry') {
+            await fridayDb.budgetEntries.update(entityUpdate.id, update);
+          } else if (entityUpdate.entityType === 'budget_envelope') {
+            await fridayDb.budgetEnvelopes.update(entityUpdate.id, update);
+          } else if (entityUpdate.entityType === 'budget_planned_expense') {
+            await fridayDb.budgetPlannedExpenses.update(
+              entityUpdate.id,
+              update,
+            );
+          } else if (entityUpdate.entityType === 'budget_recurring_template') {
+            await fridayDb.budgetRecurringTemplates.update(
+              entityUpdate.id,
+              update,
+            );
+          } else {
+            await fridayDb.budgetSavingsMonths.update(entityUpdate.id, update);
           }
         }
       }
@@ -790,7 +873,9 @@ export async function applyChanges(
       const aad =
         change.entityType === 'task'
           ? taskAad(change.entityId, deviceId)
-          : groceryItemAad(change.entityId, deviceId);
+          : change.entityType === 'grocery_item'
+            ? groceryItemAad(change.entityId, deviceId)
+            : budgetAad(change.entityType, change.entityId, deviceId);
       return {
         entityType: change.entityType,
         row: {
@@ -805,20 +890,48 @@ export async function applyChanges(
   );
   const taskRows: TaskRow[] = [];
   const groceryRows: GroceryItemRow[] = [];
+  const budgetRows = new Map<string, BudgetRow[]>();
   for (const change of encryptedChanges) {
     if (change.entityType === 'task') taskRows.push(change.row);
-    else groceryRows.push(change.row);
+    else if (change.entityType === 'grocery_item') groceryRows.push(change.row);
+    else {
+      const rows = budgetRows.get(change.entityType) ?? [];
+      rows.push(change.row);
+      budgetRows.set(change.entityType, rows);
+    }
   }
 
   await fridayDb.transaction(
     'rw',
-    fridayDb.groceryItems,
-    fridayDb.tasks,
-    fridayDb.settings,
+    [
+      fridayDb.groceryItems,
+      fridayDb.budgetEntries,
+      fridayDb.budgetEnvelopes,
+      fridayDb.budgetPlannedExpenses,
+      fridayDb.budgetRecurringTemplates,
+      fridayDb.budgetSavingsMonths,
+      fridayDb.tasks,
+      fridayDb.settings,
+    ],
     async () => {
       if (taskRows.length > 0) await fridayDb.tasks.bulkPut(taskRows);
       if (groceryRows.length > 0)
         await fridayDb.groceryItems.bulkPut(groceryRows);
+      await fridayDb.budgetEntries.bulkPut(
+        budgetRows.get('budget_entry') ?? [],
+      );
+      await fridayDb.budgetEnvelopes.bulkPut(
+        budgetRows.get('budget_envelope') ?? [],
+      );
+      await fridayDb.budgetPlannedExpenses.bulkPut(
+        budgetRows.get('budget_planned_expense') ?? [],
+      );
+      await fridayDb.budgetRecurringTemplates.bulkPut(
+        budgetRows.get('budget_recurring_template') ?? [],
+      );
+      await fridayDb.budgetSavingsMonths.bulkPut(
+        budgetRows.get('budget_savings_month') ?? [],
+      );
       await fridayDb.settings.put({ key: 'cursor', value: cursor });
     },
   );

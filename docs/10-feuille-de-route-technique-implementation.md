@@ -906,7 +906,7 @@ Ne pas commencer en parallèle le design complet, le RAG, l’import bancaire ou
 | ADR-005 | Better Auth, inscription fermée et liaison appareil | accepté ; candidat automatisé, recette physique en attente |
 | ADR-006 | Web Crypto, clé non extractible, limites XSS | à confirmer par spike |
 | ADR-007 | compte de service Calendar ou OAuth local | trancher lors de P1B |
-| ADR-008 | backup SQLite + `age` + Drive Desktop | à prouver par restauration P3 |
+| [ADR-008](adr/008-sauvegarde-portable-chiffree.md) | snapshot SQLite + archive `age` partageable + restauration contrôlée | conception détaillée ; à implanter et prouver par restauration P3 |
 | ADR-009 | Granite rapide, Gemma fond, FTS5 sans embeddings | accepté pour P2 |
 | ADR-010 | classement facultatif des courses par taxonomie, règles et Ollama | accepté ; candidat automatisé, recette physique en attente |
 | ADR-011 | conflits explicites et tombstones acquittés avant purge | accepté comme filet de sécurité ; implémentation reportée sur signal d'usage |

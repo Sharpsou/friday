@@ -120,8 +120,7 @@ const MIGRATION_003 = `
     name TEXT NOT NULL,
     created_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
-    revoked_at TEXT,
-    UNIQUE (user_id)
+    revoked_at TEXT
   );
 
   CREATE TABLE IF NOT EXISTS pairing_codes (
@@ -252,6 +251,92 @@ const MIGRATION_007 = `
   ALTER TABLE grocery_items ADD COLUMN manual_aisle_id TEXT;
 `;
 
+const MIGRATION_008 = `
+  CREATE TABLE IF NOT EXISTS budget_entries (
+    id TEXT PRIMARY KEY, household_id TEXT NOT NULL, revision INTEGER NOT NULL,
+    payload_json TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS budget_recurring_templates (
+    id TEXT PRIMARY KEY, household_id TEXT NOT NULL, revision INTEGER NOT NULL,
+    payload_json TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS budget_envelopes (
+    id TEXT PRIMARY KEY, household_id TEXT NOT NULL, revision INTEGER NOT NULL,
+    payload_json TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS budget_planned_expenses (
+    id TEXT PRIMARY KEY, household_id TEXT NOT NULL, revision INTEGER NOT NULL,
+    payload_json TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS budget_savings_months (
+    id TEXT PRIMARY KEY, household_id TEXT NOT NULL, revision INTEGER NOT NULL,
+    payload_json TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_budget_entries_household_updated
+    ON budget_entries(household_id, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_budget_templates_household_updated
+    ON budget_recurring_templates(household_id, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_budget_envelopes_household_updated
+    ON budget_envelopes(household_id, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_budget_planned_household_updated
+    ON budget_planned_expenses(household_id, updated_at);
+  CREATE INDEX IF NOT EXISTS idx_budget_savings_household_updated
+    ON budget_savings_months(household_id, updated_at);
+  CREATE TABLE IF NOT EXISTS budget_seed_markers (
+    version TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL,
+    source_digest TEXT NOT NULL,
+    summary_json TEXT NOT NULL
+  );
+`;
+
+const MIGRATION_009 = `
+  CREATE TABLE friday_devices_next (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+    household_id TEXT NOT NULL REFERENCES households (id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    revoked_at TEXT
+  );
+
+  INSERT OR IGNORE INTO friday_devices_next (
+    id, user_id, household_id, name, created_at, last_seen_at, revoked_at
+  )
+  SELECT id, user_id, household_id, name, created_at, last_seen_at, revoked_at
+    FROM friday_devices;
+
+  DROP TABLE friday_devices;
+  ALTER TABLE friday_devices_next RENAME TO friday_devices;
+
+  CREATE INDEX IF NOT EXISTS friday_devices_user_active_idx
+    ON friday_devices (user_id, revoked_at, last_seen_at);
+
+  CREATE TABLE IF NOT EXISTS device_approval_requests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+    household_id TEXT NOT NULL REFERENCES households (id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,
+    device_name TEXT NOT NULL,
+    request_ip TEXT,
+    status TEXT NOT NULL CHECK (
+      status IN ('pending', 'approved', 'rejected', 'expired')
+    ),
+    status_token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    approved_by_device_id TEXT REFERENCES friday_devices (id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    resolved_at TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS device_approval_requests_user_pending_idx
+    ON device_approval_requests (user_id, status, expires_at);
+  CREATE UNIQUE INDEX IF NOT EXISTS device_approval_requests_pending_device_idx
+    ON device_approval_requests (user_id, device_id)
+    WHERE status = 'pending';
+`;
+
 const MIGRATIONS = [
   { sql: MIGRATION_001, version: 1 },
   { sql: MIGRATION_002, version: 2 },
@@ -260,6 +345,8 @@ const MIGRATIONS = [
   { sql: MIGRATION_005, version: 5 },
   { sql: MIGRATION_006, version: 6 },
   { sql: MIGRATION_007, version: 7 },
+  { sql: MIGRATION_008, version: 8 },
+  { sql: MIGRATION_009, version: 9 },
 ] as const;
 
 export function migrateDatabase(

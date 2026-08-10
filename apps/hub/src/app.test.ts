@@ -1,13 +1,26 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { GroceryItemOperation, TaskOperation } from '@friday/contracts';
+import type {
+  BudgetEntryOperation,
+  GroceryItemOperation,
+  TaskOperation,
+} from '@friday/contracts';
 
 import { buildHub } from './app.js';
 
 const apps: Awaited<ReturnType<typeof buildHub>>[] = [];
+const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map(async (app) => app.close()));
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { force: true, recursive: true });
+  }
 });
 
 function operation(): TaskOperation {
@@ -66,6 +79,47 @@ function groceryOperation(): GroceryItemOperation {
       manualStoreFamilyId: null,
       manualAisleId: null,
       checkedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      createdByProfileId: operation().profileId,
+      updatedByProfileId: operation().profileId,
+      deviceId: operation().deviceId,
+      schemaVersion: 1,
+    },
+  };
+}
+
+function budgetOperation(): BudgetEntryOperation {
+  const now = '2026-08-09T12:00:00.000Z';
+  const id = '16cd13bc-3a63-4b56-8e95-f39dcb7a993d';
+  return {
+    protocolVersion: 1,
+    operationId: 'e31369ef-b9d5-44fa-8792-398cb7e10a3c',
+    deviceId: operation().deviceId,
+    profileId: operation().profileId,
+    entityType: 'budget_entry',
+    entityId: id,
+    operation: 'upsert',
+    baseRevision: 0,
+    clientCreatedAt: now,
+    payload: {
+      id,
+      householdId: operation().payload.householdId,
+      revision: 0,
+      kind: 'expense',
+      category: 'groceries',
+      incomeType: null,
+      transferDirection: null,
+      label: 'Marché fictif',
+      amountCents: 4250,
+      occurredOn: '2026-08-09',
+      ownerProfileId: null,
+      envelopeId: null,
+      plannedExpenseId: null,
+      recurringTemplateId: null,
+      correctionOfId: null,
+      source: 'manual',
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -226,6 +280,216 @@ describe('Friday hub', () => {
     expect(sessionCookie).toContain('HttpOnly');
     expect(sessionCookie).toContain('Secure');
     expect(sessionCookie).toContain('SameSite=Strict');
+  });
+
+  it('approves a new device from an already authorized session', async () => {
+    const app = await buildHub({ databasePath: ':memory:' });
+    apps.push(app);
+    const ownerCookie = await bootstrap(app);
+    const newDeviceId = '11111111-1111-4111-8111-111111111111';
+
+    const refusedCredentials = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: {
+        deviceId: newDeviceId,
+        deviceName: 'PC',
+        identifier: 'adulte1',
+        password: 'mauvaise-phrase-secrete',
+      },
+    });
+    const requestsBeforeValidPassword = await app.inject({
+      method: 'GET',
+      url: '/api/auth/device-approval-requests',
+      headers: { cookie: ownerCookie },
+    });
+    const requested = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: {
+        deviceId: newDeviceId,
+        deviceName: 'PC',
+        identifier: 'adulte1',
+        password: 'phrase-secrete-friday',
+      },
+    });
+    const requestPayload = requested.json() as {
+      requestId: string;
+      statusToken: string;
+    };
+    const duplicateRequest = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: {
+        deviceId: newDeviceId,
+        deviceName: 'PC Firefox',
+        identifier: 'adulte1',
+        password: 'phrase-secrete-friday',
+      },
+    });
+    const duplicatePayload = duplicateRequest.json() as {
+      requestId: string;
+      statusToken: string;
+    };
+    const requests = await app.inject({
+      method: 'GET',
+      url: '/api/auth/device-approval-requests',
+      headers: { cookie: ownerCookie },
+    });
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/auth/device-approval-requests/${requestPayload.requestId}/approve`,
+      headers: { cookie: ownerCookie },
+    });
+    const approvedStatus = await app.inject({
+      method: 'GET',
+      url: `/api/auth/device-approval-requests/${duplicatePayload.requestId}/status?token=${duplicatePayload.statusToken}`,
+    });
+    const loggedIn = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: {
+        deviceId: newDeviceId,
+        deviceName: 'PC',
+        identifier: 'adulte1',
+        password: 'phrase-secrete-friday',
+      },
+    });
+
+    expect(refusedCredentials.statusCode).toBe(401);
+    expect(requestsBeforeValidPassword.json().requests).toHaveLength(0);
+    expect(requested.statusCode, requested.body).toBe(202);
+    expect(requested.json()).toMatchObject({ approvalRequired: true });
+    expect(duplicateRequest.statusCode).toBe(202);
+    expect(duplicateRequest.json().requestId).toBe(requestPayload.requestId);
+    expect(requests.json().requests).toHaveLength(1);
+    expect(requests.json().requests[0]).toMatchObject({
+      deviceId: newDeviceId,
+      deviceName: 'PC Firefox',
+      status: 'pending',
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approvedStatus.json()).toEqual({ status: 'approved' });
+    expect(loggedIn.statusCode, loggedIn.body).toBe(200);
+    expect(loggedIn.json()).toMatchObject({ deviceId: newDeviceId });
+  });
+
+  it('rejects or expires new device approval requests without creating a session', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'friday-approval-'));
+    temporaryDirectories.push(directory);
+    const databasePath = join(directory, 'friday.sqlite');
+    const app = await buildHub({ databasePath });
+    apps.push(app);
+    const ownerCookie = await bootstrap(app);
+    const rejectedDeviceId = '22222222-2222-4222-8222-222222222222';
+    const expiringDeviceId = '33333333-3333-4333-8333-333333333333';
+    const rejectedRequest = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: {
+        deviceId: rejectedDeviceId,
+        deviceName: 'Tablette',
+        identifier: 'adulte1',
+        password: 'phrase-secrete-friday',
+      },
+    });
+    const rejectedPayload = rejectedRequest.json() as {
+      requestId: string;
+      statusToken: string;
+    };
+    const reject = await app.inject({
+      method: 'POST',
+      url: `/api/auth/device-approval-requests/${rejectedPayload.requestId}/reject`,
+      headers: { cookie: ownerCookie },
+    });
+    const rejectedStatus = await app.inject({
+      method: 'GET',
+      url: `/api/auth/device-approval-requests/${rejectedPayload.requestId}/status?token=${rejectedPayload.statusToken}`,
+    });
+    const expiringRequest = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: {
+        deviceId: expiringDeviceId,
+        deviceName: 'Ancien PC',
+        identifier: 'adulte1',
+        password: 'phrase-secrete-friday',
+      },
+    });
+    const expiringPayload = expiringRequest.json() as {
+      requestId: string;
+      statusToken: string;
+    };
+    const database = new Database(databasePath);
+    database
+      .prepare(
+        `UPDATE device_approval_requests
+            SET expires_at = ?
+          WHERE id = ?`,
+      )
+      .run('2026-08-09T12:00:00.000Z', expiringPayload.requestId);
+    database.close();
+    const expiredApprove = await app.inject({
+      method: 'POST',
+      url: `/api/auth/device-approval-requests/${expiringPayload.requestId}/approve`,
+      headers: { cookie: ownerCookie },
+    });
+    const expiredStatus = await app.inject({
+      method: 'GET',
+      url: `/api/auth/device-approval-requests/${expiringPayload.requestId}/status?token=${expiringPayload.statusToken}`,
+    });
+
+    expect(rejectedRequest.statusCode).toBe(202);
+    expect(reject.statusCode).toBe(200);
+    expect(rejectedStatus.json()).toEqual({ status: 'rejected' });
+    expect(expiringRequest.statusCode).toBe(202);
+    expect(expiredApprove.statusCode).toBe(409);
+    expect(expiredStatus.json()).toEqual({ status: 'expired' });
+  });
+
+  it('limits each account to five active devices', async () => {
+    const app = await buildHub({ databasePath: ':memory:' });
+    apps.push(app);
+    const ownerCookie = await bootstrap(app);
+    const extraDeviceIds = [
+      '44444444-4444-4444-8444-444444444444',
+      '55555555-5555-4555-8555-555555555555',
+      '66666666-6666-4666-8666-666666666666',
+      '77777777-7777-4777-8777-777777777777',
+    ];
+    for (const [index, deviceId] of extraDeviceIds.entries()) {
+      const request = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: {
+          deviceId,
+          deviceName: `Appareil ${index + 2}`,
+          identifier: 'adulte1',
+          password: 'phrase-secrete-friday',
+        },
+      });
+      const requestId = request.json().requestId as string;
+      const approve = await app.inject({
+        method: 'POST',
+        url: `/api/auth/device-approval-requests/${requestId}/approve`,
+        headers: { cookie: ownerCookie },
+      });
+      expect(approve.statusCode, approve.body).toBe(200);
+    }
+
+    const refused = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: {
+        deviceId: '88888888-8888-4888-8888-888888888888',
+        deviceName: 'Sixieme appareil',
+        identifier: 'adulte1',
+        password: 'phrase-secrete-friday',
+      },
+    });
+
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({ error: 'device_limit_reached' });
   });
 
   it('pairs the second adult once and revokes that device with all sessions', async () => {
@@ -496,6 +760,89 @@ describe('Friday hub', () => {
           revision: 1,
         }),
       }),
+    ]);
+  });
+
+  it('applies a shared budget movement idempotently', async () => {
+    const app = await buildHub({ databasePath: ':memory:' });
+    apps.push(app);
+    const cookie = await bootstrap(app);
+    const budget = budgetOperation();
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/sync/push',
+      headers: { cookie },
+      payload: { operations: [budget] },
+    });
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/sync/push',
+      headers: { cookie },
+      payload: { operations: [budget] },
+    });
+    const pull = await app.inject({
+      method: 'GET',
+      url: '/api/sync/pull?after=0',
+      headers: { cookie },
+    });
+
+    expect(first.statusCode, first.body).toBe(200);
+    expect(second.json()).toEqual(first.json());
+    expect(pull.json().changes).toEqual([
+      expect.objectContaining({
+        entityType: 'budget_entry',
+        entityId: budget.entityId,
+        payload: expect.objectContaining({ amountCents: 4250, revision: 1 }),
+      }),
+    ]);
+  });
+
+  it('keeps one logical budget entry when two offline operations race on its deterministic id', async () => {
+    const app = await buildHub({ databasePath: ':memory:' });
+    apps.push(app);
+    const cookie = await bootstrap(app);
+    const firstOperation = budgetOperation();
+    const competingOperation = {
+      ...budgetOperation(),
+      operationId: '83034bc5-c13d-4d4b-917b-c70ac75bc665',
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/sync/push',
+      headers: { cookie },
+      payload: { operations: [firstOperation, competingOperation] },
+    });
+    const pull = await app.inject({
+      method: 'GET',
+      url: '/api/sync/pull?after=0',
+      headers: { cookie },
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().acks).toEqual([
+      expect.objectContaining({ status: 'applied', serverRevision: 1 }),
+      expect.objectContaining({ status: 'applied', serverRevision: 1 }),
+    ]);
+    expect(pull.json().changes).toHaveLength(1);
+
+    const divergent = await app.inject({
+      method: 'POST',
+      url: '/api/sync/push',
+      headers: { cookie },
+      payload: {
+        operations: [
+          {
+            ...budgetOperation(),
+            operationId: '0235d407-66dd-4c7e-b9c5-08014a5500ea',
+            payload: { ...budgetOperation().payload, amountCents: 4300 },
+          },
+        ],
+      },
+    });
+    expect(divergent.json().acks).toEqual([
+      expect.objectContaining({ status: 'conflict', serverRevision: 1 }),
     ]);
   });
 

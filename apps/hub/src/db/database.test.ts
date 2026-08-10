@@ -86,6 +86,8 @@ describe('hub database migrations', () => {
       { version: 5 },
       { version: 6 },
       { version: 7 },
+      { version: 8 },
+      { version: 9 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -115,7 +117,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 7 });
+    expect(migrations.at(-1)).toEqual({ version: 9 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -151,7 +153,58 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 7 });
+    expect(migrations.at(-1)).toEqual({ version: 9 });
+  });
+
+  it('adds the five budget stores and the idempotent seed marker', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 7);
+
+    migrateDatabase(database);
+    const tables = database
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all() as Array<{ name: string }>;
+    database.close();
+
+    expect(tables.map((table) => table.name)).toEqual(
+      expect.arrayContaining([
+        'budget_entries',
+        'budget_recurring_templates',
+        'budget_envelopes',
+        'budget_planned_expenses',
+        'budget_savings_months',
+        'budget_seed_markers',
+      ]),
+    );
+  });
+
+  it('allows several Friday devices per user and adds approval requests', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 8);
+
+    migrateDatabase(database);
+    const deviceIndexes = database
+      .prepare("PRAGMA index_list('friday_devices')")
+      .all() as Array<{ name: string; unique: number }>;
+    const approvalColumns = database
+      .prepare('PRAGMA table_info(device_approval_requests)')
+      .all() as Array<{ name: string }>;
+    database.close();
+
+    expect(deviceIndexes).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: expect.stringContaining('user_id') }),
+      ]),
+    );
+    expect(approvalColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        'device_id',
+        'device_name',
+        'status',
+        'status_token_hash',
+        'approved_by_device_id',
+      ]),
+    );
   });
 
   it('backfills the Friday identifier when upgrading an existing auth database', () => {

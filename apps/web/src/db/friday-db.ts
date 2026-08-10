@@ -27,6 +27,14 @@ export interface GroceryClassificationRow {
   updatedAt: string;
 }
 
+export interface BudgetRow {
+  encrypted: EncryptedEnvelope;
+  id: string;
+  revision: number;
+  syncState: OutboxState;
+  updatedAt: string;
+}
+
 export interface OutboxRow {
   createdAt: string;
   encryptedPayload: EncryptedEnvelope;
@@ -46,6 +54,11 @@ export interface SettingRow {
 }
 
 class FridayDatabase extends Dexie {
+  budgetEntries!: EntityTable<BudgetRow, 'id'>;
+  budgetEnvelopes!: EntityTable<BudgetRow, 'id'>;
+  budgetPlannedExpenses!: EntityTable<BudgetRow, 'id'>;
+  budgetRecurringTemplates!: EntityTable<BudgetRow, 'id'>;
+  budgetSavingsMonths!: EntityTable<BudgetRow, 'id'>;
   groceryClassifications!: EntityTable<GroceryClassificationRow, 'itemId'>;
   groceryItems!: EntityTable<GroceryItemRow, 'id'>;
   keys!: EntityTable<KeyRow, 'id'>;
@@ -69,6 +82,19 @@ class FridayDatabase extends Dexie {
       tasks: '&id, revision, updatedAt, syncState',
     });
     this.version(3).stores({
+      groceryClassifications: '&itemId, revision, updatedAt',
+      groceryItems: '&id, revision, updatedAt, syncState',
+      keys: '&id',
+      outbox: '&operationId, entityId, createdAt, state',
+      settings: '&key',
+      tasks: '&id, revision, updatedAt, syncState',
+    });
+    this.version(4).stores({
+      budgetEntries: '&id, revision, updatedAt, syncState',
+      budgetEnvelopes: '&id, revision, updatedAt, syncState',
+      budgetPlannedExpenses: '&id, revision, updatedAt, syncState',
+      budgetRecurringTemplates: '&id, revision, updatedAt, syncState',
+      budgetSavingsMonths: '&id, revision, updatedAt, syncState',
       groceryClassifications: '&itemId, revision, updatedAt',
       groceryItems: '&id, revision, updatedAt, syncState',
       keys: '&id',

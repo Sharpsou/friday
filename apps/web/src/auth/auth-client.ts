@@ -1,11 +1,17 @@
 import {
   AuthDevicesResponseSchema,
+  AuthDeviceApprovalRequestsResponseSchema,
+  AuthDeviceApprovalStatusResponseSchema,
+  AuthLoginResponseSchema,
   AuthMembersResponseSchema,
   AuthSessionSchema,
   AuthStateResponseSchema,
   PairingCodeResponseSchema,
   type AuthBootstrapRequest,
   type AuthDevice,
+  type AuthDeviceApprovalRequest,
+  type AuthDeviceApprovalRequired,
+  type AuthDeviceApprovalStatus,
   type AuthLoginRequest,
   type AuthMember,
   type AuthPairRequest,
@@ -104,8 +110,8 @@ export async function loadAuthState(): Promise<LocalAuthState> {
 }
 
 async function submitSession(
-  path: '/api/auth/bootstrap' | '/api/auth/login' | '/api/auth/pair',
-  body: AuthBootstrapRequest | AuthLoginRequest | AuthPairRequest,
+  path: '/api/auth/bootstrap' | '/api/auth/pair',
+  body: AuthBootstrapRequest | AuthPairRequest,
 ): Promise<AuthSession> {
   const response = await fetch(path, {
     method: 'POST',
@@ -115,6 +121,20 @@ async function submitSession(
   const session = await parseResponse(response, AuthSessionSchema);
   await storeSession(session);
   return session;
+}
+
+async function submitLogin(
+  body: AuthLoginRequest,
+): Promise<AuthSession | AuthDeviceApprovalRequired> {
+  const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const result = await parseResponse(response, AuthLoginResponseSchema);
+  if ('approvalRequired' in result) return result;
+  await storeSession(result);
+  return result;
 }
 
 export async function bootstrapHousehold(
@@ -128,8 +148,8 @@ export async function bootstrapHousehold(
 
 export async function login(
   input: Omit<AuthLoginRequest, 'deviceId'>,
-): Promise<AuthSession> {
-  return submitSession('/api/auth/login', {
+): Promise<AuthSession | AuthDeviceApprovalRequired> {
+  return submitLogin({
     ...input,
     deviceId: await getLocalDeviceId(),
   });
@@ -160,6 +180,62 @@ export async function listAuthMembers(): Promise<AuthMember[]> {
 export async function listAuthDevices(): Promise<AuthDevice[]> {
   const response = await fetch('/api/auth/devices');
   return (await parseResponse(response, AuthDevicesResponseSchema)).devices;
+}
+
+export async function listDeviceApprovalRequests(): Promise<
+  AuthDeviceApprovalRequest[]
+> {
+  const response = await fetch('/api/auth/device-approval-requests');
+  return (
+    await parseResponse(response, AuthDeviceApprovalRequestsResponseSchema)
+  ).requests;
+}
+
+export async function approveDeviceApprovalRequest(id: string): Promise<void> {
+  const response = await fetch(
+    `/api/auth/device-approval-requests/${id}/approve`,
+    {
+      method: 'POST',
+    },
+  );
+  if (!response.ok) {
+    const payload = (await response.json()) as { message?: unknown };
+    throw new Error(
+      typeof payload.message === 'string'
+        ? payload.message
+        : 'Autorisation impossible.',
+    );
+  }
+}
+
+export async function rejectDeviceApprovalRequest(id: string): Promise<void> {
+  const response = await fetch(
+    `/api/auth/device-approval-requests/${id}/reject`,
+    {
+      method: 'POST',
+    },
+  );
+  if (!response.ok) {
+    const payload = (await response.json()) as { message?: unknown };
+    throw new Error(
+      typeof payload.message === 'string'
+        ? payload.message
+        : 'Refus impossible.',
+    );
+  }
+}
+
+export async function getDeviceApprovalStatus(
+  id: string,
+  token: string,
+): Promise<AuthDeviceApprovalStatus> {
+  const response = await fetch(
+    `/api/auth/device-approval-requests/${id}/status?token=${encodeURIComponent(
+      token,
+    )}`,
+  );
+  return (await parseResponse(response, AuthDeviceApprovalStatusResponseSchema))
+    .status;
 }
 
 export async function revokeAuthDevice(deviceId: string): Promise<void> {

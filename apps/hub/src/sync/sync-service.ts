@@ -1,6 +1,11 @@
 import type Database from 'better-sqlite3';
 
 import {
+  BudgetEntryRecordSchema,
+  BudgetEnvelopeRecordSchema,
+  BudgetPlannedExpenseRecordSchema,
+  BudgetRecurringTemplateRecordSchema,
+  BudgetSavingsMonthRecordSchema,
   GroceryItemRecordSchema,
   TaskRecordSchema,
   type Change,
@@ -10,6 +15,7 @@ import {
   type PullResponse,
   type PushResponse,
   type SyncOperation,
+  type TaskOperation,
   type TaskRecord,
 } from '@friday/contracts';
 
@@ -58,10 +64,50 @@ interface GroceryItemRow {
 
 interface ChangeRow {
   sequence: number;
-  entity_type: 'grocery_item' | 'task';
+  entity_type: BudgetEntityType | 'grocery_item' | 'task';
   entity_id: string;
   operation: 'upsert';
   payload_json: string;
+}
+
+type BudgetEntityType =
+  | 'budget_entry'
+  | 'budget_envelope'
+  | 'budget_planned_expense'
+  | 'budget_recurring_template'
+  | 'budget_savings_month';
+
+const BUDGET_TABLES = {
+  budget_entry: 'budget_entries',
+  budget_envelope: 'budget_envelopes',
+  budget_planned_expense: 'budget_planned_expenses',
+  budget_recurring_template: 'budget_recurring_templates',
+  budget_savings_month: 'budget_savings_months',
+} as const;
+
+const BUDGET_SCHEMAS = {
+  budget_entry: BudgetEntryRecordSchema,
+  budget_envelope: BudgetEnvelopeRecordSchema,
+  budget_planned_expense: BudgetPlannedExpenseRecordSchema,
+  budget_recurring_template: BudgetRecurringTemplateRecordSchema,
+  budget_savings_month: BudgetSavingsMonthRecordSchema,
+} as const;
+
+function isBudgetEntityType(
+  entityType: string,
+): entityType is BudgetEntityType {
+  return entityType in BUDGET_TABLES;
+}
+
+function budgetBusinessPayload(record: Record<string, unknown>): string {
+  const businessPayload = { ...record };
+  delete businessPayload.revision;
+  delete businessPayload.createdAt;
+  delete businessPayload.updatedAt;
+  delete businessPayload.createdByProfileId;
+  delete businessPayload.updatedByProfileId;
+  delete businessPayload.deviceId;
+  return JSON.stringify(businessPayload);
 }
 
 export class SyncService {
@@ -100,6 +146,15 @@ export class SyncService {
           payload: GroceryItemRecordSchema.parse(JSON.parse(row.payload_json)),
         };
       }
+      if (isBudgetEntityType(row.entity_type)) {
+        return {
+          ...common,
+          entityType: row.entity_type,
+          payload: BUDGET_SCHEMAS[row.entity_type].parse(
+            JSON.parse(row.payload_json),
+          ),
+        } as Change;
+      }
       return {
         ...common,
         entityType: 'task',
@@ -129,31 +184,39 @@ export class SyncService {
         return this.#applyGroceryItem(operation);
       }
 
+      if (isBudgetEntityType(operation.entityType)) {
+        return this.#applyBudget(
+          operation as Extract<SyncOperation, { entityType: BudgetEntityType }>,
+        );
+      }
+
+      const taskOperation = operation as TaskOperation;
+
       const current = this.#database
         .prepare('SELECT * FROM tasks WHERE id = ?')
-        .get(operation.entityId) as TaskRow | undefined;
+        .get(taskOperation.entityId) as TaskRow | undefined;
 
-      if ((current?.revision ?? 0) !== operation.baseRevision) {
+      if ((current?.revision ?? 0) !== taskOperation.baseRevision) {
         const conflict: OperationAck = {
-          operationId: operation.operationId,
-          entityId: operation.entityId,
+          operationId: taskOperation.operationId,
+          entityId: taskOperation.entityId,
           status: 'conflict',
           serverRevision: current?.revision ?? 0,
           conflictReason: 'revision_mismatch',
         };
-        this.#remember(operation.operationId, conflict);
+        this.#remember(taskOperation.operationId, conflict);
         return conflict;
       }
 
       const now = new Date().toISOString();
       const revision = (current?.revision ?? 0) + 1;
       const canonical: TaskRecord = {
-        ...operation.payload,
+        ...taskOperation.payload,
         revision,
         createdAt: current?.created_at ?? now,
         updatedAt: now,
-        updatedByProfileId: operation.profileId,
-        deviceId: operation.deviceId,
+        updatedByProfileId: taskOperation.profileId,
+        deviceId: taskOperation.deviceId,
       };
 
       this.#database
@@ -202,20 +265,20 @@ export class SyncService {
         )
         .run(
           'task',
-          operation.entityId,
+          taskOperation.entityId,
           'upsert',
           JSON.stringify(canonical),
           now,
         );
 
       const ack: OperationAck = {
-        operationId: operation.operationId,
-        entityId: operation.entityId,
+        operationId: taskOperation.operationId,
+        entityId: taskOperation.entityId,
         status: 'applied',
         serverRevision: revision,
         conflictReason: null,
       };
-      this.#remember(operation.operationId, ack);
+      this.#remember(taskOperation.operationId, ack);
       return ack;
     })();
   }
@@ -285,6 +348,102 @@ export class SyncService {
       )
       .run(
         'grocery_item',
+        operation.entityId,
+        'upsert',
+        JSON.stringify(canonical),
+        now,
+      );
+
+    const ack: OperationAck = {
+      operationId: operation.operationId,
+      entityId: operation.entityId,
+      status: 'applied',
+      serverRevision: revision,
+      conflictReason: null,
+    };
+    this.#remember(operation.operationId, ack);
+    return ack;
+  }
+
+  #applyBudget(
+    operation: Extract<SyncOperation, { entityType: BudgetEntityType }>,
+  ): OperationAck {
+    const table = BUDGET_TABLES[operation.entityType];
+    const current = this.#database
+      .prepare(`SELECT revision, payload_json FROM ${table} WHERE id = ?`)
+      .get(operation.entityId) as
+      { payload_json: string; revision: number } | undefined;
+
+    if ((current?.revision ?? 0) !== operation.baseRevision) {
+      if (
+        current?.revision === 1 &&
+        operation.baseRevision === 0 &&
+        budgetBusinessPayload(
+          BUDGET_SCHEMAS[operation.entityType].parse(
+            JSON.parse(current.payload_json),
+          ),
+        ) === budgetBusinessPayload(operation.payload)
+      ) {
+        const duplicateAck: OperationAck = {
+          operationId: operation.operationId,
+          entityId: operation.entityId,
+          status: 'applied',
+          serverRevision: current.revision,
+          conflictReason: null,
+        };
+        this.#remember(operation.operationId, duplicateAck);
+        return duplicateAck;
+      }
+      const conflict: OperationAck = {
+        operationId: operation.operationId,
+        entityId: operation.entityId,
+        status: 'conflict',
+        serverRevision: current?.revision ?? 0,
+        conflictReason: 'revision_mismatch',
+      };
+      this.#remember(operation.operationId, conflict);
+      return conflict;
+    }
+
+    const now = new Date().toISOString();
+    const revision = (current?.revision ?? 0) + 1;
+    const previous = current
+      ? (JSON.parse(current.payload_json) as { createdAt: string })
+      : undefined;
+    const canonical = BUDGET_SCHEMAS[operation.entityType].parse({
+      ...operation.payload,
+      revision,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+      updatedByProfileId: operation.profileId,
+      deviceId: operation.deviceId,
+    });
+
+    this.#database
+      .prepare(
+        `INSERT INTO ${table} (id, household_id, revision, payload_json, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           household_id = excluded.household_id,
+           revision = excluded.revision,
+           payload_json = excluded.payload_json,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        operation.entityId,
+        canonical.householdId,
+        revision,
+        JSON.stringify(canonical),
+        now,
+      );
+    this.#database
+      .prepare(
+        `INSERT INTO change_log (
+           entity_type, entity_id, operation, payload_json, created_at
+         ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        operation.entityType,
         operation.entityId,
         'upsert',
         JSON.stringify(canonical),

@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   AuthBootstrapRequestSchema,
   AuthPairRequestSchema,
+  BudgetEntryRecordSchema,
+  BudgetEnvelopeRecordSchema,
+  BudgetRecurringTemplateRecordSchema,
   GROCERY_TAXONOMY,
   GroceryClassificationChoiceSchema,
   GroceryClassificationJobSchema,
@@ -10,6 +13,107 @@ import {
   PushRequestSchema,
   TaskRecordSchema,
 } from './index.js';
+
+const budgetAudit = {
+  id: '16cd13bc-3a63-4b56-8e95-f39dcb7a993d',
+  householdId: '1030b4f6-1e0f-48fa-adab-865750ce597d',
+  revision: 0,
+  createdAt: '2026-08-09T12:00:00.000Z',
+  updatedAt: '2026-08-09T12:00:00.000Z',
+  deletedAt: null,
+  createdByProfileId: 'f61f8f8b-8d09-4575-8e83-357618e881ac',
+  updatedByProfileId: 'f61f8f8b-8d09-4575-8e83-357618e881ac',
+  deviceId: '5945057a-0b59-4d3b-814f-9581be697098',
+  schemaVersion: 1,
+} as const;
+
+describe('budget contracts', () => {
+  it('uses a positive amount and the movement type for its direction', () => {
+    const base = {
+      ...budgetAudit,
+      kind: 'expense',
+      category: 'groceries',
+      incomeType: null,
+      transferDirection: null,
+      label: 'Dépense fictive',
+      occurredOn: '2026-08-09',
+      ownerProfileId: null,
+      envelopeId: null,
+      plannedExpenseId: null,
+      recurringTemplateId: null,
+      correctionOfId: null,
+      source: 'manual',
+    };
+    expect(
+      BudgetEntryRecordSchema.safeParse({ ...base, amountCents: 1 }).success,
+    ).toBe(true);
+    expect(
+      BudgetEntryRecordSchema.safeParse({ ...base, amountCents: -1 }).success,
+    ).toBe(false);
+    expect(
+      BudgetEntryRecordSchema.safeParse({
+        ...base,
+        amountCents: 100,
+        category: null,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps inactive zero-value import drafts but rejects active ones', () => {
+    const template = {
+      ...budgetAudit,
+      kind: 'expense',
+      category: 'fixed',
+      incomeType: null,
+      transferDirection: null,
+      label: 'À confirmer',
+      amountCents: 0,
+      frequency: 'monthly',
+      dueDay: 1,
+      dueMonth: null,
+      startDate: '2026-08-01',
+      endDate: null,
+      essential: false,
+      ownerProfileId: null,
+      envelopeId: null,
+    };
+    expect(
+      BudgetRecurringTemplateRecordSchema.safeParse({
+        ...template,
+        active: false,
+      }).success,
+    ).toBe(true);
+    expect(
+      BudgetRecurringTemplateRecordSchema.safeParse({
+        ...template,
+        active: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps fixed costs outside envelopes', () => {
+    const envelope = {
+      ...budgetAudit,
+      name: 'Frais fixes interdits',
+      kind: 'monthly',
+      category: 'fixed',
+      ownerProfileId: null,
+      monthlyAllocationCents: 10000,
+      rollover: 'reset',
+      targetAmountCents: null,
+      dueDate: null,
+      active: true,
+    };
+
+    expect(BudgetEnvelopeRecordSchema.safeParse(envelope).success).toBe(false);
+    expect(
+      BudgetEnvelopeRecordSchema.safeParse({
+        ...envelope,
+        category: 'groceries',
+      }).success,
+    ).toBe(true);
+  });
+});
 
 const legacyTask = {
   id: 'cbd5cf4f-d5e2-40d2-a8b4-4e33b66bf2fb',

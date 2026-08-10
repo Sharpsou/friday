@@ -13,6 +13,14 @@ export function groceryClassificationAad(
   return `grocery-classifications:${itemId}:1:${deviceId}`;
 }
 
+export function budgetAad(
+  entityType: string,
+  entityId: string,
+  deviceId: string,
+): string {
+  return `budget:${entityType}:${entityId}:1:${deviceId}`;
+}
+
 export function outboxAad(operationId: string, deviceId: string): string {
   return `outbox:${operationId}:1:${deviceId}`;
 }

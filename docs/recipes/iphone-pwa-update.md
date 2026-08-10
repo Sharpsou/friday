@@ -2,7 +2,7 @@
 
 Date : 9 août 2026
 
-Statut : à exécuter sur l'iPhone ; aucun comportement iOS n'est encore déclaré validé.
+Statut : validation partielle ; l'utilisateur confirme le 9 août 2026 que l'iPhone a bien reçu une mise à jour. Le déclencheur exact et la conservation détaillée des données n'ont pas été consignés ; les scénarios ci-dessous restent à rejouer pour fermer la recette.
 
 ## Préconditions
 
@@ -34,8 +34,9 @@ La version iPhone antérieure ne possède pas encore les nouveaux déclencheurs.
 
 ## Résultat à consigner
 
-| Cas                               | Bandeau visible | Mise à jour appliquée | Données conservées | Résultat     |
-| --------------------------------- | --------------- | --------------------- | ------------------ | ------------ |
-| retour au premier plan            | à renseigner    | à renseigner          | à renseigner       | à renseigner |
-| clic sur l'état de connexion      | à renseigner    | à renseigner          | à renseigner       | à renseigner |
-| fermeture complète puis ouverture | à renseigner    | à renseigner          | à renseigner       | à renseigner |
+| Cas                                  | Bandeau visible | Mise à jour appliquée | Données conservées | Résultat     |
+| ------------------------------------ | --------------- | --------------------- | ------------------ | ------------ |
+| essai du 9 août, déclencheur inconnu | non consigné    | oui                   | non consigné       | partiel      |
+| retour au premier plan               | à renseigner    | à renseigner          | à renseigner       | à renseigner |
+| clic sur l'état de connexion         | à renseigner    | à renseigner          | à renseigner       | à renseigner |
+| fermeture complète puis ouverture    | à renseigner    | à renseigner          | à renseigner       | à renseigner |

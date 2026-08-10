@@ -71,9 +71,11 @@ Le candidat du 9 août 2026 implémente terminer/rouvrir, date/heure/durée, res
 
 Le classement facultatif des courses par rayon utilise la taxonomie `retail-fr-v1`, des règles locales et apprises puis Ministral 3 8B pour les seuls libellés inconnus. Chaque entrée et réponse Ollama porte un index vérifié afin d'empêcher les décalages entre produits. Le job est persistant dans SQLite, reprend après redémarrage, affiche sa progression dans toute la PWA et peut être arrêté sans appliquer de résultat partiel. L'aperçu reste à confirmer avant partage ; la liste adopte ensuite une présentation unique regroupée par rayon, sans sous-onglets `Liste`/`Rayons`, conservée dans le cache chiffré. Le mode plein écran `En course` ne conserve que les rayons et les produits restants sous forme de grandes cibles cochables, y compris hors ligne.
 
-La détection de mise à jour PWA est maintenant persistante et relancée au démarrage, au retour au premier plan, au retour réseau et au clic sur l'état de connexion. L'utilisateur confirme ensuite avec `Mettre à jour`. Le comportement est automatisé mais pas encore validé physiquement sur iPhone.
+La détection de mise à jour PWA est maintenant persistante et relancée au démarrage, au retour au premier plan, au retour réseau et au clic sur l'état de connexion. L'utilisateur confirme ensuite avec `Mettre à jour`. L'utilisateur a confirmé le 9 août 2026 que l'iPhone avait bien reçu la mise à jour ; le déclencheur exact n'a pas été consigné et les parcours auth/offline iPhone restent ouverts.
 
-`pnpm verify` réussit sur ce candidat avec 85 tests unitaires/intégration et 20 scénarios Chrome mobile. Le candidat est construit, redémarré et joignable sur `https://192.168.1.14:8443` avec un healthcheck réussi.
+Le candidat du 10 août 2026 ajoute le budget familial partagé comme cinquième onglet : réalisé et prévisionnel séparés, revenus/frais récurrents, enveloppes, provisions, réserve, corrections et suppressions synchronisées. Les listes sont compactes et repliables à 360 px. Les données réelles ne sont pas chargées tant que la porte BitLocker/ACL/sauvegarde du runbook n’est pas validée. L’état complet est dans `docs/12-etat-budget-partage.md`.
+
+`pnpm verify` réussit sur ce candidat avec 121 tests unitaires/intégration et 21 scénarios Chrome mobile. Le candidat est construit, redémarré et joignable sur `https://192.168.1.14:8443` avec un healthcheck réussi.
 
 Le propriétaire a initialisé le foyer le 9 août 2026. L'appairage d'un second appareil n'est pas validé : le RG405M sous Firefox 151.0.3 atteint Friday mais conserve un avertissement de certificat. La recette iPhone attend le retour de la compagne de l'utilisateur et ne doit pas bloquer le travail documentaire ou le choix du lot suivant. Ne pas convertir ces essais en preuve de recette auth ou iPhone.
 
@@ -82,5 +84,5 @@ Le lot `En course` + fiabilisation des mises à jour PWA et sa documentation fon
 1. faire confirmer les recettes A17 courses/classement/`En course` sans bloquer les travaux automatisés ;
 2. lorsque la compagne est disponible, suivre `docs/recipes/iphone-pwa-update.md`, puis l'appairage et la recette offline sur l'iPhone ;
 3. laisser conflits et purge de tombstones en observation conformément à l'ADR-011 ; ne pas les implanter sans signal d'usage réel ;
-4. discuter avant implantation le prochain lot fonctionnel : budget partagé recommandé, Calendar en lecture ou courte période d'usage Maison ;
+4. conserver le budget au checkpoint documenté jusqu’à retour d’usage ou recette physique, puis discuter avant implantation le prochain lot fonctionnel, Calendar en lecture étant l’option naturelle ;
 5. après toute évolution du runtime, exécuter `pnpm verify`, puis reconstruire et redémarrer sans navigateur avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.

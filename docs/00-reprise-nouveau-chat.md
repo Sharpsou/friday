@@ -75,11 +75,14 @@ Chemin : `D:\prog\friday`
 - classement par rayon candidat : un bouton `Classer par rayon` lance un job SQLite persistant par lots, visible dans tous les onglets et arrêtable ; la PWA peut être utilisée ou fermée pendant le traitement, et un job interrompu ne modifie jamais la liste ;
 - l'aperçu est corrigeable avant application, les corrections exactes sont apprises pour le foyer et les classifications des deux profils fusionnent par article/rayon ; la liste utilise une présentation unique regroupée par rayon, sans sous-onglets `Liste`/`Rayons`, et le cache Dexie chiffré la conserve hors ligne ;
 - un bouton `En course` ouvre une vue magasin plein écran qui ne conserve que les rayons, les produits restants, de grandes cibles cochables, une progression et la sortie ; elle réutilise le cache local et fonctionne hors ligne sans lancer Ollama ;
-- la détection de mise à jour PWA conserve désormais le signal même s'il arrive avant le montage de l'interface ; une recherche est lancée au démarrage, au retour au premier plan, au retour réseau et lors d'un clic sur l'état de connexion, puis l'utilisateur confirme avec `Mettre à jour` avant le rechargement ; cette correction automatisée reste à valider physiquement sur iPhone ;
+- la détection de mise à jour PWA conserve désormais le signal même s'il arrive avant le montage de l'interface ; une recherche est lancée au démarrage, au retour au premier plan, au retour réseau et lors d'un clic sur l'état de connexion, puis l'utilisateur confirme avec `Mettre à jour` avant le rechargement ; l'utilisateur a confirmé le 9 août 2026 que l'iPhone avait bien reçu la mise à jour, sans préciser le déclencheur exact ;
+- l'ADR-008 documente désormais une sauvegarde portable : snapshot SQLite cohérent, archive avec manifeste et secret d'authentification, chiffrement `age`, partage natif ou téléchargement, import prévalidé et génération de restauration empêchant la réinjection d'une ancienne outbox ; cette solution est acceptée comme conception mais n'est pas encore implantée ;
+- le budget partagé est un candidat fonctionnel complet : cinquième onglet, mouvements réels, revenus/frais récurrents déterministes, enveloppes modifiables et supprimables, provisions, réserve, corrections et tombstones empruntent le cache chiffré et l’outbox existante ; les sections longues sont condensées et repliables à 360 px ;
+- aucune donnée financière réelle n’a été chargée : BitLocker, les ACL de `D:\FridayData` et la sauvegarde SQLite préalable restent une porte bloquante explicitée dans `docs/runbooks/reprise-budget.md` ;
 - la taxonomie `retail-fr-v1` couvre 11 familles de magasins et 25 rayons de supermarché. Le pipeline hybride applique les corrections exactes du foyer puis les règles courantes avant Ministral 3 8B ; chaque réponse porte l'index du produit. Le corpus local de 150 libellés atteint 99,3 % famille/rayon avec 96,7 % de couverture déterministe ; le corpus difficile atteint 88,9 % en 10,4 s à chaud lors de la mesure du 9 août 2026 ;
 - la décision complète est consignée dans `docs/adr/010-classement-courses-par-rayon.md`, la taxonomie dans `docs/reference/taxonomie-courses-retail-fr-v1.md` et l'exploitation dans `docs/runbooks/classement-courses.md` ;
 - le candidat avec les destinations distinctes `Agenda` et `Courses` a été redémarré sur `https://192.168.1.14:8443` le 9 août 2026 ; le healthcheck réussit et `/api/auth/state` confirme un foyer initialisé (`bootstrapRequired: false`) sans ouvrir de session à un client non authentifié ;
-- dernier contrôle complet du candidat du 9 août 2026 : `pnpm verify` réussi avec 85 tests unitaires/intégration et 20 scénarios Chrome mobile ; le runtime a ensuite été reconstruit, redémarré sans navigateur et son healthcheck HTTPS a réussi ;
+- dernier contrôle complet du candidat du 10 août 2026 : `pnpm verify` réussi avec 121 tests unitaires/intégration et 21 scénarios Chrome mobile ; le runtime a ensuite été reconstruit, redémarré sans navigateur et son healthcheck HTTPS a réussi ;
 - terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026 ; la recette physique responsable/filtre reste à confirmer ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
@@ -262,8 +265,9 @@ Le nouveau chat doit :
 4. suivre `docs/11-prochaines-etapes-apres-classement-courses.md` ; les recettes A17 restent ouvertes mais ne bloquent pas le choix fonctionnel suivant ;
 5. attendre le retour de la compagne pour la recette iPhone, sans transformer ce délai en attente de développement ;
 6. laisser conflits et tombstones en observation conformément à l'ADR-011 ;
-7. discuter avec l'utilisateur le prochain lot : budget partagé recommandé, Calendar en lecture ou courte période d'usage Maison ;
-8. documenter la cutline retenue, puis exécuter `pnpm verify` et redémarrer le runtime sans navigateur après son implantation.
+7. conserver le budget au checkpoint documenté dans `docs/12-etat-budget-partage.md` jusqu’à un retour d’usage, une recette physique ou la sécurisation explicite de la reprise réelle ;
+8. discuter avec l’utilisateur du prochain lot avant implantation, Calendar en lecture restant l’option fonctionnelle naturelle ;
+9. exécuter `pnpm verify` et redémarrer le runtime sans navigateur après toute implantation.
 
 Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directement : commit sur la branche active puis `git push origin main`. Ne pas considérer l’absence de `gh` comme un blocage au commit ou au push.
 
@@ -283,9 +287,10 @@ il est déjà vérifié et déployé, il ne faut pas le réimplémenter. L'iPhon
 le retour de sa compagne et ne bloque pas la suite. Ne revendique aucune preuve
 physique A17/iPhone non confirmée. L'ADR-011
 existe déjà ; conflits et tombstones restent en observation jusqu'à un signal
-d'usage réel. Demande à l'utilisateur de choisir entre budget partagé
-(recommandé), Calendar en lecture ou courte période d'usage Maison avant de coder
-le prochain lot. Après toute implantation, exécute `pnpm verify`, redémarre le hub
+d'usage réel. Le budget partagé est déjà implanté et documenté dans
+docs/12-etat-budget-partage.md ; ne recharge aucune donnée réelle avant la porte
+BitLocker/ACL/sauvegarde. Demande à l'utilisateur de confirmer le prochain lot,
+Calendar en lecture étant l'option naturelle. Après toute implantation, exécute `pnpm verify`, redémarre le hub
 sans navigateur et documente la preuve.
 ```
 
@@ -314,7 +319,7 @@ Contrôles automatiques actualisés sur le candidat Lot 1A du 9 août 2026 :
 - aucune signature évidente de clé privée, token OpenAI ou clé Google dans les documents ;
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
 - présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
-- `pnpm verify` réussi avec 85 tests unitaires/intégration, le build PWA/hub et 20 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi avec 121 tests unitaires/intégration, le build PWA/hub et 21 scénarios E2E Google Chrome mobile ;
 - health checks local et LAN réussis après redémarrage sans navigateur.
 
 Ce que cet audit ne prétend pas avoir validé :
@@ -331,6 +336,6 @@ Ce que cet audit ne prétend pas avoir validé :
 - création ou autorisations du compte Google Maison ;
 - configuration Google Drive Desktop ou BitLocker ;
 - sécurité complète du code au-delà des contrôles et documents déjà présents ;
-- comportement iPhone, explicitement différé.
+- appairage et parcours offline complets sur iPhone ; seule la réception d'une mise à jour PWA a été confirmée physiquement.
 
 Ces limites sont des tâches de Lot 0/P1, pas des informations perdues.

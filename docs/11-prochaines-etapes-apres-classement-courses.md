@@ -39,7 +39,7 @@ Les détails sont dans [la recette courses](recipes/galaxy-a17-lot-1a-groceries.
 
 ## Étape 2 — iPhone différé sans bloquer la suite
 
-L'utilisateur attend le retour de sa compagne pour reprendre l'iPhone. Aucune action physique n'est demandée avant cela et ce délai ne doit pas suspendre le travail automatisé.
+L'utilisateur a confirmé le 9 août 2026 que l'iPhone avait bien reçu une mise à jour PWA, sans consigner le déclencheur exact. Il attend le retour de sa compagne pour reprendre l'appairage et les parcours offline. Aucune action physique n'est demandée avant cela et ce délai ne doit pas suspendre le travail automatisé.
 
 Lorsque l'appareil est disponible :
 
@@ -50,7 +50,7 @@ Lorsque l'appareil est disponible :
 5. rejouer création, modification, suppression et courses hors ligne ;
 6. vérifier la convergence sur les deux profils sans doublon.
 
-La correction automatisée ne constitue pas une validation Safari/iPhone. Seul ce retour physique permettra de fermer ce checkpoint.
+La réception d'une mise à jour est validée ponctuellement. Elle ne valide pas l'appairage, le cache après redémarrage hors réseau ni la convergence à deux appareils ; seul ce retour physique permettra de fermer le checkpoint iPhone complet.
 
 ## Étape 3 — Conflits et tombstones en observation
 
@@ -74,6 +74,8 @@ Le prochain choix produit doit être confirmé avec l'utilisateur avant implanta
 3. **courte période d'usage Maison** : continuer tâches et courses sans élargir immédiatement le périmètre.
 
 La veille et l'assistant ne commencent pas avant ce choix et les preuves du lot retenu. Le budget ne doit pas être codé depuis les anciens documents ou classeurs : sa cutline et ses formules doivent d'abord être confirmées.
+
+La [sauvegarde portable chiffrée](adr/008-sauvegarde-portable-chiffree.md) est maintenant conçue mais reste au Lot 3. Son implantation commencera par les scripts de snapshot/restauration et une restauration sur hub vide, avant l'interface de partage/import. Elle ne devient prioritaire plus tôt que si des données familiales réelles rendent l'absence de backup inacceptable.
 
 ## Ordre exécutable résumé
 

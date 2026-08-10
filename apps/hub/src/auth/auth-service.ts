@@ -11,6 +11,9 @@ import {
   AuthSessionSchema,
   type AuthBootstrapRequest,
   type AuthDevice,
+  type AuthDeviceApprovalRequest,
+  type AuthDeviceApprovalRequired,
+  type AuthDeviceApprovalStatus,
   type AuthLoginRequest,
   type AuthMember,
   type AuthPairRequest,
@@ -21,6 +24,8 @@ const HOUSEHOLD_ID = '1030b4f6-1e0f-48fa-adab-865750ce597d';
 const OWNER_PROFILE_ID = 'f61f8f8b-8d09-4575-8e83-357618e881ac';
 const ADULT_PROFILE_ID = '6b0db27d-443d-4dd2-9a21-b809384f2f13';
 const PAIRING_CODE_LIFETIME_MS = 10 * 60 * 1_000;
+const DEVICE_APPROVAL_LIFETIME_MS = 10 * 60 * 1_000;
+const MAX_ACTIVE_DEVICES_PER_USER = 5;
 
 interface SessionDeviceContext {
   deviceId: string;
@@ -41,6 +46,24 @@ interface MemberRow {
 interface BetterAuthSession {
   session: { deviceId?: string; id: string; userId: string };
   user: { email: string; id: string; name: string };
+}
+
+interface LoginMemberRow {
+  household_id: string;
+  internal_email: string;
+  user_id: string;
+}
+
+interface DeviceApprovalRow {
+  created_at: string;
+  device_id: string;
+  device_name: string;
+  expires_at: string;
+  household_id: string;
+  id: string;
+  request_ip: string | null;
+  status: AuthDeviceApprovalStatus;
+  user_id: string;
 }
 
 function internalEmailFor(identifier: string): string {
@@ -196,28 +219,34 @@ export class ClosedAuthService {
     input: AuthLoginRequest,
     headers: IncomingHttpHeaders,
     ipAddress: string,
-  ) {
+  ): Promise<
+    | { approval: AuthDeviceApprovalRequired; headers?: never; session?: never }
+    | { approval?: never; headers: Headers; session: AuthSession }
+  > {
     this.guardAttempts('login', ipAddress, this.attemptLimit);
     const member = this.database
       .prepare(
-        `SELECT u.id AS user_id, u.email AS internal_email
+        `SELECT u.id AS user_id, u.email AS internal_email,
+                m.household_id AS household_id
            FROM "user" u
            JOIN household_members m ON m.user_id = u.id
-           JOIN friday_devices d ON d.user_id = u.id
           WHERE lower(m.login_identifier) = lower(?)
-            AND d.id = ? AND d.revoked_at IS NULL`,
+          LIMIT 1`,
       )
-      .get(input.identifier, input.deviceId) as
-      { internal_email: string; user_id: string } | undefined;
+      .get(input.identifier) as LoginMemberRow | undefined;
     if (!member) {
-      this.audit('login_rejected_device', null, input.deviceId, ipAddress);
+      this.audit('login_rejected_credentials', null, input.deviceId, ipAddress);
       throw new ClosedAuthError(
-        'device_not_paired',
-        403,
+        'invalid_credentials',
+        401,
         'Cet appareil n’est pas appairé à ce compte.',
       );
     }
 
+    const knownDevice = this.findMemberByUserAndDevice(
+      member.user_id,
+      input.deviceId,
+    );
     let result;
     try {
       result = await this.withDevice(input.deviceId, () =>
@@ -243,6 +272,24 @@ export class ClosedAuthService {
       }
       throw error;
     }
+    if (!knownDevice || knownDevice.revoked_at !== null) {
+      this.database
+        .prepare('DELETE FROM "session" WHERE "deviceId" = ?')
+        .run(input.deviceId);
+      const approval = this.createOrRefreshDeviceApprovalRequest(
+        member,
+        input.deviceId,
+        input.deviceName,
+        ipAddress,
+      );
+      this.audit(
+        'device_approval_requested',
+        member.user_id,
+        input.deviceId,
+        ipAddress,
+      );
+      return { approval };
+    }
     const row = this.findMemberByUserAndDevice(member.user_id, input.deviceId);
     if (!row)
       throw new ClosedAuthError('device_not_paired', 403, 'Appareil inconnu.');
@@ -262,14 +309,17 @@ export class ClosedAuthService {
         'Compte propriétaire requis.',
       );
     }
-    const activeDevices = this.database
+    const activeMembers = this.database
       .prepare(
         `SELECT COUNT(*) AS count
-           FROM friday_devices
-          WHERE household_id = ? AND revoked_at IS NULL`,
+           FROM household_members
+          WHERE household_id = ?`,
       )
       .get(HOUSEHOLD_ID) as { count: number };
-    if (activeDevices.count >= 2) {
+    if (
+      activeMembers.count >= 2 &&
+      !this.hasRevokedAdultWithoutActiveDevice()
+    ) {
       throw new ClosedAuthError(
         'household_full',
         409,
@@ -427,6 +477,154 @@ export class ClosedAuthService {
       name: row.name,
       revokedAt: row.revoked_at,
     }));
+  }
+
+  listDeviceApprovalRequests(
+    session: AuthSession,
+  ): AuthDeviceApprovalRequest[] {
+    this.expireDeviceApprovalRequests();
+    const userId = this.findAuthUserId(session);
+    const rows = this.database
+      .prepare(
+        `SELECT id, user_id, household_id, device_id, device_name, request_ip,
+                status, expires_at, created_at
+           FROM device_approval_requests
+          WHERE user_id = ? AND status = 'pending' AND expires_at > ?
+          ORDER BY created_at`,
+      )
+      .all(userId, new Date().toISOString()) as DeviceApprovalRow[];
+    return rows.map((row) => this.toDeviceApprovalRequest(row));
+  }
+
+  approveDeviceApprovalRequest(
+    session: AuthSession,
+    requestId: string,
+    ipAddress: string,
+  ): void {
+    this.expireDeviceApprovalRequests();
+    const userId = this.findAuthUserId(session);
+    const now = new Date().toISOString();
+    const row = this.database
+      .prepare(
+        `SELECT id, user_id, household_id, device_id, device_name, request_ip,
+                status, expires_at, created_at
+           FROM device_approval_requests
+          WHERE id = ? AND user_id = ?`,
+      )
+      .get(requestId, userId) as DeviceApprovalRow | undefined;
+    if (!row) {
+      throw new ClosedAuthError(
+        'approval_request_not_found',
+        404,
+        'Demande introuvable.',
+      );
+    }
+    if (row.status !== 'pending' || row.expires_at <= now) {
+      throw new ClosedAuthError(
+        'approval_request_expired',
+        409,
+        'Demande expiree.',
+      );
+    }
+    this.assertUserDeviceLimit(userId);
+    this.database.transaction(() => {
+      const existing = this.database
+        .prepare('SELECT user_id FROM friday_devices WHERE id = ?')
+        .get(row.device_id) as { user_id: string } | undefined;
+      if (existing && existing.user_id !== userId) {
+        throw new ClosedAuthError(
+          'device_already_registered',
+          409,
+          'Cet appareil est deja lie a un autre compte.',
+        );
+      }
+      if (existing) {
+        this.database
+          .prepare(
+            `UPDATE friday_devices
+                SET name = ?, last_seen_at = ?, revoked_at = NULL
+              WHERE id = ? AND user_id = ?`,
+          )
+          .run(row.device_name, now, row.device_id, userId);
+      } else {
+        this.database
+          .prepare(
+            `INSERT INTO friday_devices (
+               id, user_id, household_id, name, created_at, last_seen_at, revoked_at
+             ) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+          )
+          .run(
+            row.device_id,
+            userId,
+            row.household_id,
+            row.device_name,
+            now,
+            now,
+          );
+      }
+      this.database
+        .prepare(
+          `UPDATE device_approval_requests
+              SET status = 'approved', approved_by_device_id = ?, resolved_at = ?
+            WHERE id = ? AND status = 'pending'`,
+        )
+        .run(session.deviceId, now, row.id);
+    })();
+    this.audit('device_approval_approved', userId, row.device_id, ipAddress);
+  }
+
+  rejectDeviceApprovalRequest(
+    session: AuthSession,
+    requestId: string,
+    ipAddress: string,
+  ): void {
+    this.expireDeviceApprovalRequests();
+    const userId = this.findAuthUserId(session);
+    const now = new Date().toISOString();
+    const updated = this.database
+      .prepare(
+        `UPDATE device_approval_requests
+            SET status = 'rejected', resolved_at = ?
+          WHERE id = ? AND user_id = ? AND status = 'pending'`,
+      )
+      .run(now, requestId, userId);
+    if (updated.changes !== 1) {
+      throw new ClosedAuthError(
+        'approval_request_not_found',
+        404,
+        'Demande introuvable.',
+      );
+    }
+    this.audit('device_approval_rejected', userId, null, ipAddress);
+  }
+
+  getDeviceApprovalStatus(
+    requestId: string,
+    statusToken: string,
+  ): { status: AuthDeviceApprovalStatus } {
+    this.expireDeviceApprovalRequests();
+    const row = this.database
+      .prepare(
+        `SELECT status, expires_at
+           FROM device_approval_requests
+          WHERE id = ? AND status_token_hash = ?`,
+      )
+      .get(requestId, this.hashDeviceApprovalToken(statusToken)) as
+      { expires_at: string; status: AuthDeviceApprovalStatus } | undefined;
+    if (!row) {
+      throw new ClosedAuthError(
+        'approval_request_not_found',
+        404,
+        'Demande introuvable.',
+      );
+    }
+    if (
+      row.status === 'pending' &&
+      row.expires_at <= new Date().toISOString()
+    ) {
+      return { status: 'expired' };
+    }
+    return { status: row.status };
   }
 
   revokeDevice(
@@ -608,10 +806,16 @@ export class ClosedAuthService {
         `SELECT m.user_id, u.email AS internal_email
            FROM household_members m
            JOIN "user" u ON u.id = m.user_id
-           JOIN friday_devices d ON d.user_id = m.user_id
           WHERE m.household_id = ? AND m.role = 'adult'
             AND lower(m.login_identifier) = lower(?)
-            AND d.revoked_at IS NOT NULL`,
+            AND EXISTS (
+              SELECT 1 FROM friday_devices d
+               WHERE d.user_id = m.user_id AND d.revoked_at IS NOT NULL
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM friday_devices d
+               WHERE d.user_id = m.user_id AND d.revoked_at IS NULL
+            )`,
       )
       .get(HOUSEHOLD_ID, input.identifier) as
       { internal_email: string; user_id: string } | undefined;
@@ -644,14 +848,22 @@ export class ClosedAuthService {
     }
 
     const now = new Date().toISOString();
-    const updated = this.database
+    this.assertUserDeviceLimit(adult.user_id);
+    const inserted = this.database
       .prepare(
-        `UPDATE friday_devices
-            SET id = ?, name = ?, created_at = ?, last_seen_at = ?, revoked_at = NULL
-          WHERE user_id = ? AND revoked_at IS NOT NULL`,
+        `INSERT INTO friday_devices (
+           id, user_id, household_id, name, created_at, last_seen_at, revoked_at
+         ) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
       )
-      .run(input.deviceId, input.deviceName, now, now, adult.user_id);
-    if (updated.changes !== 1) {
+      .run(
+        input.deviceId,
+        adult.user_id,
+        HOUSEHOLD_ID,
+        input.deviceName,
+        now,
+        now,
+      );
+    if (inserted.changes !== 1) {
       this.database
         .prepare('DELETE FROM "session" WHERE "deviceId" = ?')
         .run(input.deviceId);
@@ -688,6 +900,140 @@ export class ClosedAuthService {
       .get(userId, deviceId) as MemberRow | undefined;
   }
 
+  private createOrRefreshDeviceApprovalRequest(
+    member: LoginMemberRow,
+    deviceId: string,
+    deviceName: string,
+    ipAddress: string,
+  ): AuthDeviceApprovalRequired {
+    this.assertUserDeviceLimit(member.user_id);
+    const now = new Date();
+    const createdAt = now.toISOString();
+    const expiresAt = new Date(
+      now.getTime() + DEVICE_APPROVAL_LIFETIME_MS,
+    ).toISOString();
+    const statusToken =
+      randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', '');
+    const statusTokenHash = this.hashDeviceApprovalToken(statusToken);
+    const existing = this.database
+      .prepare(
+        `SELECT id
+           FROM device_approval_requests
+          WHERE user_id = ? AND device_id = ? AND status = 'pending'`,
+      )
+      .get(member.user_id, deviceId) as { id: string } | undefined;
+    if (existing) {
+      this.database
+        .prepare(
+          `UPDATE device_approval_requests
+              SET device_name = ?, request_ip = ?, status_token_hash = ?,
+                  expires_at = ?, created_at = ?, resolved_at = NULL
+            WHERE id = ?`,
+        )
+        .run(
+          deviceName,
+          ipAddress,
+          statusTokenHash,
+          expiresAt,
+          createdAt,
+          existing.id,
+        );
+      return {
+        approvalRequired: true,
+        expiresAt,
+        requestId: existing.id,
+        statusToken,
+      };
+    }
+    const requestId = randomUUID();
+    this.database
+      .prepare(
+        `INSERT INTO device_approval_requests (
+           id, user_id, household_id, device_id, device_name, request_ip,
+           status, status_token_hash, expires_at, approved_by_device_id,
+           created_at, resolved_at
+         ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, NULL, ?, NULL)`,
+      )
+      .run(
+        requestId,
+        member.user_id,
+        member.household_id,
+        deviceId,
+        deviceName,
+        ipAddress,
+        statusTokenHash,
+        expiresAt,
+        createdAt,
+      );
+    return {
+      approvalRequired: true,
+      expiresAt,
+      requestId,
+      statusToken,
+    };
+  }
+
+  private assertUserDeviceLimit(userId: string): void {
+    const activeDevices = this.database
+      .prepare(
+        `SELECT COUNT(*) AS count
+           FROM friday_devices
+          WHERE user_id = ? AND revoked_at IS NULL`,
+      )
+      .get(userId) as { count: number };
+    if (activeDevices.count >= MAX_ACTIVE_DEVICES_PER_USER) {
+      throw new ClosedAuthError(
+        'device_limit_reached',
+        409,
+        'Limite atteinte. Revoquez un ancien appareil avant d en ajouter un nouveau.',
+      );
+    }
+  }
+
+  private hasRevokedAdultWithoutActiveDevice(): boolean {
+    const row = this.database
+      .prepare(
+        `SELECT m.user_id
+           FROM household_members m
+          WHERE m.household_id = ? AND m.role = 'adult'
+            AND EXISTS (
+              SELECT 1 FROM friday_devices d
+               WHERE d.user_id = m.user_id AND d.revoked_at IS NOT NULL
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM friday_devices d
+               WHERE d.user_id = m.user_id AND d.revoked_at IS NULL
+            )`,
+      )
+      .get(HOUSEHOLD_ID);
+    return Boolean(row);
+  }
+
+  private expireDeviceApprovalRequests(): void {
+    const now = new Date().toISOString();
+    this.database
+      .prepare(
+        `UPDATE device_approval_requests
+            SET status = 'expired', resolved_at = ?
+          WHERE status = 'pending' AND expires_at <= ?`,
+      )
+      .run(now, now);
+  }
+
+  private toDeviceApprovalRequest(
+    row: DeviceApprovalRow,
+  ): AuthDeviceApprovalRequest {
+    return {
+      createdAt: row.created_at,
+      deviceId: row.device_id,
+      deviceName: row.device_name,
+      expiresAt: row.expires_at,
+      id: row.id,
+      requestIp: row.request_ip,
+      status: row.status,
+    };
+  }
+
   private findUserIdByProfileId(profileId: string): string {
     const row = this.database
       .prepare('SELECT user_id FROM household_members WHERE profile_id = ?')
@@ -719,6 +1065,12 @@ export class ClosedAuthService {
 
   private hashPairingCode(code: string): string {
     return createHmac('sha256', this.secret).update(code).digest('hex');
+  }
+
+  private hashDeviceApprovalToken(token: string): string {
+    return createHmac('sha256', this.secret)
+      .update(`device-approval:${token}`)
+      .digest('hex');
   }
 
   private audit(

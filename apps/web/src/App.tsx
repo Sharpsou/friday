@@ -9,16 +9,21 @@ import {
 
 import type {
   AuthDevice,
+  AuthDeviceApprovalRequest,
   AuthMember,
   GroceryClassificationRecord,
 } from '@friday/contracts';
 
 import { AuthGate } from './auth/AuthGate.js';
+import { BudgetView } from './BudgetView.js';
 import {
+  approveDeviceApprovalRequest,
   createPairingCode,
   forgetAdult,
   listAuthDevices,
+  listDeviceApprovalRequests,
   listAuthMembers,
+  rejectDeviceApprovalRequest,
   revokeAuthDevice,
 } from './auth/auth-client.js';
 import { useClosedAuth } from './auth/use-closed-auth.js';
@@ -50,6 +55,11 @@ import {
   type LocalGroceryItem,
 } from './db/grocery-repository.js';
 import { listGroceryClassifications } from './db/grocery-classification-repository.js';
+import {
+  listBudgetState,
+  materializeDueBudgetEntries,
+  type BudgetState,
+} from './db/budget-repository.js';
 import {
   GroceryClassificationDialog,
   GroceryClassificationIndicator,
@@ -85,7 +95,7 @@ import { useGroceryClassification } from './use-grocery-classification.js';
 import { ShoppingMode } from './ShoppingMode.js';
 import { GroceryEditorDialog, TaskEditorDialog } from './ItemEditorDialogs.js';
 
-type Destination = 'today' | 'agenda' | 'groceries' | 'watch';
+type Destination = 'today' | 'agenda' | 'groceries' | 'budget' | 'watch';
 type TaskView = 'list' | 'week' | 'month';
 type RecurrenceChoice =
   'none' | 'daily' | 'weekly' | 'custom-days' | 'monthly' | 'yearly';
@@ -95,6 +105,14 @@ const TASK_SYNC_LABELS: Record<LocalTask['syncState'], string> = {
   sent: 'Synchronisation en cours',
   acknowledged: 'Synchronisée avec le foyer',
   conflict: 'À vérifier',
+};
+
+const EMPTY_BUDGET_STATE: BudgetState = {
+  entries: [],
+  envelopes: [],
+  plannedExpenses: [],
+  recurringTemplates: [],
+  savingsMonths: [],
 };
 
 const TASK_DATE_FORMATTER = new Intl.DateTimeFormat('fr-FR', {
@@ -133,6 +151,8 @@ export function App() {
   const [groceryClassifications, setGroceryClassifications] = useState<
     GroceryClassificationRecord[]
   >([]);
+  const [budgetState, setBudgetState] = useState(EMPTY_BUDGET_STATE);
+  const [budgetQuickAddOpen, setBudgetQuickAddOpen] = useState(false);
   const [classificationPreviewOpen, setClassificationPreviewOpen] =
     useState(false);
   const [groceryLabel, setGroceryLabel] = useState('');
@@ -175,6 +195,9 @@ export function App() {
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [authDevices, setAuthDevices] = useState<AuthDevice[]>([]);
+  const [deviceApprovalRequests, setDeviceApprovalRequests] = useState<
+    AuthDeviceApprovalRequest[]
+  >([]);
   const [authMembers, setAuthMembers] = useState<AuthMember[]>([]);
   const [pairingCode, setPairingCode] = useState<{
     code: string;
@@ -220,16 +243,24 @@ export function App() {
   );
 
   const reloadLocalState = useCallback(async () => {
-    const [localTasks, localGroceryItems, localGroceryClassifications, counts] =
-      await Promise.all([
-        listTasks(),
-        listGroceryItems(),
-        listGroceryClassifications(),
-        getOutboxCounts(),
-      ]);
+    await materializeDueBudgetEntries(new Date().toLocaleDateString('sv-SE'));
+    const [
+      localTasks,
+      localGroceryItems,
+      localGroceryClassifications,
+      localBudget,
+      counts,
+    ] = await Promise.all([
+      listTasks(),
+      listGroceryItems(),
+      listGroceryClassifications(),
+      listBudgetState(),
+      getOutboxCounts(),
+    ]);
     setTasks(localTasks);
     setGroceryItems(localGroceryItems);
     setGroceryClassifications(localGroceryClassifications);
+    setBudgetState(localBudget);
     setPending(counts.pending);
     setConflicts(counts.conflicts);
     return localTasks;
@@ -272,12 +303,14 @@ export function App() {
   const reloadAuthManagement = useCallback(async () => {
     if (!authSession || !navigator.onLine) return;
     try {
-      const [members, devices] = await Promise.all([
+      const [members, devices, approvalRequests] = await Promise.all([
         listAuthMembers(),
         listAuthDevices(),
+        listDeviceApprovalRequests(),
       ]);
       setAuthMembers(members);
       setAuthDevices(devices);
+      setDeviceApprovalRequests(approvalRequests);
     } catch {
       // The cached profile remains sufficient for offline task access.
     }
@@ -300,6 +333,16 @@ export function App() {
   useEffect(() => {
     window.queueMicrotask(() => void reloadAuthManagement());
   }, [reloadAuthManagement]);
+
+  useEffect(() => {
+    if (!authSession) {
+      return undefined;
+    }
+    const interval = window.setInterval(() => {
+      if (navigator.onLine) void reloadAuthManagement();
+    }, 5_000);
+    return () => window.clearInterval(interval);
+  }, [authSession, reloadAuthManagement]);
 
   useEffect(() => {
     if (!settingsOpen) return;
@@ -782,6 +825,30 @@ export function App() {
     }
   }
 
+  async function approveNewDevice(requestId: string) {
+    try {
+      await approveDeviceApprovalRequest(requestId);
+      setAuthManagementMessage('Nouvel appareil autorise.');
+      await reloadAuthManagement();
+    } catch (error) {
+      setAuthManagementMessage(
+        error instanceof Error ? error.message : 'Autorisation impossible.',
+      );
+    }
+  }
+
+  async function rejectNewDevice(requestId: string) {
+    try {
+      await rejectDeviceApprovalRequest(requestId);
+      setAuthManagementMessage('Demande refusee.');
+      await reloadAuthManagement();
+    } catch (error) {
+      setAuthManagementMessage(
+        error instanceof Error ? error.message : 'Refus impossible.',
+      );
+    }
+  }
+
   async function forgetSecondAdult() {
     try {
       await forgetAdult();
@@ -889,6 +956,34 @@ export function App() {
         />
       ) : null}
 
+      {deviceApprovalRequests.length > 0 ? (
+        <section className="device-approval-banner" aria-live="polite">
+          {deviceApprovalRequests.map((request) => (
+            <div key={request.id}>
+              <span>
+                <strong>Nouvel appareil</strong>
+                {request.deviceName}
+                {request.requestIp ? ` - ${request.requestIp}` : ''}
+              </span>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => void approveNewDevice(request.id)}
+                >
+                  Autoriser
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void rejectNewDevice(request.id)}
+                >
+                  Refuser
+                </button>
+              </div>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
       <main>
         {destination === 'today' && (
           <section className="screen" aria-labelledby="today-title">
@@ -966,6 +1061,11 @@ export function App() {
               </p>
             </section>
 
+            <BudgetTodayAlert
+              state={budgetState}
+              onOpen={() => setDestination('budget')}
+            />
+
             {conflicts > 0 ? (
               <aside className="conflict-notice" aria-live="polite">
                 <div>
@@ -975,8 +1075,8 @@ export function App() {
                   </strong>
                   <span>
                     {conflicts === 1
-                      ? 'Une tâche a changé sur plusieurs appareils.'
-                      : 'Des tâches ont changé sur plusieurs appareils.'}
+                      ? 'Une donnée partagée a changé sur plusieurs appareils.'
+                      : 'Des données partagées ont changé sur plusieurs appareils.'}
                   </span>
                 </div>
                 <button type="button" onClick={() => setDestination('agenda')}>
@@ -1421,6 +1521,25 @@ export function App() {
           </section>
         )}
 
+        {destination === 'budget' && authSession ? (
+          <BudgetView
+            currentProfileId={authSession.member.profileId}
+            otherProfileId={
+              authMembers.find(
+                (member) => member.profileId !== authSession.member.profileId,
+              )?.profileId ?? null
+            }
+            quickOpen={budgetQuickAddOpen}
+            profileNames={assigneeLabels}
+            state={budgetState}
+            onChanged={async () => {
+              await reloadLocalState();
+              void synchronize();
+            }}
+            onQuickOpenChange={setBudgetQuickAddOpen}
+          />
+        ) : null}
+
         {destination === 'watch' && (
           <section className="screen centered" aria-labelledby="watch-title">
             <div className="placeholder-mark">V</div>
@@ -1575,9 +1694,7 @@ export function App() {
                     : 'Adulte'}
                 </p>
                 {authenticatedSession.member.role === 'owner' &&
-                !authDevices.some(
-                  (device) => !device.current && !device.revokedAt,
-                ) ? (
+                authMembers.length < 2 ? (
                   <button
                     className="secondary-button auth-settings-button"
                     type="button"
@@ -1600,6 +1717,35 @@ export function App() {
                       )}
                     </small>
                   </div>
+                ) : null}
+                {deviceApprovalRequests.length > 0 ? (
+                  <ul className="auth-device-list">
+                    {deviceApprovalRequests.map((request) => (
+                      <li key={request.id}>
+                        <span>
+                          <strong>{request.deviceName}</strong>
+                          <small>
+                            Demande en attente
+                            {request.requestIp
+                              ? ` Â· ${request.requestIp}`
+                              : ''}
+                          </small>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void approveNewDevice(request.id)}
+                        >
+                          Autoriser
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void rejectNewDevice(request.id)}
+                        >
+                          Refuser
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
                 {authDevices.length > 0 ? (
                   <ul className="auth-device-list">
@@ -1630,7 +1776,9 @@ export function App() {
                 {authenticatedSession.member.role === 'owner' &&
                 authMembers.some((member) => member.role === 'adult') &&
                 !authDevices.some(
-                  (device) => !device.current && !device.revokedAt,
+                  (device) =>
+                    device.memberName !== authenticatedSession.member.name &&
+                    !device.revokedAt,
                 ) ? (
                   confirmAdultForget ? (
                     <div className="adult-forget-confirmation" role="alert">
@@ -1804,7 +1952,11 @@ export function App() {
         className="fab"
         type="button"
         onClick={
-          destination === 'groceries' ? openGroceryQuickAdd : openQuickAdd
+          destination === 'groceries'
+            ? openGroceryQuickAdd
+            : destination === 'budget'
+              ? () => setBudgetQuickAddOpen(true)
+              : openQuickAdd
         }
         aria-label="Ajouter rapidement"
       >
@@ -1828,12 +1980,65 @@ export function App() {
           onClick={() => setDestination('groceries')}
         />
         <NavButton
+          active={destination === 'budget'}
+          label="Budget"
+          onClick={() => setDestination('budget')}
+        />
+        <NavButton
           active={destination === 'watch'}
           label="Veille"
           onClick={() => setDestination('watch')}
         />
       </nav>
     </div>
+  );
+}
+
+function BudgetTodayAlert({
+  onOpen,
+  state,
+}: {
+  onOpen: () => void;
+  state: BudgetState;
+}) {
+  const now = new Date();
+  const month = now.toLocaleDateString('sv-SE').slice(0, 7);
+  const overspent = state.envelopes.find((envelope) => {
+    const spent = state.entries
+      .filter(
+        (entry) =>
+          entry.kind === 'expense' &&
+          entry.envelopeId === envelope.id &&
+          entry.occurredOn.startsWith(month),
+      )
+      .reduce((sum, entry) => sum + entry.amountCents, 0);
+    return (
+      envelope.rollover === 'reset' && spent > envelope.monthlyAllocationCents
+    );
+  });
+  const soon = state.plannedExpenses.find((expense) => {
+    if (expense.status !== 'planned') return false;
+    const days = Math.ceil(
+      (Date.parse(`${expense.dueDate}T12:00:00`) - now.getTime()) / 86_400_000,
+    );
+    return days >= 0 && days <= 30 && !expense.provisionAccepted;
+  });
+  const label = overspent
+    ? `L’enveloppe ${overspent.name} est dépassée.`
+    : soon
+      ? `${soon.label} approche sans provision validée.`
+      : null;
+  if (!label) return null;
+  return (
+    <aside className="budget-today-alert" aria-live="polite">
+      <span>
+        <strong>Budget</strong>
+        {label}
+      </span>
+      <button type="button" onClick={onOpen}>
+        Voir
+      </button>
+    </aside>
   );
 }
 

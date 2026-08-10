@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { useClosedAuth } from './use-closed-auth.js';
 
@@ -13,6 +13,14 @@ export function AuthGate({ auth }: { auth: ClosedAuthController }) {
   const [password, setPassword] = useState('');
   const [deviceName, setDeviceName] = useState('Mon téléphone');
   const [code, setCode] = useState('');
+
+  useEffect(() => {
+    if (!auth.pendingApproval) return undefined;
+    const interval = window.setInterval(() => {
+      void auth.pollDeviceApproval();
+    }, 2_500);
+    return () => window.clearInterval(interval);
+  }, [auth]);
 
   if (auth.loading) {
     return (
@@ -49,6 +57,13 @@ export function AuthGate({ auth }: { auth: ClosedAuthController }) {
 
   const bootstrap = auth.state.bootstrapRequired;
   const showIdentity = bootstrap || mode === 'pair';
+  const showDeviceName = bootstrap || mode === 'pair' || mode === 'login';
+  const approvalExpiresAt = auth.pendingApproval
+    ? new Date(auth.pendingApproval.approval.expiresAt).toLocaleTimeString(
+        'fr-FR',
+        { hour: '2-digit', minute: '2-digit' },
+      )
+    : null;
   return (
     <main className="auth-shell">
       <section className="auth-card" aria-labelledby="auth-title">
@@ -69,6 +84,16 @@ export function AuthGate({ auth }: { auth: ClosedAuthController }) {
               ? 'Utilisez le code temporaire affiché sur l’appareil du propriétaire.'
               : 'Seul un appareil déjà appairé peut ouvrir cette session.'}
         </p>
+
+        {auth.pendingApproval ? (
+          <div className="auth-approval-wait" role="status">
+            <strong>Demande envoyee</strong>
+            <span>
+              Autorisez {deviceName} depuis un appareil deja connecte avant{' '}
+              {approvalExpiresAt}.
+            </span>
+          </div>
+        ) : null}
 
         {!bootstrap ? (
           <div
@@ -108,7 +133,7 @@ export function AuthGate({ auth }: { auth: ClosedAuthController }) {
                 password,
               });
             } else {
-              void auth.login({ identifier, password });
+              void auth.login({ deviceName, identifier, password });
             }
           }}
         >
@@ -169,7 +194,7 @@ export function AuthGate({ auth }: { auth: ClosedAuthController }) {
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
-          {showIdentity ? (
+          {showDeviceName ? (
             <label>
               <span>Nom de cet appareil</span>
               <input

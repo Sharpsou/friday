@@ -7,6 +7,7 @@ import {
   bootstrapHousehold,
   getCurrentLocalProfileId,
   getLocalDeviceId,
+  login,
   loadCachedAuthSession,
   loadAuthState,
   logout,
@@ -95,6 +96,37 @@ describe('closed auth client', () => {
       connection: 'offline',
       session: SESSION,
     });
+  });
+
+  it('keeps a new device approval request out of the local session cache', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              approvalRequired: true,
+              expiresAt: '2026-08-09T12:10:00.000Z',
+              requestId: '11111111-1111-4111-8111-111111111111',
+              statusToken:
+                '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+            }),
+            {
+              headers: { 'content-type': 'application/json' },
+              status: 202,
+            },
+          ),
+      ),
+    );
+
+    const result = await login({
+      deviceName: 'PC',
+      identifier: 'adulte1',
+      password: 'phrase-secrete-friday',
+    });
+
+    expect(result).toMatchObject({ approvalRequired: true });
+    expect(await loadCachedAuthSession()).toBeNull();
   });
 
   it('realigns the local device identity with the authenticated session', async () => {

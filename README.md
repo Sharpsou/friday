@@ -42,6 +42,12 @@ La construction est pilotée en temps agentique : environ **8 à 16 heures cumul
 - [Feuille de route technique et d’implémentation](docs/10-feuille-de-route-technique-implementation.md) — **support d’exécution actuel**
 - [Prochaines étapes après le classement des courses](docs/11-prochaines-etapes-apres-classement-courses.md) — **plan actif**
 - [ADR-011 — conflits et tombstones](docs/adr/011-conflits-et-cycle-de-vie-des-tombstones.md) — **accepté**
+- [ADR-008 — sauvegarde portable chiffrée](docs/adr/008-sauvegarde-portable-chiffree.md) — **conception acceptée, non implantée**
+- [Runbook sauvegarde/restauration](docs/runbooks/sauvegarde-restauration.md) — **procédure cible**
+- [État du budget partagé](docs/12-etat-budget-partage.md) — **checkpoint automatisé du 10 août 2026**
+- [ADR-012 — budget partagé et enveloppes](docs/adr/012-budget-partage-enveloppes.md) — **règles et formules**
+- [Mode d’emploi illustré du budget](docs/guides/mode-emploi-budget-friday.docx)
+- [Recette A17 du budget](docs/recipes/galaxy-a17-budget.md) — **checkpoint physique ouvert**
 - [Décision finale PWA MVP](docs/09-decision-finale-pwa-mvp.md) — **référence produit actuelle**
 - [ADR du classement des courses par rayon](docs/adr/010-classement-courses-par-rayon.md)
 - [Taxonomie `retail-fr-v1`](docs/reference/taxonomie-courses-retail-fr-v1.md)
@@ -49,7 +55,7 @@ La construction est pilotée en temps agentique : environ **8 à 16 heures cumul
 - [Recette A17 du classement des courses](docs/recipes/galaxy-a17-lot-1a-grocery-classification.md)
 - [Recette A17 de l’authentification et de l’appairage](docs/recipes/galaxy-a17-lot-1a-auth.md) — **checkpoint physique**
 - [Recette A17 des courses partagées](docs/recipes/galaxy-a17-lot-1a-groceries.md) — **checkpoint physique**
-- [Recette iPhone de mise à jour PWA](docs/recipes/iphone-pwa-update.md) — **en attente du retour de la compagne**
+- [Recette iPhone de mise à jour PWA](docs/recipes/iphone-pwa-update.md) — **mise à jour reçue, auth/offline encore ouverts**
 - [Étude PWA offline](docs/08-option-pwa-offline.md) — étude ayant conduit à la décision
 - [Décisions précédentes](docs/07-decisions-apres-reponses.md) — historique avant bascule PWA
 - [Questions, réponses et points ouverts](docs/06-questions.md)
@@ -87,8 +93,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-Fr
 
 L'installateur place également sur le Bureau `Friday - Lancer ou redemarrer`, qui exécute cette commande sans navigateur ni terminal visible et confirme son résultat, ainsi que `Friday - Arreter le service`, qui coupe uniquement le hub Friday pour la recette hors ligne.
 
-La porte go/no-go offline/synchronisation du Lot 0B est validée sur le Galaxy A17. Le candidat Lot 1A couvre terminer/rouvrir, date/heure/durée, responsable, récurrence bornée, note, édition au toucher, authentification fermée par identifiant Friday et courses partagées offline-first. Le classement facultatif des courses par rayon combine les corrections du foyer, des règles locales et Ministral 3 8B via un job persistant arrêtable ; chaque réponse modèle est reliée à l'index du produit pour empêcher les décalages. La liste reste utilisable pendant le traitement et le mode plein écran `En course` conserve uniquement les rayons et produits restants sous forme de grandes cibles cochables, y compris hors ligne. La recherche de mise à jour PWA est relancée au démarrage, au retour au premier plan, au retour réseau et au clic sur l'état de connexion. Le foyer propriétaire est initialisé, mais l'appairage physique d'un second appareil reste à confirmer ; la recette iPhone attend le retour de la compagne de l'utilisateur sans bloquer le choix du lot suivant. Les checkpoints sont `docs/recipes/galaxy-a17-lot-1a-auth.md`, `docs/recipes/galaxy-a17-lot-1a-groceries.md`, `docs/recipes/galaxy-a17-lot-1a-grocery-classification.md` et `docs/recipes/iphone-pwa-update.md`. L'ADR-011 documente conflits et tombstones, dont l'implémentation avancée est reportée jusqu'à un signal d'usage réel. Le plan actif `docs/11-prochaines-etapes-apres-classement-courses.md` propose de discuter ensuite entre budget partagé — ordre recommandé —, Calendar en lecture ou courte période d'usage Maison.
+La porte go/no-go offline/synchronisation du Lot 0B est validée sur le Galaxy A17. Le candidat couvre les tâches, les courses, l’authentification fermée et le classement facultatif déjà documentés, ainsi qu’un cinquième onglet `Budget` partagé et offline-first. Le budget sépare réalisé, prévisionnel, enveloppes, provisions et épargne réelle ; il gère récurrences, corrections et suppressions synchronisées sans recréer les occurrences ignorées. Son état est figé dans `docs/12-etat-budget-partage.md`. Les données réelles ne sont pas chargées tant que BitLocker, les ACL de `D:\FridayData` et la sauvegarde préalable ne passent pas la porte du runbook. Les recettes A17 Budget, auth, courses et classement restent des checkpoints physiques ouverts ; l’iPhone a seulement reçu une mise à jour PWA, sans validation auth/offline complète.
 
-Dernière validation automatisée du candidat : `pnpm verify` réussi avec 85 tests unitaires/intégration, le build PWA/hub et 20 scénarios Google Chrome mobile. Le runtime HTTPS a ensuite été reconstruit et redémarré sans navigateur avec un healthcheck réussi.
+Dernière validation automatisée du candidat : `pnpm verify` réussi le 10 août 2026 avec 121 tests unitaires/intégration, le build PWA/hub et 21 scénarios Google Chrome mobile. Le runtime HTTPS a ensuite été reconstruit et redémarré sans navigateur avec un healthcheck réussi.
 
 Pour reprendre dans un nouveau chat, ouvrir `D:\prog\friday` et utiliser le prompt fourni dans le document 00. Le fichier `AGENTS.md` protège les décisions essentielles et les projets sources.
