@@ -22,14 +22,14 @@ La mise au point et la recette MVP utilisent le PC et le Samsung Galaxy A17. La 
 
 ## MVP retenu
 
-- quatre destinations : `Aujourd'hui`, `Agenda`, `Courses`, `Veille` ;
+- six destinations : `Aujourd'hui`, `Agenda`, `Courses`, `Budget`, `Assistant`, `Veille` ;
 - comptes adultes et données Maison partagées ;
 - tâches minimales, rappels visibles et récurrence simple ;
 - courses partagées, avec classement facultatif par rayon en arrière-plan ;
 - budget partagé : frais fixes, courses, santé, loisirs, extras, revenus réguliers/extra et épargne mensuelle ;
 - calendrier Google Maison en lecture et cache offline ;
 - veille RSS/Atom configurable par profil ;
-- assistant texte local via Ollama ;
+- assistant privé par profil via Ollama, avec modes classique et Web consentis ;
 - cache local chiffré, outbox et synchronisation LAN ;
 - sauvegarde et restauration chiffrées.
 
@@ -40,11 +40,14 @@ La construction est pilotée en temps agentique : environ **8 à 16 heures cumul
 - [Point de reprise pour un nouveau chat](docs/00-reprise-nouveau-chat.md) — **commencer ici**
 - [Recette du socle offline Galaxy A17](docs/recipes/galaxy-a17-p0.md) — porte Lot 0B validée
 - [Feuille de route technique et d’implémentation](docs/10-feuille-de-route-technique-implementation.md) — **support d’exécution actuel**
-- [Prochaines étapes après le classement des courses](docs/11-prochaines-etapes-apres-classement-courses.md) — **plan actif**
+- [Prochaines étapes après le candidat Assistant](docs/14-prochaines-etapes-apres-assistant.md) — **plan actif**
 - [ADR-011 — conflits et tombstones](docs/adr/011-conflits-et-cycle-de-vie-des-tombstones.md) — **accepté**
 - [ADR-008 — sauvegarde portable chiffrée](docs/adr/008-sauvegarde-portable-chiffree.md) — **conception acceptée, non implantée**
 - [Runbook sauvegarde/restauration](docs/runbooks/sauvegarde-restauration.md) — **procédure cible**
 - [État du budget partagé](docs/12-etat-budget-partage.md) — **checkpoint automatisé du 10 août 2026**
+- [État de l’Assistant local](docs/13-etat-assistant-local.md) — **checkpoint automatisé du 10 août 2026**
+- [ADR-013 — accès extérieur privé par Tailscale `/32`](docs/adr/013-acces-exterieur-tailscale-route-privee.md) — **accepté, mise en œuvre en pause**
+- [Audit documentaire du 10 août 2026](docs/15-audit-documentation-2026-08-10.md)
 - [ADR-012 — budget partagé et enveloppes](docs/adr/012-budget-partage-enveloppes.md) — **règles et formules**
 - [Mode d’emploi illustré du budget](docs/guides/mode-emploi-budget-friday.docx)
 - [Recette A17 du budget](docs/recipes/galaxy-a17-budget.md) — **checkpoint physique ouvert**
@@ -93,8 +96,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-Fr
 
 L'installateur place également sur le Bureau `Friday - Lancer ou redemarrer`, qui exécute cette commande sans navigateur ni terminal visible et confirme son résultat, ainsi que `Friday - Arreter le service`, qui coupe uniquement le hub Friday pour la recette hors ligne.
 
-La porte go/no-go offline/synchronisation du Lot 0B est validée sur le Galaxy A17. Le candidat couvre les tâches, les courses, l’authentification fermée et le classement facultatif déjà documentés, ainsi qu’un cinquième onglet `Budget` partagé et offline-first. Le budget sépare réalisé, prévisionnel, enveloppes, provisions et épargne réelle ; il gère récurrences, corrections et suppressions synchronisées sans recréer les occurrences ignorées. Son état est figé dans `docs/12-etat-budget-partage.md`. Les données réelles ne sont pas chargées tant que BitLocker, les ACL de `D:\FridayData` et la sauvegarde préalable ne passent pas la porte du runbook. Les recettes A17 Budget, auth, courses et classement restent des checkpoints physiques ouverts ; l’iPhone a seulement reçu une mise à jour PWA, sans validation auth/offline complète.
+La porte go/no-go offline/synchronisation du Lot 0B est validée sur le Galaxy A17. Le candidat couvre les tâches, les courses, l’authentification fermée et le classement facultatif déjà documentés, ainsi que les destinations `Budget` et `Assistant`. Le budget partagé sépare réalisé, prévisionnel, enveloppes, provisions et épargne réelle. L’Assistant conserve des conversations privées par profil, une outbox chiffrée et une file persistante pour ses modes classique et Web. Les données financières réelles ne sont pas chargées tant que BitLocker, les ACL de `D:\FridayData` et la sauvegarde préalable ne passent pas la porte du runbook. Les recettes physiques A17 et iPhone restent distinctes des preuves automatisées.
 
-Dernière validation automatisée du candidat : `pnpm verify` réussi le 10 août 2026 avec 121 tests unitaires/intégration, le build PWA/hub et 21 scénarios Google Chrome mobile. Le runtime HTTPS a ensuite été reconstruit et redémarré sans navigateur avec un healthcheck réussi.
+Dernière validation automatisée du candidat : `pnpm verify` réussi le 10 août 2026 avec 142 tests unitaires/intégration, le build PWA/hub et 22 scénarios Google Chrome mobile. Une sauvegarde SQLite pré-migration a été créée hors dépôt ; le runtime HTTPS a ensuite été reconstruit et redémarré sans navigateur avec les migrations Assistant 10 et 11 et un healthcheck réussi.
+
+L’accès extérieur retenu pour une étude ultérieure est une route Tailscale privée limitée à `192.168.1.14/32`, sans ouverture de box et sans changement d’origine PWA. Cette mise en œuvre est en pause. Lorsqu’elle reprendra, tout nouveau compte ou appareil devra être enrôlé depuis le Wi-Fi Maison ; seuls les appareils déjà approuvés pourront utiliser Friday en 5G.
 
 Pour reprendre dans un nouveau chat, ouvrir `D:\prog\friday` et utiliser le prompt fourni dans le document 00. Le fichier `AGENTS.md` protège les décisions essentielles et les projets sources.

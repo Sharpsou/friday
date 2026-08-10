@@ -29,14 +29,16 @@ L'iPhone 11 Pro Max n'est plus dans le chemin critique du MVP. Il sera testé pl
 
 ### Navigation
 
-Quatre destinations :
+Six destinations :
 
 1. **Aujourd'hui** : agenda, tâches dues, état des courses, budget et briefing ;
 2. **Agenda** : tâches, rendez-vous et vues liste/semaine/mois ;
 3. **Courses** : liste partagée et produits déjà achetés ;
-4. **Veille** : digest et thèmes du profil actif.
+4. **Budget** : réalisé, prévisionnel, enveloppes, provisions et épargne partagés ;
+5. **Assistant** : conversations privées par profil, modes classique et Web consentis ;
+6. **Veille** : digest et thèmes du profil actif.
 
-Un bouton `+` permanent ouvre la saisie rapide.
+Un bouton `+` permanent hors Assistant ouvre la saisie rapide.
 
 ### Tâches
 
@@ -90,8 +92,10 @@ Friday distingue toujours l'épargne réellement versée du simple reste disponi
 
 - thèmes, mots-clés, sources et fréquence choisis par profil ;
 - collecte RSS/Atom et déduplication sur le PC ;
-- modèle rapide Ollama pour le routage ;
-- Gemma 4 12B pour les résumés en arrière-plan ;
+- Ministral 3 8B pour les réponses Web rapides et le routage borné ;
+- Gemma 4 12B pour les réponses classiques, les recherches approfondies et les résumés en arrière-plan ;
+- conversations et files Assistant séparées par profil ;
+- consentement explicite avant recherche Web et sources vérifiées ;
 - aucune dépendance à Ollama pour les tâches, courses, budget ou données offline ;
 - FTS5 avant tout usage d'embeddings ;
 - éventuels embeddings conservés plus tard sur le PC uniquement.
@@ -155,6 +159,8 @@ Pour le pilote PC + A17 :
 - procédure de renouvellement documentée.
 
 Un domaine et un certificat automatisé pourront remplacer l'autorité locale après validation du produit.
+
+Une future route Tailscale privée limitée à `192.168.1.14/32` est acceptée par l’[ADR-013](adr/013-acces-exterieur-tailscale-route-privee.md) pour l’accès 5G sans changement d’origine et sans ouverture de box. Sa mise en œuvre est en pause. Elle ne constitue ni une publication du hub sur Internet ni une autorisation d’utiliser Funnel ou une redirection NAT.
 
 ## Modèle offline
 

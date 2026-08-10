@@ -1,96 +1,57 @@
 # Note informative — sécurité et exposition réseau
 
-Date du constat : 8 août 2026
-Statut : **information non bloquante pour le pilote P0**
+Date du constat initial : 8 août 2026
+
+Révision : 10 août 2026
+
+Statut : **pilote LAN protégé ; accès extérieur Tailscale accepté mais non activé**
 
 ## Résumé
 
-Friday est actuellement utilisable comme pilote technique sur le réseau privé du foyer. Le port `8443` n'était pas joignable depuis Internet au moment du contrôle et le trafic LAN utilise HTTPS.
+Friday écoute en HTTPS sur `0.0.0.0:8443` lorsque le réseau Windows est privé. Le port n’était pas joignable depuis Internet lors du contrôle initial et aucune redirection Livebox n’est documentée.
 
-Cette situation ne signifie pas encore que Friday peut être publié sur Internet ou utilisé sur un réseau non fiable. Les routes de synchronisation du P0 ne disposent pas encore de l'authentification, de l'appairage et de l'autorisation prévus au Lot 1A.
+La limite historique « push/pull sans authentification » est résolue : le candidat exige maintenant une session Better Auth liée à un foyer, un profil et un appareil actif. Les mutations contrôlent l’origine, les codes d’appairage sont expirants et à usage unique, les tentatives sont bornées et la révocation supprime les sessions serveur de l’appareil.
 
-**Aucune correction n'est imposée immédiatement** tant que les conditions suivantes restent vraies :
+Friday ne doit toujours pas être publié directement sur Internet. L’[ADR-013](adr/013-acces-exterieur-tailscale-route-privee.md) retient pour plus tard une route Tailscale privée `192.168.1.14/32`, sans ouverture de box ni changement d’origine. Cette décision est en pause et Tailscale n’est pas installé.
 
-- Friday reste un pilote P0 ;
-- le Wi-Fi Maison est considéré comme fiable ;
-- aucune redirection du port `8443` n'est créée sur la Livebox ;
-- l'application n'est pas utilisée depuis un réseau public ;
-- aucune donnée budgétaire ou familiale particulièrement sensible n'est encore confiée au hub.
+## Protections présentes
 
-## État observé
+- refus d’une écoute LAN sans certificat et clé TLS ;
+- règle Friday prévue pour `TCP 8443`, profil privé et `LocalSubnet` ;
+- cookies `HttpOnly`, `Secure` et `SameSite=Strict` ;
+- inscription publique fermée, bootstrap impossible après initialisation du foyer ;
+- push/pull authentifiés et liés au `deviceId`, au profil et au foyer ;
+- révocation serveur des appareils et journal des événements sensibles ;
+- CSP stricte, headers de sécurité, taille de requête bornée, validation Zod et SQL paramétré ;
+- cache mobile AES-256-GCM avec clé Web Crypto non extractible ;
+- aucune clé privée ou secret runtime versionné.
 
-### Protections déjà présentes
+## Risques encore ouverts
 
-- le développement écoute sur `127.0.0.1` par défaut ;
-- une écoute LAN sans certificat et clé TLS est refusée au démarrage (`apps/hub/src/main.ts`, lignes 21 à 25) ;
-- le certificat du pilote couvre `friday.local`, `localhost`, l'adresse LAN actuelle et `127.0.0.1` ;
-- la règle pare-feu Friday prévue limite TCP `8443` au profil privé et au sous-réseau local (`infra/windows/Configure-FridayLan.ps1`, lignes 61 à 74) ;
-- Fastify applique une CSP stricte, des headers de sécurité et une limite de requête de 256 Kio (`apps/hub/src/app.ts`, lignes 32 à 60) ;
-- les payloads locaux sont chiffrés avec AES-256-GCM et une clé non extractible (`apps/web/src/crypto/vault.ts`, lignes 23 à 68) ;
-- les entrées de synchronisation sont validées avec Zod et les requêtes SQLite sont paramétrées ;
-- aucun secret évident n'a été trouvé dans le dépôt ;
-- l'audit des dépendances de production ne signalait aucune vulnérabilité connue au moment du contrôle.
+### SEC-01 — règles Windows génériques de Node.js
 
-### Limites acceptées temporairement
+Des règles entrantes « Node.js JavaScript Runtime » autorisent encore plus largement le binaire Node que la règle Friday dédiée, y compris sur le profil Public pour certaines entrées. Elles ne rendent pas `8443` public sans routage entrant, mais réduisent la défense en profondeur.
 
-#### SEC-01 — API de synchronisation sans authentification
+Avant tout accès extérieur, les règles génériques doivent être désactivées au profit de règles Friday limitées aux interfaces, adresses et ports nécessaires.
 
-Sévérité si le réseau devient non fiable : **élevée**.
+### SEC-02 — protection locale des données
 
-`POST /api/sync/push` et `GET /api/sync/pull` sont accessibles sans session ni appareil appairé (`apps/hub/src/app.ts`, lignes 71 à 96). La cohérence interne des identifiants est contrôlée, mais leur appartenance à un appareil, un profil ou un foyer autorisé ne l'est pas encore.
+L’état BitLocker doit encore être confirmé et les ACL de `D:\FridayData` restent à restreindre avant données financières réelles. La sauvegarde pré-migration Assistant ne remplace pas la preuve de restauration prévue par l’ADR-008.
 
-Conséquence : un client capable de joindre le hub sur le LAN peut lire les changements et fabriquer des opérations de tâche valides. Cette limite correspond au vertical slice P0 et ne doit pas devenir une configuration de production.
+### SEC-03 — cache d’un téléphone perdu
 
-#### SEC-02 — règles Windows génériques pour Node.js
+La révocation bloque les futurs échanges serveur mais ne peut pas effacer à distance un cache déjà téléchargé. Le verrouillage du téléphone, la révocation rapide dans Friday et, plus tard, le retrait de l’appareil Tailscale restent nécessaires.
 
-Sévérité actuelle : **moyenne**.
+### SEC-04 — future frontière Tailscale
 
-Windows possède des règles entrantes génériques « Node.js JavaScript Runtime » plus larges que la règle Friday : tous les ports TCP/UDP, adresses distantes quelconques, y compris sur le profil Public pour certaines règles.
+Un compte Tailscale compromis ou un appareil approuvé à tort pourrait atteindre le port autorisé. La future mise en œuvre doit activer l’approbation des appareils, limiter la route à `/32`, limiter les grants à `TCP 8443` et conserver l’authentification Friday.
 
-Le port `8443` était filtré depuis Internet lors du contrôle, mais ces règles réduisent la défense en profondeur. Une future redirection de port sur la Livebox ou un autre service Node pourrait rendre l'exposition plus large que prévu.
+Tout nouveau compte ou appareil Friday devra être enrôlé depuis le Wi-Fi Maison. Un appareil déjà appairé pourra se connecter en 5G ; la révocation restera disponible à distance.
 
-#### SEC-03 — protection locale du répertoire de données
+## Interdictions maintenues
 
-Sévérité avant données sensibles : **moyenne**.
-
-La clé TLS serveur possède une ACL restrictive. En revanche, le fichier SQLite hérite actuellement de droits permettant la lecture aux utilisateurs Windows locaux et la modification aux utilisateurs authentifiés. L'état BitLocker n'a pas pu être vérifié sans privilèges administrateur.
-
-Cette situation est tolérable pour les données de test P0, mais doit être revue avant l'utilisation de données budgétaires ou familiales réelles.
-
-## Déclencheurs rendant le traitement obligatoire
-
-Les limites ci-dessus deviennent bloquantes avant l'un des événements suivants :
-
-1. exposition volontaire de Friday sur Internet, directement ou via un reverse proxy ;
-2. création d'une redirection NAT/port `8443` sur la Livebox ;
-3. utilisation sur un Wi-Fi invité, public ou comportant des appareils non fiables ;
-4. ajout du deuxième adulte et de la séparation réelle des profils ;
-5. saisie de données budgétaires réelles ou d'autres données familiales sensibles ;
-6. déclaration de Friday comme service familial stable plutôt que pilote P0.
-
-## Traitements à prévoir lorsque l'un des déclencheurs survient
-
-Priorité 1 :
-
-- ajouter l'authentification prévue au Lot 1A ;
-- appairer chaque appareil à un profil et rendre les sessions révocables ;
-- vérifier côté serveur le foyer, le profil et l'appareil pour chaque push/pull ;
-- ajouter une limitation de débit et des tests de refus d'accès.
-
-Priorité 2 :
-
-- supprimer ou désactiver les règles Windows génériques Node.js qui couvrent le binaire utilisé par Friday ;
-- conserver uniquement une règle dédiée à Friday, TCP `8443`, profil privé, programme Node.js et `LocalSubnet` ;
-- vérifier l'absence de redirection Livebox et rejouer un test externe IPv4/IPv6.
-
-Priorité 3 :
-
-- restreindre les ACL de `D:\FridayData` au compte Friday, à `SYSTEM` et aux administrateurs ;
-- confirmer le chiffrement BitLocker du volume qui contient SQLite ;
-- actualiser `docs/friday-threat-model.md` avec les contrôles réellement implémentés.
-
-## Décision temporaire
-
-Le risque est **accepté sans obligation de correction immédiate** pour la seule phase de pilote P0 sur le réseau privé Maison. Cette acceptation ne vaut ni autorisation d'exposition Internet, ni validation de production, ni validation pour des données sensibles.
-
-La note doit être relue au début du Lot 1A et dès qu'un déclencheur de la section précédente survient.
+- aucune redirection NAT/port Livebox ;
+- aucun UPnP, Tailscale Funnel ou exposition IPv6 publique ;
+- aucun accès direct à Ollama hors `localhost` ;
+- aucune affirmation de compatibilité A17/iPhone sans recette physique ;
+- aucune activation Tailscale avant demande explicite de reprise.

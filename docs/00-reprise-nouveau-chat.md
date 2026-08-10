@@ -1,6 +1,6 @@
 # Friday — point de reprise pour un nouveau chat
 
-Date de l’audit : 9 août 2026
+Date de l’audit : 10 août 2026
 
 Statut : **point d’entrée canonique**
 
@@ -12,7 +12,7 @@ Le projet est en cours d’implémentation et peut être repris directement dans
 
 Les décisions produit, métier et techniques sont maintenant consolidées. Il reste volontairement quelques décisions de mise en place qui doivent être tranchées au moment où elles deviennent utiles ; elles ont toutes une valeur par défaut et un checkpoint défini.
 
-Le code Friday et son historique Git doivent être préservés. Le prochain chat doit reprendre le candidat Lot 1A déjà construit et déployé, incluant `En course` et la mise à jour PWA fiabilisée, pas recommencer le cadrage, réinitialiser le dépôt ou tenter de reprendre la branche Flutter de Home Mind.
+Le code Friday et son historique Git doivent être préservés. Le prochain chat doit reprendre le candidat construit et déployé, incluant `En course`, Budget, Assistant et la mise à jour PWA fiabilisée, pas recommencer le cadrage, réinitialiser le dépôt ou tenter de reprendre la branche Flutter de Home Mind.
 
 ## 2. Ordre de lecture et autorité documentaire
 
@@ -78,11 +78,13 @@ Chemin : `D:\prog\friday`
 - la détection de mise à jour PWA conserve désormais le signal même s'il arrive avant le montage de l'interface ; une recherche est lancée au démarrage, au retour au premier plan, au retour réseau et lors d'un clic sur l'état de connexion, puis l'utilisateur confirme avec `Mettre à jour` avant le rechargement ; l'utilisateur a confirmé le 9 août 2026 que l'iPhone avait bien reçu la mise à jour, sans préciser le déclencheur exact ;
 - l'ADR-008 documente désormais une sauvegarde portable : snapshot SQLite cohérent, archive avec manifeste et secret d'authentification, chiffrement `age`, partage natif ou téléchargement, import prévalidé et génération de restauration empêchant la réinjection d'une ancienne outbox ; cette solution est acceptée comme conception mais n'est pas encore implantée ;
 - le budget partagé est un candidat fonctionnel complet : cinquième onglet, mouvements réels, revenus/frais récurrents déterministes, enveloppes modifiables et supprimables, provisions, réserve, corrections et tombstones empruntent le cache chiffré et l’outbox existante ; les sections longues sont condensées et repliables à 360 px ;
+- l’Assistant est une sixième destination privée par profil : conversations et outbox chiffrées localement, file SQLite persistante, annulation/reprise, modes `Auto`, `Web rapide`, `Web approfondi` et `Classique`, consentement Web et sources vérifiées ; aucune mutation métier directe n’est autorisée ;
 - aucune donnée financière réelle n’a été chargée : BitLocker, les ACL de `D:\FridayData` et la sauvegarde SQLite préalable restent une porte bloquante explicitée dans `docs/runbooks/reprise-budget.md` ;
 - la taxonomie `retail-fr-v1` couvre 11 familles de magasins et 25 rayons de supermarché. Le pipeline hybride applique les corrections exactes du foyer puis les règles courantes avant Ministral 3 8B ; chaque réponse porte l'index du produit. Le corpus local de 150 libellés atteint 99,3 % famille/rayon avec 96,7 % de couverture déterministe ; le corpus difficile atteint 88,9 % en 10,4 s à chaud lors de la mesure du 9 août 2026 ;
 - la décision complète est consignée dans `docs/adr/010-classement-courses-par-rayon.md`, la taxonomie dans `docs/reference/taxonomie-courses-retail-fr-v1.md` et l'exploitation dans `docs/runbooks/classement-courses.md` ;
 - le candidat avec les destinations distinctes `Agenda` et `Courses` a été redémarré sur `https://192.168.1.14:8443` le 9 août 2026 ; le healthcheck réussit et `/api/auth/state` confirme un foyer initialisé (`bootstrapRequired: false`) sans ouvrir de session à un client non authentifié ;
-- dernier contrôle complet du candidat du 10 août 2026 : `pnpm verify` réussi avec 121 tests unitaires/intégration et 21 scénarios Chrome mobile ; le runtime a ensuite été reconstruit, redémarré sans navigateur et son healthcheck HTTPS a réussi ;
+- l’accès extérieur retenu pour une reprise ultérieure est une route Tailscale privée limitée à `192.168.1.14/32`, sans ouverture de box ni changement d’origine ; sa mise en œuvre et l’enrôlement local uniquement sont documentés mais en pause ;
+- dernier contrôle complet du candidat du 10 août 2026 : `pnpm verify` réussi avec 142 tests unitaires/intégration et 22 scénarios Chrome mobile ; une sauvegarde pré-migration a été créée hors dépôt, les migrations SQLite 10 et 11 ont été appliquées, puis le runtime a été reconstruit et son healthcheck HTTPS a réussi ;
 - terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026 ; la recette physique responsable/filtre reste à confirmer ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
@@ -261,13 +263,14 @@ Le nouveau chat doit :
 
 1. lire `AGENTS.md`, ce document, les documents 09 et 10 ;
 2. constater l'état publié et les éventuelles modifications locales avec `git status -sb` et `git log -5 --oneline`, sans réinitialiser le dépôt ;
-3. préserver le lot vérifié `En course` + mise à jour PWA et ne pas le refaire ;
-4. suivre `docs/11-prochaines-etapes-apres-classement-courses.md` ; les recettes A17 restent ouvertes mais ne bloquent pas le choix fonctionnel suivant ;
+3. préserver les lots vérifiés `En course`, Budget, Assistant et mise à jour PWA sans les réimplémenter ;
+4. suivre `docs/14-prochaines-etapes-apres-assistant.md` ; les recettes A17 restent ouvertes mais ne bloquent pas le choix fonctionnel suivant ;
 5. attendre le retour de la compagne pour la recette iPhone, sans transformer ce délai en attente de développement ;
 6. laisser conflits et tombstones en observation conformément à l'ADR-011 ;
-7. conserver le budget au checkpoint documenté dans `docs/12-etat-budget-partage.md` jusqu’à un retour d’usage, une recette physique ou la sécurisation explicite de la reprise réelle ;
-8. discuter avec l’utilisateur du prochain lot avant implantation, Calendar en lecture restant l’option fonctionnelle naturelle ;
-9. exécuter `pnpm verify` et redémarrer le runtime sans navigateur après toute implantation.
+7. conserver Budget et Assistant à leurs checkpoints documentés jusqu’à un retour d’usage ou une recette physique ;
+8. maintenir la décision Tailscale `/32` en pause jusqu’à une reprise explicite ;
+9. discuter avec l’utilisateur du prochain lot avant implantation, Calendar en lecture restant l’option fonctionnelle naturelle ;
+10. exécuter `pnpm verify` et redémarrer le runtime sans navigateur après toute implantation.
 
 Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directement : commit sur la branche active puis `git push origin main`. Ne pas considérer l’absence de `gh` comme un blocage au commit ou au push.
 
@@ -277,20 +280,23 @@ Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directe
 Lis entièrement AGENTS.md, docs/00-reprise-nouveau-chat.md,
 docs/09-decision-finale-pwa-mvp.md et
 docs/10-feuille-de-route-technique-implementation.md, puis suis
-docs/11-prochaines-etapes-apres-classement-courses.md.
+docs/14-prochaines-etapes-apres-assistant.md.
 
 Reprends Friday à partir du dépôt Git et du monorepo existants. Ne
 réinitialise pas Git, ne recrée pas le projet, ne refais pas le cadrage général
 et ne modifie aucun projet source dans D:\prog. Vérifie d’abord l’état courant,
-puis préserve le lot publié `En course` + fiabilisation de la mise à jour PWA :
-il est déjà vérifié et déployé, il ne faut pas le réimplémenter. L'iPhone attend
+puis préserve les lots publiés `En course`, Budget, Assistant et fiabilisation
+de la mise à jour PWA : ils sont déjà vérifiés et déployés, il ne faut pas les
+réimplémenter. L'iPhone attend
 le retour de sa compagne et ne bloque pas la suite. Ne revendique aucune preuve
 physique A17/iPhone non confirmée. L'ADR-011
 existe déjà ; conflits et tombstones restent en observation jusqu'à un signal
 d'usage réel. Le budget partagé est déjà implanté et documenté dans
-docs/12-etat-budget-partage.md ; ne recharge aucune donnée réelle avant la porte
-BitLocker/ACL/sauvegarde. Demande à l'utilisateur de confirmer le prochain lot,
-Calendar en lecture étant l'option naturelle. Après toute implantation, exécute `pnpm verify`, redémarre le hub
+docs/12-etat-budget-partage.md et l’Assistant dans docs/13-etat-assistant-local.md ;
+ne recharge aucune donnée réelle avant la porte BitLocker/ACL/sauvegarde.
+L’ADR-013 retient une route Tailscale /32 mais sa mise en œuvre est en pause.
+Demande à l'utilisateur de confirmer le prochain lot, Calendar en lecture étant
+l'option naturelle. Après toute implantation, exécute `pnpm verify`, redémarre le hub
 sans navigateur et documente la preuve.
 ```
 
@@ -309,7 +315,7 @@ sans navigateur et documente la preuve.
 
 ## 12. Contrôles réalisés et limites
 
-Contrôles automatiques actualisés sur le candidat Lot 1A du 9 août 2026 :
+Contrôles automatiques actualisés sur le candidat Assistant du 10 août 2026 :
 
 - documentation active, README et instructions agent contrôlés ;
 - aucun lien Markdown local manquant ;
@@ -319,7 +325,7 @@ Contrôles automatiques actualisés sur le candidat Lot 1A du 9 août 2026 :
 - aucune signature évidente de clé privée, token OpenAI ou clé Google dans les documents ;
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
 - présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
-- `pnpm verify` réussi avec 121 tests unitaires/intégration, le build PWA/hub et 21 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi avec 142 tests unitaires/intégration, le build PWA/hub et 22 scénarios E2E Google Chrome mobile ;
 - health checks local et LAN réussis après redémarrage sans navigateur.
 
 Ce que cet audit ne prétend pas avoir validé :

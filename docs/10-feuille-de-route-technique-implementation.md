@@ -574,11 +574,11 @@ Une restauration de test sur un répertoire vide est obligatoire avant de consid
 
 ### 10.2 Modèles initiaux
 
-- `granite4:3b` : routage/extraction et réponse courte interactive ;
-- `gemma4-12b-builder:64k` : résumé/digest en arrière-plan ;
-- un modèle plus léger ne remplace Granite que s’il réussit le même jeu d’évaluation avec une latence significativement meilleure.
+- `ministral-3:8b` : mode Web rapide et routage borné ;
+- `gemma4-12b-multimodal:128k` : mode classique, planification Web approfondie, rédaction et vérification ;
+- un modèle ne remplace ces choix qu’après comparaison sur un jeu d’évaluation documenté.
 
-Ces noms correspondent à l’inventaire Jarvis actuel et doivent être vérifiés par `ollama list` au bootstrap. Friday ne télécharge jamais automatiquement un modèle volumineux.
+Ces noms correspondent au runtime candidat du 10 août 2026 et doivent être vérifiés par `ollama list` au bootstrap. Friday ne télécharge jamais automatiquement un modèle volumineux.
 
 ### 10.3 Contrat du modèle
 
@@ -593,6 +593,8 @@ Chaque appel structuré :
 - renvoie une proposition, jamais une écriture métier directe.
 
 Chaîne d’action : `texte → intention structurée → validation → aperçu → confirmation → commande déterministe → audit`.
+
+État d’exécution au 10 août 2026 : une destination `Assistant` privée par profil est candidate avec conversations, cache/outbox chiffrés, file SQLite persistante, annulation/reprise, consentement Web, sources vérifiées et rendu Markdown sans HTML brut. Les migrations SQLite 10/11 et Dexie 5 sont appliquées. Le checkpoint est dans `docs/13-etat-assistant-local.md` et le runtime dans `docs/runbooks/assistant-gemma.md`. Cette preuve automatisée ne valide ni la qualité des réponses réelles ni les parcours physiques A17/iPhone.
 
 ### 10.4 Veille RSS-first
 
@@ -623,8 +625,10 @@ Un spike embeddings n’est autorisé que si, sur un corpus réel d’au moins 3
 - **Aujourd’hui** : prochain événement, tâches du jour, courses restantes, budget du mois, briefing disponible ;
 - **Agenda** : tâches et rendez-vous en vues Liste, Semaine et Mois ;
 - **Courses** : liste partagée, quantité facultative, état acheté et présentation unique regroupée par rayon ;
+- **Budget** : réalisé, prévisionnel, enveloppes, provisions, réserve et épargne partagés ;
+- **Assistant** : conversations privées par profil, modes classique et Web consentis ;
 - **Veille** : digest, articles et thèmes du profil ;
-- bouton `+` persistant : Tâche, Course, Dépense/Revenu, Capture.
+- bouton `+` persistant hors Assistant : Tâche, Course, Dépense/Revenu, Capture.
 
 ### 11.2 Règles UX non négociables
 
@@ -814,6 +818,8 @@ Travaux :
 
 Sortie : les totaux des fixtures sont exacts, une dépense offline converge, le cache agenda reste visible sans Internet.
 
+État d’exécution au 10 août 2026 : le Budget partagé est candidat et déployé avec réalisé/prévisionnel, récurrences déterministes, enveloppes, provisions, réserve, corrections, tombstones et cache chiffré. Calendar reste à construire. Les données réelles restent bloquées par la porte BitLocker/ACL/sauvegarde décrite dans `docs/12-etat-budget-partage.md`.
+
 ### Observation P1 — pilote Maison recommandé (7 jours calendaires)
 
 Cette observation n’est pas du développement et n’impose pas d’attendre avant P2 lorsque les validations critiques sont passées. Pendant l’usage, mesurer :
@@ -841,6 +847,8 @@ Travaux :
 - prompt injection et indisponibilité modèle dans les tests.
 
 Sortie : deux profils obtiennent des digests différents ; toute proposition doit être confirmée ; une panne Ollama ne bloque ni collecte ni application Maison.
+
+État d’exécution au 10 août 2026 : l’Assistant conversationnel est candidat avec les quatre modes documentés, mais la veille RSS, les digests et le briefing restent à construire. Une panne Ollama reste hors du chemin critique Maison.
 
 ### Lot 3 — sauvegarde et durcissement (1 à 3 heures)
 
@@ -882,16 +890,13 @@ La borne basse suppose peu de retours UX et une intégration Google directe. Cet
 
 ## 15. Ordre des travaux à lancer maintenant
 
-1. faire approuver et installer le pack minimal de skills P0 ;
-2. créer Git, le monorepo et la commande `pnpm verify` ;
-3. choisir le répertoire de données du hub et rédiger le threat model P0 avant auth/chiffrement ;
-4. réaliser le vertical slice tâche offline et ses tests sur le PC ;
-5. confirmer la réservation DHCP, le certificat et l’origine stable avant la recette mobile ;
-6. exécuter la porte go/no-go sur l’A17 ;
-7. seulement après succès, construire comptes, tâches et courses ;
-8. ajouter budget et Calendar ;
-9. observer l’usage Maison tout en poursuivant veille/assistant si aucun risque critique n’est ouvert ;
-10. terminer par sauvegarde, exploitation et iPhone.
+1. suivre `docs/14-prochaines-etapes-apres-assistant.md` ;
+2. faire confirmer les recettes physiques A17 auth/courses/classement/`En course`/budget/Assistant ;
+3. reprendre la recette iPhone auth/offline/convergence lorsqu’il est disponible ;
+4. valider BitLocker, ACL et sauvegarde avant toute donnée financière réelle ;
+5. laisser conflits et tombstones en observation jusqu’à un signal réel ;
+6. maintenir l’accès Tailscale `/32` en pause jusqu’à une reprise explicite ;
+7. discuter avant implantation du prochain lot, Calendar en lecture restant l’option naturelle.
 
 Ne pas commencer en parallèle le design complet, le RAG, l’import bancaire ou une app native. Le risque principal est la fiabilité offline/sync, il doit être éliminé en premier.
 
@@ -910,6 +915,8 @@ Ne pas commencer en parallèle le design complet, le RAG, l’import bancaire ou
 | ADR-009 | Granite rapide, Gemma fond, FTS5 sans embeddings | accepté pour P2 |
 | ADR-010 | classement facultatif des courses par taxonomie, règles et Ollama | accepté ; candidat automatisé, recette physique en attente |
 | ADR-011 | conflits explicites et tombstones acquittés avant purge | accepté comme filet de sécurité ; implémentation reportée sur signal d'usage |
+| [ADR-012](adr/012-budget-partage-enveloppes.md) | budget partagé, enveloppes, provisions et réserve | accepté ; candidat automatisé, recette physique et données réelles en attente |
+| [ADR-013](adr/013-acces-exterieur-tailscale-route-privee.md) | route Tailscale privée `/32`, origine conservée et enrôlement local | accepté ; mise en œuvre en pause |
 
 Une ADR contient : contexte, options réelles, décision, conséquences, preuve, retour arrière et date de révision.
 

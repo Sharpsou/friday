@@ -12,7 +12,7 @@ Lire dans cet ordre :
 
 Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’architecture.
 
-## État du workspace au 9 août 2026
+## État du workspace au 10 août 2026
 
 - Friday contient un monorepo pnpm TypeScript avec la PWA React/Vite, le hub Fastify/SQLite, les contrats partagés et les tests automatisés.
 - `D:\prog\friday` est déjà un dépôt Git sur la branche `main`.
@@ -38,7 +38,7 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 - Google Drive ne sert qu’aux sauvegardes chiffrées, jamais au runtime ou à la synchronisation mobile.
 - Ollama reste sur `localhost` et n’est jamais requis pour Maison, budget ou synchronisation.
 - FTS5 avant embeddings ; pas de RAG, multi-agent, domotique ou banque connectée au MVP.
-- Interface principale : Aujourd’hui, Agenda, Courses, Veille et bouton `+`.
+- Interface principale : Aujourd’hui, Agenda, Courses, Budget, Assistant, Veille et bouton `+` hors Assistant.
 - Direction visuelle : « futur discret » ; en-tête réduit à `Friday`, textes factuels, état de connexion compact.
 - États de connexion visibles : `Connecté`, `Connexion…`, `Hors ligne`. Une indisponibilité du hub et une absence de réseau partagent volontairement le libellé utilisateur `Hors ligne`.
 - Tâche minimale : titre ; date, responsable, récurrence et note facultatifs.
@@ -75,14 +75,19 @@ La détection de mise à jour PWA est maintenant persistante et relancée au dé
 
 Le candidat du 10 août 2026 ajoute le budget familial partagé comme cinquième onglet : réalisé et prévisionnel séparés, revenus/frais récurrents, enveloppes, provisions, réserve, corrections et suppressions synchronisées. Les listes sont compactes et repliables à 360 px. Les données réelles ne sont pas chargées tant que la porte BitLocker/ACL/sauvegarde du runbook n’est pas validée. L’état complet est dans `docs/12-etat-budget-partage.md`.
 
-`pnpm verify` réussit sur ce candidat avec 121 tests unitaires/intégration et 21 scénarios Chrome mobile. Le candidat est construit, redémarré et joignable sur `https://192.168.1.14:8443` avec un healthcheck réussi.
+Le candidat Assistant du 10 août 2026 ajoute une sixième destination privée par profil : conversations et outbox chiffrées localement, file SQLite persistante, annulation/reprise, modes `Auto`, `Web rapide`, `Web approfondi` et `Classique`, consentement avant recherche Web et sources vérifiées. Il ne dispose d’aucun droit de mutation métier directe. L’état complet est dans `docs/13-etat-assistant-local.md` et le runtime dans `docs/runbooks/assistant-gemma.md`.
+
+`pnpm verify` réussit sur ce candidat avec 142 tests unitaires/intégration et 22 scénarios Chrome mobile. Une sauvegarde pré-migration est conservée hors dépôt sous `D:\FridayData\backups`. Les migrations SQLite 10 et 11 sont appliquées ; le candidat est construit, redémarré et joignable sur `https://192.168.1.14:8443` avec un healthcheck réussi.
 
 Le propriétaire a initialisé le foyer le 9 août 2026. L'appairage d'un second appareil n'est pas validé : le RG405M sous Firefox 151.0.3 atteint Friday mais conserve un avertissement de certificat. La recette iPhone attend le retour de la compagne de l'utilisateur et ne doit pas bloquer le travail documentaire ou le choix du lot suivant. Ne pas convertir ces essais en preuve de recette auth ou iPhone.
 
-Le lot `En course` + fiabilisation des mises à jour PWA et sa documentation font partie de l'état à préserver. Les reprendre depuis Git et ne pas les réimplémenter ; inspecter `git status` et les derniers commits avant toute nouvelle modification.
+Le lot `En course`, le Budget, l’Assistant et la fiabilisation des mises à jour PWA font partie de l’état à préserver. Les reprendre depuis Git et ne pas les réimplémenter ; inspecter `git status` et les derniers commits avant toute nouvelle modification.
 
-1. faire confirmer les recettes A17 courses/classement/`En course` sans bloquer les travaux automatisés ;
+L’accès extérieur retenu est une future route Tailscale limitée à `192.168.1.14/32`, sans ouverture de box ni changement d’origine. La décision est acceptée mais sa mise en œuvre est en pause. À sa reprise, tout nouvel accès devra être enrôlé depuis le Wi-Fi Maison ; ne pas installer ou configurer Tailscale avant une demande explicite. Voir `docs/adr/013-acces-exterieur-tailscale-route-privee.md`.
+
+1. suivre `docs/14-prochaines-etapes-apres-assistant.md` et faire confirmer les recettes A17 auth/courses/classement/`En course`/budget/Assistant sans bloquer les travaux automatisés ;
 2. lorsque la compagne est disponible, suivre `docs/recipes/iphone-pwa-update.md`, puis l'appairage et la recette offline sur l'iPhone ;
 3. laisser conflits et purge de tombstones en observation conformément à l'ADR-011 ; ne pas les implanter sans signal d'usage réel ;
-4. conserver le budget au checkpoint documenté jusqu’à retour d’usage ou recette physique, puis discuter avant implantation le prochain lot fonctionnel, Calendar en lecture étant l’option naturelle ;
-5. après toute évolution du runtime, exécuter `pnpm verify`, puis reconstruire et redémarrer sans navigateur avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
+4. conserver Budget et Assistant à leurs checkpoints documentés jusqu’à retour d’usage ou recette physique, puis discuter avant implantation le prochain lot fonctionnel, Calendar en lecture étant l’option naturelle ;
+5. maintenir Tailscale en pause jusqu’à une reprise explicite ;
+6. après toute évolution du runtime, exécuter `pnpm verify`, puis reconstruire et redémarrer sans navigateur avec `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.

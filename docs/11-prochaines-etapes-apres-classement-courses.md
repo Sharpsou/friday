@@ -2,7 +2,9 @@
 
 Date : 9 août 2026
 
-Statut : plan de suivi actif pour reprendre sans nouvel audit général
+Statut : **historique, remplacé le 10 août 2026 par [le plan après Assistant](14-prochaines-etapes-apres-assistant.md)**
+
+Ce document conserve le checkpoint qui a précédé le Budget et l’Assistant. Il ne doit plus servir de plan d’exécution courant.
 
 ## Point de départ vérifié
 
