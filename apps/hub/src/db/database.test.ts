@@ -88,6 +88,8 @@ describe('hub database migrations', () => {
       { version: 7 },
       { version: 8 },
       { version: 9 },
+      { version: 10 },
+      { version: 11 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -117,7 +119,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 9 });
+    expect(migrations.at(-1)).toEqual({ version: 11 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -153,7 +155,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 9 });
+    expect(migrations.at(-1)).toEqual({ version: 11 });
   });
 
   it('adds the five budget stores and the idempotent seed marker', () => {
@@ -205,6 +207,44 @@ describe('hub database migrations', () => {
         'approved_by_device_id',
       ]),
     );
+  });
+
+  it('adds private Assistant conversations, messages, runs, sources and events', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 9);
+
+    migrateDatabase(database);
+    const tables = database
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all() as Array<{ name: string }>;
+    const runColumns = database
+      .prepare('PRAGMA table_info(assistant_runs)')
+      .all() as Array<{ name: string }>;
+    const messageColumns = database
+      .prepare('PRAGMA table_info(assistant_messages)')
+      .all() as Array<{ name: string }>;
+    database.close();
+
+    expect(tables.map((table) => table.name)).toEqual(
+      expect.arrayContaining([
+        'assistant_conversations',
+        'assistant_messages',
+        'assistant_runs',
+        'assistant_sources',
+        'assistant_run_events',
+      ]),
+    );
+    expect(runColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        'client_request_id',
+        'profile_id',
+        'status',
+        'lease_until',
+        'search_consent',
+        'web_depth',
+      ]),
+    );
+    expect(messageColumns.map((column) => column.name)).toContain('web_depth');
   });
 
   it('backfills the Friday identifier when upgrading an existing auth database', () => {

@@ -53,7 +53,34 @@ export interface SettingRow {
   value: unknown;
 }
 
+export interface AssistantConversationRow {
+  archivedAt: string | null;
+  encrypted: EncryptedEnvelope;
+  id: string;
+  profileId: string;
+  updatedAt: string;
+}
+
+export interface AssistantMessageRow {
+  conversationId: string;
+  createdAt: string;
+  encrypted: EncryptedEnvelope;
+  id: string;
+  profileId: string;
+}
+
+export interface AssistantOutboxRow {
+  clientRequestId: string;
+  conversationId: string;
+  createdAt: string;
+  encrypted: EncryptedEnvelope;
+  profileId: string;
+}
+
 class FridayDatabase extends Dexie {
+  assistantConversations!: EntityTable<AssistantConversationRow, 'id'>;
+  assistantMessages!: EntityTable<AssistantMessageRow, 'id'>;
+  assistantOutbox!: EntityTable<AssistantOutboxRow, 'clientRequestId'>;
   budgetEntries!: EntityTable<BudgetRow, 'id'>;
   budgetEnvelopes!: EntityTable<BudgetRow, 'id'>;
   budgetPlannedExpenses!: EntityTable<BudgetRow, 'id'>;
@@ -90,6 +117,23 @@ class FridayDatabase extends Dexie {
       tasks: '&id, revision, updatedAt, syncState',
     });
     this.version(4).stores({
+      budgetEntries: '&id, revision, updatedAt, syncState',
+      budgetEnvelopes: '&id, revision, updatedAt, syncState',
+      budgetPlannedExpenses: '&id, revision, updatedAt, syncState',
+      budgetRecurringTemplates: '&id, revision, updatedAt, syncState',
+      budgetSavingsMonths: '&id, revision, updatedAt, syncState',
+      groceryClassifications: '&itemId, revision, updatedAt',
+      groceryItems: '&id, revision, updatedAt, syncState',
+      keys: '&id',
+      outbox: '&operationId, entityId, createdAt, state',
+      settings: '&key',
+      tasks: '&id, revision, updatedAt, syncState',
+    });
+    this.version(5).stores({
+      assistantConversations: '&id, profileId, archivedAt, updatedAt',
+      assistantMessages:
+        '&id, [profileId+conversationId], conversationId, createdAt',
+      assistantOutbox: '&clientRequestId, profileId, conversationId, createdAt',
       budgetEntries: '&id, revision, updatedAt, syncState',
       budgetEnvelopes: '&id, revision, updatedAt, syncState',
       budgetPlannedExpenses: '&id, revision, updatedAt, syncState',

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   AuthBootstrapRequestSchema,
   AuthPairRequestSchema,
+  AssistantRunSchema,
+  AssistantSendMessageRequestSchema,
   BudgetEntryRecordSchema,
   BudgetEnvelopeRecordSchema,
   BudgetRecurringTemplateRecordSchema,
@@ -13,6 +15,45 @@ import {
   PushRequestSchema,
   TaskRecordSchema,
 } from './index.js';
+
+describe('Assistant contracts', () => {
+  it('bounds offline submissions and exposes a persistent queue state', () => {
+    expect(
+      AssistantSendMessageRequestSchema.safeParse({
+        clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        content: 'Vérifie cette information',
+        mode: 'web',
+        webDepth: 'fast',
+      }).success,
+    ).toBe(true);
+    expect(
+      AssistantRunSchema.safeParse({
+        id: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        conversationId: '61bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        userMessageId: '51bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        assistantMessageId: null,
+        requestedMode: 'auto',
+        effectiveMode: 'web',
+        webDepth: 'fast',
+        status: 'queued',
+        stageLabel: 'Dans la file',
+        queuePosition: 2,
+        searchQueries: [],
+        error: null,
+        createdAt: '2026-08-10T12:00:00.000Z',
+        updatedAt: '2026-08-10T12:00:00.000Z',
+      }).success,
+    ).toBe(true);
+    expect(
+      AssistantSendMessageRequestSchema.safeParse({
+        clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        content: 'Sans recherche',
+        mode: 'classic',
+        webDepth: 'deep',
+      }).success,
+    ).toBe(false);
+  });
+});
 
 const budgetAudit = {
   id: '16cd13bc-3a63-4b56-8e95-f39dcb7a993d',

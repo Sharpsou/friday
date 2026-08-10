@@ -44,7 +44,31 @@ test.beforeEach(async ({ page }) => {
   }, E2E_OWNER_DEVICE_ID);
 });
 
-test('the five destinations fit at 360px and budget data can persist or be removed', async ({
+test('the private Assistant keeps an encrypted message queued offline', async ({
+  context,
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Assistant' })).toBeVisible();
+  await page.getByRole('button', { name: 'Nouvelle conversation' }).click();
+  await expect(
+    page.getByText('Nouvelle conversation', { exact: true }),
+  ).toBeVisible();
+  await context.setOffline(true);
+  await page
+    .getByPlaceholder('Écrivez à Friday…')
+    .fill('Question conservée hors ligne');
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+  await expect(page.getByText('En attente de connexion')).toBeVisible();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await expect(page.getByText('En attente de connexion')).toBeVisible();
+  await context.setOffline(false);
+});
+
+test('the six destinations fit at 360px and budget data can persist or be removed', async ({
   context,
   page,
 }) => {
@@ -61,6 +85,7 @@ test('the five destinations fit at 360px and budget data can persist or be remov
     'Agenda',
     'Courses',
     'Budget',
+    'Assistant',
     'Veille',
   ]);
   await navigation.getByRole('button', { name: 'Budget' }).click();
@@ -851,7 +876,7 @@ test('shared groceries persist through an offline purchase cycle', async ({
   const navigation = page.getByRole('navigation', {
     name: 'Navigation principale',
   });
-  await expect(navigation.getByRole('button')).toHaveCount(5);
+  await expect(navigation.getByRole('button')).toHaveCount(6);
   await expect(
     navigation.getByRole('button', { name: 'Agenda', exact: true }),
   ).toBeVisible();

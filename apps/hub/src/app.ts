@@ -17,6 +17,17 @@ import {
   AuthPairRequestSchema,
   AuthSessionSchema,
   AuthStateResponseSchema,
+  AssistantConversationSchema,
+  AssistantConversationsResponseSchema,
+  AssistantCreateConversationRequestSchema,
+  AssistantMessagesResponseSchema,
+  AssistantQueueSummarySchema,
+  AssistantRunEventsResponseSchema,
+  AssistantRunSchema,
+  AssistantSearchConsentRequestSchema,
+  AssistantSendMessageRequestSchema,
+  AssistantSubmissionResponseSchema,
+  AssistantUpdateConversationRequestSchema,
   GroceryClassificationApplyRequestSchema,
   GroceryClassificationApplyResponseSchema,
   GroceryClassificationJobSchema,
@@ -28,6 +39,15 @@ import {
   PushResponseSchema,
 } from '@friday/contracts';
 
+import {
+  OllamaAssistantEngine,
+  type AssistantEngine,
+} from './assistant/assistant-engine.js';
+import {
+  AssistantConflictError,
+  AssistantNotFoundError,
+  AssistantService,
+} from './assistant/assistant-service.js';
 import { ClosedAuthError, ClosedAuthService } from './auth/auth-service.js';
 import { loadOrCreateAuthSecret } from './auth/auth-secret.js';
 import { openDatabase } from './db/database.js';
@@ -51,6 +71,7 @@ export interface BuildHubOptions {
   };
   logger?: boolean;
   classificationEngine?: GroceryClassificationEngine;
+  assistantEngine?: AssistantEngine;
   ollamaBaseUrl?: string;
   ollamaModel?: string;
   ollamaTimeoutMs?: number;
@@ -70,6 +91,13 @@ const DeviceApprovalStatusQuerySchema = z
   .strict();
 const ClassificationJobParamsSchema = z
   .object({ jobId: z.string().uuid() })
+  .strict();
+const AssistantConversationParamsSchema = z
+  .object({ id: z.string().uuid() })
+  .strict();
+const AssistantRunParamsSchema = z.object({ id: z.string().uuid() }).strict();
+const AssistantEventsQuerySchema = z
+  .object({ after: z.coerce.number().int().nonnegative().default(0) })
   .strict();
 const HOUSEHOLD_ID = '1030b4f6-1e0f-48fa-adab-865750ce597d';
 
@@ -112,6 +140,24 @@ export async function buildHub(options: BuildHubOptions) {
         ...(options.ollamaModel ? { model: options.ollamaModel } : {}),
         ...(options.ollamaTimeoutMs
           ? { timeoutMs: options.ollamaTimeoutMs }
+          : {}),
+      }),
+  );
+  const assistant = new AssistantService(
+    database,
+    options.assistantEngine ??
+      new OllamaAssistantEngine({
+        ...(options.ollamaBaseUrl ? { baseUrl: options.ollamaBaseUrl } : {}),
+        model:
+          process.env.FRIDAY_ASSISTANT_MODEL ?? 'gemma4-12b-multimodal:128k',
+        fastModel: process.env.FRIDAY_ASSISTANT_FAST_MODEL ?? 'ministral-3:8b',
+        ...(process.env.FRIDAY_ASSISTANT_TIMEOUT_MS
+          ? {
+              timeoutMs: Number.parseInt(
+                process.env.FRIDAY_ASSISTANT_TIMEOUT_MS,
+                10,
+              ),
+            }
           : {}),
       }),
   );
@@ -570,6 +616,237 @@ export async function buildHub(options: BuildHubOptions) {
     }
   });
 
+  app.get('/api/assistant/conversations', async (request, reply) => {
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return AssistantConversationsResponseSchema.parse({
+        conversations: assistant.listConversations(session.member.profileId),
+      });
+    } catch (error) {
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.post('/api/assistant/conversations', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const parsed = AssistantCreateConversationRequestSchema.safeParse(
+      request.body ?? {},
+    );
+    if (!parsed.success)
+      return reply.code(400).send({ error: 'invalid_assistant_conversation' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return AssistantConversationSchema.parse(
+        assistant.createConversation(
+          session.member.profileId,
+          parsed.data.title,
+        ),
+      );
+    } catch (error) {
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.patch('/api/assistant/conversations/:id', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = AssistantConversationParamsSchema.safeParse(request.params);
+    const body = AssistantUpdateConversationRequestSchema.safeParse(
+      request.body,
+    );
+    if (!params.success || !body.success)
+      return reply.code(400).send({ error: 'invalid_assistant_conversation' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return AssistantConversationSchema.parse(
+        assistant.updateConversation(
+          session.member.profileId,
+          params.data.id,
+          body.data,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof AssistantNotFoundError)
+        return reply.code(404).send({ error: 'assistant_not_found' });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.delete('/api/assistant/conversations/:id', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = AssistantConversationParamsSchema.safeParse(request.params);
+    if (!params.success)
+      return reply.code(400).send({ error: 'invalid_assistant_conversation' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      assistant.deleteConversation(session.member.profileId, params.data.id);
+      return { deleted: true };
+    } catch (error) {
+      if (error instanceof AssistantNotFoundError)
+        return reply.code(404).send({ error: 'assistant_not_found' });
+      if (error instanceof AssistantConflictError)
+        return reply
+          .code(409)
+          .send({ error: 'assistant_conflict', message: error.message });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.get(
+    '/api/assistant/conversations/:id/messages',
+    async (request, reply) => {
+      const params = AssistantConversationParamsSchema.safeParse(
+        request.params,
+      );
+      if (!params.success)
+        return reply
+          .code(400)
+          .send({ error: 'invalid_assistant_conversation' });
+      try {
+        const session = await closedAuth.requireSession(request.headers);
+        return AssistantMessagesResponseSchema.parse(
+          assistant.getMessages(session.member.profileId, params.data.id),
+        );
+      } catch (error) {
+        if (error instanceof AssistantNotFoundError)
+          return reply.code(404).send({ error: 'assistant_not_found' });
+        return sendClosedAuthError(error, reply);
+      }
+    },
+  );
+
+  app.post(
+    '/api/assistant/conversations/:id/messages',
+    async (request, reply) => {
+      if (!acceptsTrustedMutationOrigin(request.headers))
+        return reply.code(403).send({ error: 'untrusted_origin' });
+      const params = AssistantConversationParamsSchema.safeParse(
+        request.params,
+      );
+      const body = AssistantSendMessageRequestSchema.safeParse(request.body);
+      if (!params.success || !body.success)
+        return reply.code(400).send({ error: 'invalid_assistant_message' });
+      try {
+        const session = await closedAuth.requireSession(request.headers);
+        return AssistantSubmissionResponseSchema.parse(
+          assistant.submit(session.member.profileId, params.data.id, body.data),
+        );
+      } catch (error) {
+        if (error instanceof AssistantNotFoundError)
+          return reply.code(404).send({ error: 'assistant_not_found' });
+        if (error instanceof AssistantConflictError)
+          return reply
+            .code(409)
+            .send({ error: 'assistant_conflict', message: error.message });
+        return sendClosedAuthError(error, reply);
+      }
+    },
+  );
+
+  app.get('/api/assistant/runs/:id', async (request, reply) => {
+    const params = AssistantRunParamsSchema.safeParse(request.params);
+    if (!params.success)
+      return reply.code(400).send({ error: 'invalid_assistant_run' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return AssistantRunSchema.parse(
+        assistant.getRun(session.member.profileId, params.data.id),
+      );
+    } catch (error) {
+      if (error instanceof AssistantNotFoundError)
+        return reply.code(404).send({ error: 'assistant_not_found' });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.get('/api/assistant/runs/:id/events', async (request, reply) => {
+    const params = AssistantRunParamsSchema.safeParse(request.params);
+    const query = AssistantEventsQuerySchema.safeParse(request.query);
+    if (!params.success || !query.success)
+      return reply.code(400).send({ error: 'invalid_assistant_events' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return AssistantRunEventsResponseSchema.parse(
+        assistant.listEvents(
+          session.member.profileId,
+          params.data.id,
+          query.data.after,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof AssistantNotFoundError)
+        return reply.code(404).send({ error: 'assistant_not_found' });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.post('/api/assistant/runs/:id/search-consent', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = AssistantRunParamsSchema.safeParse(request.params);
+    const body = AssistantSearchConsentRequestSchema.safeParse(request.body);
+    if (!params.success || !body.success)
+      return reply.code(400).send({ error: 'invalid_assistant_consent' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return AssistantRunSchema.parse(
+        assistant.consent(
+          session.member.profileId,
+          params.data.id,
+          body.data.approved,
+          body.data.queries,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof AssistantNotFoundError)
+        return reply.code(404).send({ error: 'assistant_not_found' });
+      if (error instanceof AssistantConflictError)
+        return reply
+          .code(409)
+          .send({ error: 'assistant_conflict', message: error.message });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  for (const action of ['cancel', 'retry'] as const) {
+    app.post(`/api/assistant/runs/:id/${action}`, async (request, reply) => {
+      if (!acceptsTrustedMutationOrigin(request.headers))
+        return reply.code(403).send({ error: 'untrusted_origin' });
+      const params = AssistantRunParamsSchema.safeParse(request.params);
+      if (!params.success)
+        return reply.code(400).send({ error: 'invalid_assistant_run' });
+      try {
+        const session = await closedAuth.requireSession(request.headers);
+        return AssistantRunSchema.parse(
+          action === 'cancel'
+            ? assistant.cancel(session.member.profileId, params.data.id)
+            : assistant.retry(session.member.profileId, params.data.id),
+        );
+      } catch (error) {
+        if (error instanceof AssistantNotFoundError)
+          return reply.code(404).send({ error: 'assistant_not_found' });
+        if (error instanceof AssistantConflictError)
+          return reply
+            .code(409)
+            .send({ error: 'assistant_conflict', message: error.message });
+        return sendClosedAuthError(error, reply);
+      }
+    });
+  }
+
+  app.get('/api/assistant/queue/summary', async (request, reply) => {
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return AssistantQueueSummarySchema.parse(
+        assistant.queueSummary(session.member.profileId),
+      );
+    } catch (error) {
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
   app.route({
     method: ['GET', 'POST'],
     url: '/api/auth/*',
@@ -617,6 +894,7 @@ export async function buildHub(options: BuildHubOptions) {
   }
 
   app.addHook('onClose', async () => {
+    await assistant.stop();
     await groceryClassification.stop();
     database.close();
   });

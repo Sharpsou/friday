@@ -820,6 +820,146 @@ export const GroceryClassificationPullResponseSchema = z
   })
   .strict();
 
+export const AssistantModeSchema = z.enum(['auto', 'web', 'classic']);
+export const AssistantEffectiveModeSchema = z.enum(['web', 'classic']);
+export const AssistantWebDepthSchema = z.enum(['fast', 'deep']);
+export const AssistantRunStatusSchema = z.enum([
+  'queued',
+  'preparing',
+  'awaiting_search_consent',
+  'searching',
+  'reading',
+  'verifying',
+  'writing',
+  'completed',
+  'cancel_requested',
+  'cancelled',
+  'failed',
+]);
+export const AssistantConversationSchema = z
+  .object({
+    id: UuidSchema,
+    title: z.string().trim().min(1).max(80),
+    archivedAt: UtcInstantSchema.nullable(),
+    createdAt: UtcInstantSchema,
+    updatedAt: UtcInstantSchema,
+  })
+  .strict();
+export const AssistantSourceSchema = z
+  .object({
+    id: z.string().regex(/^S[1-9]\d*$/u),
+    title: z.string().min(1).max(500),
+    url: z.string().url(),
+    domain: z.string().min(1).max(255),
+    publishedAt: UtcInstantSchema.nullable(),
+    retrievedAt: UtcInstantSchema,
+  })
+  .strict();
+export const AssistantMessageSchema = z
+  .object({
+    id: UuidSchema,
+    conversationId: UuidSchema,
+    role: z.enum(['user', 'assistant']),
+    content: z.string().max(100_000),
+    requestedMode: AssistantModeSchema.nullable(),
+    effectiveMode: AssistantEffectiveModeSchema.nullable(),
+    webDepth: AssistantWebDepthSchema.nullable().optional(),
+    runId: UuidSchema.nullable(),
+    sources: z.array(AssistantSourceSchema),
+    createdAt: UtcInstantSchema,
+  })
+  .strict();
+export const AssistantRunSchema = z
+  .object({
+    id: UuidSchema,
+    conversationId: UuidSchema,
+    userMessageId: UuidSchema,
+    assistantMessageId: UuidSchema.nullable(),
+    requestedMode: AssistantModeSchema,
+    effectiveMode: AssistantEffectiveModeSchema.nullable(),
+    webDepth: AssistantWebDepthSchema.nullable().optional(),
+    status: AssistantRunStatusSchema,
+    stageLabel: z.string().min(1).max(160),
+    queuePosition: z.number().int().positive().nullable(),
+    searchQueries: z.array(z.string().min(1).max(500)).max(3),
+    error: z
+      .object({ code: z.string().min(1), message: z.string().min(1) })
+      .strict()
+      .nullable(),
+    createdAt: UtcInstantSchema,
+    updatedAt: UtcInstantSchema,
+  })
+  .strict();
+export const AssistantRunEventSchema = z
+  .object({
+    sequence: z.number().int().positive(),
+    runId: UuidSchema,
+    status: AssistantRunStatusSchema,
+    label: z.string().min(1).max(160),
+    createdAt: UtcInstantSchema,
+  })
+  .strict();
+export const AssistantCreateConversationRequestSchema = z
+  .object({
+    title: z.string().trim().min(1).max(80).default('Nouvelle conversation'),
+  })
+  .strict();
+export const AssistantUpdateConversationRequestSchema = z
+  .object({
+    title: z.string().trim().min(1).max(80).optional(),
+    archived: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => value.title !== undefined || value.archived !== undefined);
+export const AssistantSendMessageRequestSchema = z
+  .object({
+    clientRequestId: UuidSchema,
+    content: z.string().trim().min(1).max(8_000),
+    mode: AssistantModeSchema,
+    webDepth: AssistantWebDepthSchema.nullable().optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.mode === 'classic' && value.webDepth != null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Le mode classique ne prend pas de profondeur Web.',
+        path: ['webDepth'],
+      });
+    }
+  });
+export const AssistantSearchConsentRequestSchema = z
+  .object({
+    approved: z.boolean(),
+    queries: z.array(z.string().trim().min(1).max(500)).min(1).max(3),
+  })
+  .strict();
+export const AssistantConversationsResponseSchema = z
+  .object({ conversations: z.array(AssistantConversationSchema) })
+  .strict();
+export const AssistantMessagesResponseSchema = z
+  .object({
+    conversation: AssistantConversationSchema,
+    messages: z.array(AssistantMessageSchema),
+    activeRun: AssistantRunSchema.nullable(),
+  })
+  .strict();
+export const AssistantSubmissionResponseSchema = z
+  .object({ message: AssistantMessageSchema, run: AssistantRunSchema })
+  .strict();
+export const AssistantRunEventsResponseSchema = z
+  .object({
+    events: z.array(AssistantRunEventSchema),
+    cursor: z.number().int().nonnegative(),
+  })
+  .strict();
+export const AssistantQueueSummarySchema = z
+  .object({
+    pending: z.number().int().nonnegative(),
+    activeRun: AssistantRunSchema.nullable(),
+  })
+  .strict();
+
 export const SyncOperationSchema = z.discriminatedUnion('entityType', [
   TaskOperationSchema,
   GroceryItemOperationSchema,
@@ -982,6 +1122,20 @@ export type GroceryClassificationApplyResponse = z.infer<
 >;
 export type GroceryClassificationPullResponse = z.infer<
   typeof GroceryClassificationPullResponseSchema
+>;
+export type AssistantMode = z.infer<typeof AssistantModeSchema>;
+export type AssistantEffectiveMode = z.infer<
+  typeof AssistantEffectiveModeSchema
+>;
+export type AssistantWebDepth = z.infer<typeof AssistantWebDepthSchema>;
+export type AssistantRunStatus = z.infer<typeof AssistantRunStatusSchema>;
+export type AssistantConversation = z.infer<typeof AssistantConversationSchema>;
+export type AssistantSource = z.infer<typeof AssistantSourceSchema>;
+export type AssistantMessage = z.infer<typeof AssistantMessageSchema>;
+export type AssistantRun = z.infer<typeof AssistantRunSchema>;
+export type AssistantRunEvent = z.infer<typeof AssistantRunEventSchema>;
+export type AssistantSendMessageRequest = z.infer<
+  typeof AssistantSendMessageRequestSchema
 >;
 export type SyncOperation = z.infer<typeof SyncOperationSchema>;
 export type PushRequest = z.infer<typeof PushRequestSchema>;

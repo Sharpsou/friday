@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -95,7 +97,10 @@ import { useGroceryClassification } from './use-grocery-classification.js';
 import { ShoppingMode } from './ShoppingMode.js';
 import { GroceryEditorDialog, TaskEditorDialog } from './ItemEditorDialogs.js';
 
-type Destination = 'today' | 'agenda' | 'groceries' | 'budget' | 'watch';
+const AssistantView = lazy(() => import('./AssistantView.js'));
+
+type Destination =
+  'today' | 'agenda' | 'groceries' | 'budget' | 'assistant' | 'watch';
 type TaskView = 'list' | 'week' | 'month';
 type RecurrenceChoice =
   'none' | 'daily' | 'weekly' | 'custom-days' | 'monthly' | 'yearly';
@@ -1540,6 +1545,18 @@ export function App() {
           />
         ) : null}
 
+        {destination === 'assistant' ? (
+          <Suspense
+            fallback={
+              <section className="panel">
+                <p>Chargement de l’Assistant…</p>
+              </section>
+            }
+          >
+            <AssistantView />
+          </Suspense>
+        ) : null}
+
         {destination === 'watch' && (
           <section className="screen centered" aria-labelledby="watch-title">
             <div className="placeholder-mark">V</div>
@@ -1948,20 +1965,22 @@ export function App() {
         </div>
       ) : null}
 
-      <button
-        className="fab"
-        type="button"
-        onClick={
-          destination === 'groceries'
-            ? openGroceryQuickAdd
-            : destination === 'budget'
-              ? () => setBudgetQuickAddOpen(true)
-              : openQuickAdd
-        }
-        aria-label="Ajouter rapidement"
-      >
-        +
-      </button>
+      {destination !== 'assistant' ? (
+        <button
+          className="fab"
+          type="button"
+          onClick={
+            destination === 'groceries'
+              ? openGroceryQuickAdd
+              : destination === 'budget'
+                ? () => setBudgetQuickAddOpen(true)
+                : openQuickAdd
+          }
+          aria-label="Ajouter rapidement"
+        >
+          +
+        </button>
+      ) : null}
 
       <nav className="bottom-nav" aria-label="Navigation principale">
         <NavButton
@@ -1983,6 +2002,11 @@ export function App() {
           active={destination === 'budget'}
           label="Budget"
           onClick={() => setDestination('budget')}
+        />
+        <NavButton
+          active={destination === 'assistant'}
+          label="Assistant"
+          onClick={() => setDestination('assistant')}
         />
         <NavButton
           active={destination === 'watch'}

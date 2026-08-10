@@ -1636,10 +1636,10 @@ textarea:focus-visible {
   z-index: 10;
   bottom: 12px;
   left: 50%;
-  width: min(calc(100% - 28px), 480px);
+  width: min(calc(100% - 28px), 620px);
   min-height: 54px;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   transform: translateX(-50%);
   overflow: hidden;
   border: 1px solid var(--line-strong);
@@ -1648,6 +1648,314 @@ textarea:focus-visible {
   background: rgb(9 22 19 / 94%);
   box-shadow: 0 14px 36px rgb(0 0 0 / 38%);
   backdrop-filter: blur(15px);
+}
+
+.assistant-view {
+  display: grid;
+  gap: 12px;
+}
+
+.assistant-heading {
+  align-items: center;
+}
+
+.assistant-heading > button {
+  min-height: 40px;
+  border-radius: 11px;
+  padding: 0 12px;
+  font-weight: 800;
+}
+
+.assistant-layout {
+  min-height: 62dvh;
+  display: grid;
+  grid-template-columns: minmax(150px, 0.34fr) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 17px;
+  background: rgb(var(--surface-rgb) / 72%);
+}
+
+.assistant-conversations {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  border-right: 1px solid var(--line);
+  padding: 8px;
+}
+
+.assistant-conversations > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-radius: 11px;
+}
+
+.assistant-conversations > div.is-selected {
+  background: rgb(var(--accent-rgb) / 10%);
+}
+
+.assistant-conversations button,
+.assistant-conversations summary {
+  border: 0;
+  color: var(--text);
+  background: transparent;
+}
+
+.assistant-conversations > div > button {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 9px;
+  text-align: left;
+}
+
+.assistant-conversations strong,
+.assistant-conversations small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-conversations small {
+  color: var(--muted);
+}
+
+.assistant-conversations details {
+  position: relative;
+  align-self: center;
+}
+
+.assistant-conversations summary {
+  padding: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.assistant-conversations details[open] {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 3px;
+  background: var(--surface-strong);
+}
+
+.assistant-conversations details button {
+  padding: 5px 7px;
+  text-align: left;
+}
+
+.assistant-chat {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(300px, 1fr) auto;
+}
+
+.assistant-messages {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  max-height: 62dvh;
+  overflow: auto;
+  padding: 14px;
+}
+
+.assistant-message {
+  width: min(88%, 680px);
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 11px 12px;
+  background: rgb(2 10 8 / 48%);
+  content-visibility: auto;
+}
+
+.assistant-message.is-user {
+  justify-self: end;
+  border-color: rgb(var(--accent-rgb) / 28%);
+  background: rgb(var(--accent-rgb) / 8%);
+}
+
+.assistant-message > span,
+.assistant-message > small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.assistant-message > p,
+.assistant-markdown p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.assistant-markdown {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  line-height: 1.5;
+}
+
+.assistant-markdown :is(ul, ol) {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.assistant-markdown :is(h1, h2, h3, h4) {
+  margin: 5px 0 0;
+  font-size: 1rem;
+}
+
+.assistant-markdown a {
+  color: var(--mint);
+  overflow-wrap: anywhere;
+}
+
+.assistant-markdown code {
+  border-radius: 5px;
+  padding: 1px 4px;
+  background: rgb(var(--accent-rgb) / 10%);
+}
+
+.assistant-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0;
+  border-radius: 9px;
+  padding: 9px;
+  background: rgb(var(--page-rgb) / 72%);
+}
+
+.assistant-sources summary {
+  color: var(--mint);
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.assistant-sources ol {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 0;
+  padding-left: 22px;
+}
+
+.assistant-sources li {
+  padding-left: 2px;
+}
+
+.assistant-sources a,
+.assistant-sources small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.assistant-sources a {
+  color: var(--text);
+}
+
+.assistant-run {
+  display: grid;
+  gap: 5px;
+  border: 1px solid rgb(var(--accent-rgb) / 30%);
+  border-radius: 12px;
+  padding: 10px;
+  color: var(--muted);
+  background: rgb(var(--accent-rgb) / 7%);
+}
+
+.assistant-run button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  background: transparent;
+}
+
+.assistant-run.is-error,
+.assistant-error {
+  color: var(--danger);
+}
+
+.assistant-consent {
+  display: grid;
+  gap: 7px;
+}
+
+.assistant-consent p {
+  margin: 0;
+}
+
+.assistant-consent input {
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  padding: 7px 9px;
+  color: var(--text);
+  background: rgb(var(--page-rgb) / 70%);
+}
+
+.assistant-consent > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.assistant-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding: 10px;
+}
+
+.assistant-mode {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+}
+
+.assistant-mode button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.assistant-mode button[aria-pressed='true'] {
+  border-color: var(--mint);
+  color: var(--text);
+  background: rgb(var(--accent-rgb) / 8%);
+}
+
+.assistant-composer textarea {
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  padding: 10px;
+  color: var(--text);
+  background: rgb(var(--page-rgb) / 70%);
+  font: inherit;
+}
+
+.assistant-composer > button {
+  min-width: 92px;
+  border-radius: 11px;
+  padding: 0 12px;
+  font-weight: 850;
+}
+
+.assistant-empty {
+  align-self: center;
+  justify-self: center;
+  margin: 0;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
 }
 
 .budget-summary {
@@ -2905,6 +3213,43 @@ textarea:focus-visible {
 
   .bottom-nav {
     padding-right: 62px;
+  }
+
+  .assistant-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .assistant-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-conversations {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(145px, 56%);
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .assistant-chat {
+    grid-template-rows: minmax(330px, 1fr) auto;
+  }
+
+  .assistant-messages {
+    max-height: 54dvh;
+  }
+
+  .assistant-message {
+    width: 94%;
+  }
+
+  .assistant-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-composer > button {
+    min-height: 44px;
   }
 
   .budget-projection {
