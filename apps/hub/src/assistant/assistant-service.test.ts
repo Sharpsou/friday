@@ -6,6 +6,7 @@ import {
   AssistantService,
 } from './assistant-service.js';
 import { openDatabase } from '../db/database.js';
+import { TavilySearchClient } from './tavily-search.js';
 
 const PROFILE_ONE = 'f61f8f8b-8d09-4575-8e83-357618e881ac';
 const PROFILE_TWO = '6b0db27d-443d-4dd2-9a21-b809384f2f13';
@@ -30,12 +31,9 @@ async function waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
 function fakeEngine(overrides: Partial<AssistantEngine> = {}): AssistantEngine {
   return {
     generateTitle: async () => 'Titre automatique',
-    planQueries: async () => ['requête publique'],
-    answerClassic: async (history) => ({
+    answer: async (history) => ({
       content: `Réponse: ${history.at(-1)?.content ?? ''}`,
-      sources: [],
     }),
-    answerWeb: async () => ({ content: 'Réponse Web [S1]', sources: [] }),
     ...overrides,
   };
 }
@@ -51,15 +49,18 @@ describe('AssistantService', () => {
     for (const database of databases.splice(0)) database.close();
   });
 
-  function createService(engine = fakeEngine()) {
+  function createService(
+    engine = fakeEngine(),
+    tavily = new TavilySearchClient(undefined),
+  ) {
     const database = openDatabase(':memory:');
     databases.push(database);
-    const service = new AssistantService(database, engine);
+    const service = new AssistantService(database, engine, tavily);
     services.push(service);
     return service;
   }
 
-  it('persists a classic conversation and handles duplicate client requests idempotently', async () => {
+  it('persists a classic conversation and handles duplicate requests idempotently', async () => {
     const service = createService();
     const conversation = service.createConversation(PROFILE_ONE, 'Privé');
     const input = {
@@ -71,27 +72,111 @@ describe('AssistantService', () => {
     const first = service.submit(PROFILE_ONE, conversation.id, input);
     const duplicate = service.submit(PROFILE_ONE, conversation.id, input);
     expect(duplicate.run.id).toBe(first.run.id);
-    expect(duplicate.message.id).toBe(first.message.id);
 
     await waitFor(
       () => service.getRun(PROFILE_ONE, first.run.id).status === 'completed',
     );
     const state = service.getMessages(PROFILE_ONE, conversation.id);
-    expect(state.messages.map((message) => message.role)).toEqual([
+    expect(state.messages.map((item) => item.role)).toEqual([
       'user',
       'assistant',
     ]);
-    expect(state.messages[1]?.content).toBe('Réponse: Bonjour Gemma');
+    expect(state.messages[1]).toMatchObject({
+      content: 'Réponse: Bonjour Gemma',
+      effectiveMode: 'classic',
+      sources: [],
+    });
   });
 
-  it('generates a semantic title only for the first exchange of a default conversation', async () => {
+  it('uses the light Web budget, persists sources and verifies the answer', async () => {
+    let verifyCalls = 0;
+    const fetcher = async (input: Parameters<typeof fetch>[0]) =>
+      new Response(
+        String(input).endsWith('/usage')
+          ? JSON.stringify({
+              account: { plan_usage: 0, plan_limit: 1_000 },
+            })
+          : JSON.stringify({
+              results: [
+                {
+                  title: 'Source officielle',
+                  url: 'https://example.com/fait',
+                  content: 'Fait vérifié',
+                },
+              ],
+              usage: { credits: 1 },
+            }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    const service = createService(
+      fakeEngine({
+        planResearch: async () => ({
+          searchNeeded: true,
+          queries: ['fait récent', 'confirmation indépendante'],
+        }),
+        answer: async (_history, _signal, options) => ({
+          content: `Brouillon ${options?.evidence?.length.toString()}`,
+          thinkingUsed: true,
+        }),
+        verifyAnswer: async () => {
+          verifyCalls += 1;
+          return { content: 'Réponse vérifiée [S1]', thinkingUsed: true };
+        },
+      }),
+      new TavilySearchClient('test', fetcher),
+    );
+    const conversation = service.createConversation(
+      PROFILE_ONE,
+      'Actualité',
+      'web_light',
+    );
+    const submission = service.submit(PROFILE_ONE, conversation.id, {
+      clientRequestId: '91bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+      content: 'Quel est le fait récent ?',
+      mode: 'web_light',
+      thinkingPolicy: 'auto',
+    });
+
+    await waitFor(
+      () =>
+        service.getRun(PROFILE_ONE, submission.run.id).status === 'completed',
+    );
+    const state = service.getMessages(PROFILE_ONE, conversation.id);
+    expect(state.messages.at(-1)).toMatchObject({
+      content: 'Réponse vérifiée [S1]',
+      effectiveMode: 'web',
+      mode: 'web_light',
+      thinkingUsed: true,
+      researchOutcome: 'completed',
+      creditsUsed: 2,
+    });
+    expect(state.messages.at(-1)?.sources).toHaveLength(1);
+    expect(
+      state.messages.at(-1)?.progressEvents.map((event) => event.label),
+    ).toEqual(
+      expect.arrayContaining([
+        'Analyse de la demande et décision Web',
+        'Plan Web prêt · 2 recherche(s) ciblée(s)',
+        'Recherche 1/2 · basic · fait récent',
+        'Recherche 1/2 terminée · 1 nouvelle(s) source(s)',
+        'Lecture et rapprochement de 1 source(s)',
+        'Synthèse de 1 source(s)',
+        'Réflexion approfondie utilisée',
+        'Vérification des affirmations',
+        'Terminé',
+      ]),
+    );
+    expect((await service.webUsage()).creditsUsed).toBe(2);
+    expect((await service.webUsage()).remainingBasicSearches).toBe(948);
+    expect(verifyCalls).toBe(1);
+  });
+
+  it('uses Gemma to title only the first exchange of a default conversation', async () => {
     let titleCalls = 0;
     const service = createService(
       fakeEngine({
-        generateTitle: async (_input, mode, depth) => {
+        generateTitle: async () => {
           titleCalls += 1;
-          expect(mode).toBe('classic');
-          expect(depth).toBeNull();
           return 'Organisation voyage familial';
         },
       }),
@@ -110,11 +195,47 @@ describe('AssistantService', () => {
       () =>
         service.getRun(PROFILE_ONE, submission.run.id).status === 'completed',
     );
-
     expect(service.listConversations(PROFILE_ONE)[0]?.title).toBe(
       'Organisation voyage familial',
     );
     expect(titleCalls).toBe(1);
+  });
+
+  it('passes the complete conversation history to every new answer', async () => {
+    const histories: string[][] = [];
+    const service = createService(
+      fakeEngine({
+        answer: async (history) => {
+          histories.push(history.map((message) => message.content));
+          return { content: `réponse ${histories.length.toString()}` };
+        },
+      }),
+    );
+    const conversation = service.createConversation(PROFILE_ONE, 'Mémoire');
+    const first = service.submit(PROFILE_ONE, conversation.id, {
+      clientRequestId: 'a1111111-1111-4111-8111-111111111111',
+      content: 'Je préfère le bleu.',
+      mode: 'local',
+      thinkingPolicy: 'auto',
+    });
+    await waitFor(
+      () => service.getRun(PROFILE_ONE, first.run.id).status === 'completed',
+    );
+    const second = service.submit(PROFILE_ONE, conversation.id, {
+      clientRequestId: 'a2222222-2222-4222-8222-222222222222',
+      content: 'Quelle couleur ai-je choisie ?',
+      mode: 'local',
+      thinkingPolicy: 'auto',
+    });
+    await waitFor(
+      () => service.getRun(PROFILE_ONE, second.run.id).status === 'completed',
+    );
+
+    expect(histories[1]).toEqual([
+      'Je préfère le bleu.',
+      'réponse 1',
+      'Quelle couleur ai-je choisie ?',
+    ]);
   });
 
   it('does not expose another profile’s conversations or runs', () => {
@@ -141,12 +262,12 @@ describe('AssistantService', () => {
     let calls = 0;
     const service = createService(
       fakeEngine({
-        answerClassic: async (history) => {
+        answer: async (history) => {
           const content = history.at(-1)?.content ?? '';
           order.push(content);
           calls += 1;
           if (calls === 1) await gate.promise;
-          return { content: `ok:${content}`, sources: [] };
+          return { content: `ok:${content}` };
         },
       }),
     );
@@ -179,14 +300,14 @@ describe('AssistantService', () => {
     const started = deferred();
     const service = createService(
       fakeEngine({
-        answerClassic: async (_history, signal) => {
+        answer: async (_history, signal) => {
           started.resolve();
           await new Promise((_resolve, reject) => {
             signal.addEventListener('abort', () => reject(signal.reason), {
               once: true,
             });
           });
-          return { content: 'partiel', sources: [] };
+          return { content: 'partiel' };
         },
       }),
     );
@@ -208,94 +329,59 @@ describe('AssistantService', () => {
     ).toHaveLength(1);
   });
 
-  it('releases the worker while a personal Web query waits for consent', async () => {
-    let webCalls = 0;
+  it('resumes a paused generation without losing its run history', async () => {
+    const started = deferred();
+    let calls = 0;
     const service = createService(
       fakeEngine({
-        planQueries: async () => ['adresse test@example.com'],
-        answerWeb: async () => {
-          webCalls += 1;
-          return { content: 'Réponse autorisée', sources: [] };
+        answer: async (_history, signal) => {
+          calls += 1;
+          if (calls === 1) {
+            started.resolve();
+            await new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason), {
+                once: true,
+              });
+            });
+          }
+          return { content: 'réponse reprise' };
         },
       }),
     );
-    const conversation = service.createConversation(
-      PROFILE_ONE,
-      'Consentement',
-    );
+    const conversation = service.createConversation(PROFILE_ONE, 'Reprise');
     const submission = service.submit(PROFILE_ONE, conversation.id, {
       clientRequestId: '55555555-5555-4555-8555-555555555555',
-      content: 'Recherche cette adresse',
-      mode: 'web',
-      webDepth: 'deep',
+      content: 'Long',
+      mode: 'classic',
     });
-
+    await started.promise;
+    service.cancel(PROFILE_ONE, submission.run.id);
     await waitFor(
       () =>
-        service.getRun(PROFILE_ONE, submission.run.id).status ===
-        'awaiting_search_consent',
+        service.getRun(PROFILE_ONE, submission.run.id).status === 'cancelled',
     );
-    expect(webCalls).toBe(0);
-    service.consent(PROFILE_ONE, submission.run.id, true, [
-      'requête anonymisée',
-    ]);
+
+    service.retry(PROFILE_ONE, submission.run.id);
     await waitFor(
       () =>
         service.getRun(PROFILE_ONE, submission.run.id).status === 'completed',
     );
-    expect(webCalls).toBe(1);
+
+    const state = service.getMessages(PROFILE_ONE, conversation.id);
+    expect(state.messages.at(-1)?.content).toBe('réponse reprise');
+    expect(
+      state.messages.at(-1)?.progressEvents.map((event) => event.status),
+    ).toEqual(
+      expect.arrayContaining(['cancelled', 'queued', 'writing', 'completed']),
+    );
+    expect(calls).toBe(2);
   });
 
-  it('uses the direct question for fast Web and plans deep Web queries', async () => {
-    const planned: string[] = [];
-    const answered: Array<{ depth: string; queries: string[] }> = [];
+  it('keeps a failed local run visible when no response was committed', async () => {
     const service = createService(
       fakeEngine({
-        planQueries: async (input) => {
-          planned.push(input);
-          return ['requête planifiée'];
-        },
-        answerWeb: async (_history, queries, _signal, _onStage, depth) => {
-          answered.push({ depth, queries });
-          return { content: 'Réponse', sources: [] };
-        },
-      }),
-    );
-    const fast = service.createConversation(PROFILE_ONE, 'Rapide');
-    const deep = service.createConversation(PROFILE_ONE, 'Approfondi');
-    const fastRun = service.submit(PROFILE_ONE, fast.id, {
-      clientRequestId: '77777777-7777-4777-8777-777777777777',
-      content: 'Quel temps fait-il à Paris ?',
-      mode: 'web',
-      webDepth: 'fast',
-    });
-    const deepRun = service.submit(PROFILE_ONE, deep.id, {
-      clientRequestId: '88888888-8888-4888-8888-888888888888',
-      content: 'Compare les prévisions en détail',
-      mode: 'web',
-      webDepth: 'deep',
-    });
-
-    await waitFor(
-      () =>
-        service.getRun(PROFILE_ONE, fastRun.run.id).status === 'completed' &&
-        service.getRun(PROFILE_ONE, deepRun.run.id).status === 'completed',
-    );
-
-    expect(planned).toEqual(['Compare les prévisions en détail']);
-    expect(answered).toEqual([
-      { depth: 'fast', queries: ['Quel temps fait-il à Paris ?'] },
-      { depth: 'deep', queries: ['requête planifiée'] },
-    ]);
-    expect(service.getRun(PROFILE_ONE, fastRun.run.id).webDepth).toBe('fast');
-    expect(service.getRun(PROFILE_ONE, deepRun.run.id).webDepth).toBe('deep');
-  });
-
-  it('keeps a failed run visible when no assistant response was committed', async () => {
-    const service = createService(
-      fakeEngine({
-        answerClassic: async () => {
-          throw new Error('Erreur de génération visible');
+        answer: async () => {
+          throw new Error('Ollama local indisponible');
         },
       }),
     );
@@ -313,7 +399,7 @@ describe('AssistantService', () => {
       service.getMessages(PROFILE_ONE, conversation.id).activeRun,
     ).toMatchObject({
       status: 'failed',
-      error: { message: 'Erreur de génération visible' },
+      error: { message: 'Ollama local indisponible' },
     });
   });
 });

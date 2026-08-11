@@ -28,6 +28,7 @@ import {
   AssistantSendMessageRequestSchema,
   AssistantSubmissionResponseSchema,
   AssistantUpdateConversationRequestSchema,
+  AssistantWebUsageSchema,
   GroceryClassificationApplyRequestSchema,
   GroceryClassificationApplyResponseSchema,
   GroceryClassificationJobSchema,
@@ -48,6 +49,7 @@ import {
   AssistantNotFoundError,
   AssistantService,
 } from './assistant/assistant-service.js';
+import { TavilySearchClient } from './assistant/tavily-search.js';
 import { ClosedAuthError, ClosedAuthService } from './auth/auth-service.js';
 import { loadOrCreateAuthSecret } from './auth/auth-secret.js';
 import { openDatabase } from './db/database.js';
@@ -72,6 +74,7 @@ export interface BuildHubOptions {
   logger?: boolean;
   classificationEngine?: GroceryClassificationEngine;
   assistantEngine?: AssistantEngine;
+  tavilySearchClient?: TavilySearchClient;
   ollamaBaseUrl?: string;
   ollamaModel?: string;
   ollamaTimeoutMs?: number;
@@ -150,7 +153,6 @@ export async function buildHub(options: BuildHubOptions) {
         ...(options.ollamaBaseUrl ? { baseUrl: options.ollamaBaseUrl } : {}),
         model:
           process.env.FRIDAY_ASSISTANT_MODEL ?? 'gemma4-12b-multimodal:128k',
-        fastModel: process.env.FRIDAY_ASSISTANT_FAST_MODEL ?? 'ministral-3:8b',
         ...(process.env.FRIDAY_ASSISTANT_TIMEOUT_MS
           ? {
               timeoutMs: Number.parseInt(
@@ -160,6 +162,8 @@ export async function buildHub(options: BuildHubOptions) {
             }
           : {}),
       }),
+    options.tavilySearchClient ??
+      new TavilySearchClient(process.env.FRIDAY_TAVILY_API_KEY),
   );
   const publicOrigin = options.publicOrigin ?? 'http://localhost';
   const closedAuth = new ClosedAuthService({
@@ -641,6 +645,7 @@ export async function buildHub(options: BuildHubOptions) {
         assistant.createConversation(
           session.member.profileId,
           parsed.data.title,
+          parsed.data.mode,
         ),
       );
     } catch (error) {
@@ -761,23 +766,11 @@ export async function buildHub(options: BuildHubOptions) {
     }
   });
 
-  app.get('/api/assistant/runs/:id/events', async (request, reply) => {
-    const params = AssistantRunParamsSchema.safeParse(request.params);
-    const query = AssistantEventsQuerySchema.safeParse(request.query);
-    if (!params.success || !query.success)
-      return reply.code(400).send({ error: 'invalid_assistant_events' });
+  app.get('/api/assistant/web/usage', async (request, reply) => {
     try {
-      const session = await closedAuth.requireSession(request.headers);
-      return AssistantRunEventsResponseSchema.parse(
-        assistant.listEvents(
-          session.member.profileId,
-          params.data.id,
-          query.data.after,
-        ),
-      );
+      await closedAuth.requireSession(request.headers);
+      return AssistantWebUsageSchema.parse(await assistant.webUsage());
     } catch (error) {
-      if (error instanceof AssistantNotFoundError)
-        return reply.code(404).send({ error: 'assistant_not_found' });
       return sendClosedAuthError(error, reply);
     }
   });
@@ -803,9 +796,31 @@ export async function buildHub(options: BuildHubOptions) {
       if (error instanceof AssistantNotFoundError)
         return reply.code(404).send({ error: 'assistant_not_found' });
       if (error instanceof AssistantConflictError)
-        return reply
-          .code(409)
-          .send({ error: 'assistant_conflict', message: error.message });
+        return reply.code(409).send({
+          error: 'assistant_conflict',
+          message: error.message,
+        });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.get('/api/assistant/runs/:id/events', async (request, reply) => {
+    const params = AssistantRunParamsSchema.safeParse(request.params);
+    const query = AssistantEventsQuerySchema.safeParse(request.query);
+    if (!params.success || !query.success)
+      return reply.code(400).send({ error: 'invalid_assistant_events' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return AssistantRunEventsResponseSchema.parse(
+        assistant.listEvents(
+          session.member.profileId,
+          params.data.id,
+          query.data.after,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof AssistantNotFoundError)
+        return reply.code(404).send({ error: 'assistant_not_found' });
       return sendClosedAuthError(error, reply);
     }
   });

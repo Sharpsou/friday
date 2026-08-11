@@ -49,21 +49,25 @@ test('the private Assistant keeps an encrypted message queued offline', async ({
   page,
 }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Assistant' })).toBeVisible();
-  await page.getByRole('button', { name: 'Nouvelle conversation' }).click();
-  await expect(
-    page.getByText('Nouvelle conversation', { exact: true }),
-  ).toBeVisible();
-  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Chat' })).toBeVisible();
   await page
-    .getByPlaceholder('Écrivez à Friday…')
-    .fill('Question conservée hors ligne');
+    .getByRole('button', { name: 'Nouvelle conversation', exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole('complementary', { name: 'Conversations' })
+      .getByText('Nouvelle conversation', { exact: true }),
+  ).toBeVisible();
+  const composer = page.getByPlaceholder('Écrivez à Friday…');
+  await expect(composer).toBeVisible();
+  await context.setOffline(true);
+  await composer.fill('Question conservée hors ligne');
   await page.getByRole('button', { name: 'Envoyer' }).click();
   await expect(page.getByText('En attente de connexion')).toBeVisible();
 
   await page.reload();
-  await page.getByRole('button', { name: 'Assistant', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
   await expect(page.getByText('En attente de connexion')).toBeVisible();
   await context.setOffline(false);
 });
@@ -85,7 +89,7 @@ test('the six destinations fit at 360px and budget data can persist or be remove
     'Agenda',
     'Courses',
     'Budget',
-    'Assistant',
+    'Chat',
     'Veille',
   ]);
   await navigation.getByRole('button', { name: 'Budget' }).click();

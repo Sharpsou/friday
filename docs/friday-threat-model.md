@@ -1,7 +1,7 @@
 # Friday — modèle de menace du candidat local-first
 
-Date : 10 août 2026
-Révision : Budget et Assistant candidats ; accès Tailscale décidé mais inactif
+Date : 11 août 2026
+Révision : Budget et Chat Tavily candidats ; accès Tailscale décidé mais inactif
 
 ## Executive summary
 
@@ -11,7 +11,7 @@ Friday concentre des données familiales et des conversations Assistant sur un h
 
 Périmètre : `apps/web`, `apps/hub`, `packages/contracts`, `packages/domain`, SQLite, IndexedDB, les scripts d’exploitation, l’authentification/appairage, Budget et Assistant.
 
-Hors périmètre runtime : Google Calendar, Drive, RSS, accès Internet direct au hub, Tailscale tant que l’ADR-013 reste en pause et projets sources externes. Ollama et les recherches Web bornées de l’Assistant sont couverts comme dépendances non critiques.
+Hors périmètre runtime : Google Calendar, Drive, RSS, Tailscale tant que l’ADR-013 reste en pause et projets sources externes. Ollama local et les appels sortants Tavily sont couverts comme dépendances non critiques du Chat.
 
 Hypothèses validées par les décisions canoniques :
 
@@ -39,7 +39,7 @@ Preuves principales : `docs/09-decision-finale-pwa-mvp.md`, sections Architectur
 - IndexedDB/Dexie : clé non extractible, payloads chiffrés, outbox et curseur.
 - Hub Fastify : terminaison HTTPS, validation, API et fichiers statiques.
 - SQLite : état canonique, opérations appliquées et journal de changements.
-- Assistant : conversations privées par profil, file persistante et recherche Web consentie.
+- Chat : conversations privées par profil, file persistante, Gemma 4 local et recherche Tavily optionnelle avec quotas.
 - Ollama local : génération non critique, exclusivement sur la boucle locale.
 - Opérateur Windows : certificats, configuration, données et processus du hub.
 
@@ -50,7 +50,8 @@ Preuves principales : `docs/09-decision-finale-pwa-mvp.md`, sections Architectur
 - PWA → Hub : cookies de session HttpOnly et lots JSON sur HTTPS même origine ; validation Zod, taille bornée et contrôle de la session, du foyer, du profil et de l'appareil.
 - Hub → SQLite : comptes, sessions, appareils, codes hachés, opérations et changements ; transactions SQL et idempotence par `operationId`.
 - Hub → PWA : profil et changements depuis un curseur ; validation de réponse avant persistance chiffrée locale.
-- Hub → Ollama/Web : prompt borné vers Ollama local et recherche distante seulement après consentement ; aucun droit de mutation métier.
+- Hub → Ollama : historique et sources bornés vers Gemma 4 local ; aucun droit de mutation métier.
+- Hub → Tavily : requêtes ciblées nettoyées, clé serveur et réponses traitées comme contenu hostile ; aucun appel en mode `Local`.
 - Opérateur → Hub : variables, secret d'authentification local, certificats, sauvegarde SQLite et seed budget normalisé ; secrets et données réelles hors dépôt/Drive, BitLocker et ACL Windows exigés avant import.
 
 #### Diagram
@@ -64,7 +65,7 @@ flowchart LR
     H --> D["SQLite canonique"]
     H --> A["Sessions et appareils"]
     H --> L["Ollama local"]
-    H -.-> R["Recherche Web consentie"]
+    H --> T["Tavily"]
     O["Opérateur Windows"] --> H
 ```
 
@@ -81,7 +82,8 @@ flowchart LR
 | Base SQLite canonique                | Source de vérité du foyer                       | C/I/A                      |
 | Autorité locale et clé TLS           | Établissent la confiance de l'origine           | C/I                        |
 | Bundle PWA et lockfile               | Code exécuté avec accès aux données déchiffrées | I/A                        |
-| Conversations et sources Assistant   | Données privées par profil et contenus distants | C/I/A                      |
+| Conversations Chat                   | Données privées par profil                      | C/I/A                      |
+| Clé et quota Tavily                  | Autorisent les recherches externes bornées      | C/I/A                      |
 | Compte et appareils Tailscale futurs | Contrôleront la route distante privée           | C/I/A                      |
 
 ## Attacker model
@@ -95,28 +97,29 @@ flowchart LR
 - provoquer des coupures et renvois de requêtes ;
 - exploiter une dépendance ou une erreur de mise à jour du service worker ;
 - lire les fichiers du PC ou du profil navigateur après compromission locale selon les protections OS.
-- fournir du contenu Web hostile à l’Assistant ou, après activation future, compromettre un appareil Tailscale approuvé.
+- fournir des instructions hostiles dans un message du Chat ou, après activation future, compromettre un appareil Tailscale approuvé.
 
 ### Non-capabilities
 
-- aucun accès Internet direct au hub n’est supposé ; la route Tailscale reste inactive ;
+- aucune entrée Internet directe vers le hub n’est supposée ; seuls les appels sortants Tavily sont autorisés pour les modes Web ;
 - aucun accès administrateur Windows ni téléphone déverrouillé n'est supposé par défaut ;
 - aucun contrôle du compte GitHub, du registre npm ou de la clé privée de l'autorité n'est supposé ;
 - les deux adultes ne sont pas modélisés comme locataires hostiles entre eux au MVP.
 
 ## Entry points and attack surfaces
 
-| Surface                     | How reached             | Trust boundary                     | Notes                                                    | Evidence                                                      |
-| --------------------------- | ----------------------- | ---------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------- |
-| App shell et service worker | navigation HTTPS locale | LAN → origine Friday               | code à privilège élevé dans l'origine                    | `docs/10-feuille-de-route-technique-implementation.md`, §7.1  |
-| `POST /api/sync/push`       | JSON HTTPS              | PWA → hub                          | rejeu, conflit, surcharge et validation                  | même document, §6.3–6.5                                       |
-| `GET /api/sync/pull`        | HTTPS + curseur         | PWA → hub                          | curseur forgé et fuite de changements                    | même document, §6.3                                           |
-| Routes auth et appairage    | JSON HTTPS              | appareil inconnu → hub             | brute force, inscription indue, fixation de session      | `apps/hub/src/app.ts`, `apps/hub/src/auth/`                   |
-| IndexedDB                   | API navigateur          | JavaScript de l'origine → stockage | clé utilisable par tout script compromis de l'origine    | même document, §7.2                                           |
-| Variables et fichiers TLS   | session Windows         | opérateur → processus hub          | secrets et permissions locales                           | même document, §7.3 et §13                                    |
-| Dépendances/build           | `pnpm install` et build | registre/Git → bundle              | scripts d'installation et code supply-chain              | même document, §4.1 et §12.4                                  |
-| Routes Assistant            | JSON HTTPS authentifié  | PWA → hub → Ollama/Web             | séparation profil, prompt injection et contenus hostiles | `apps/hub/src/assistant/`, `docs/runbooks/assistant-gemma.md` |
-| Route Tailscale future      | tunnel privé `/32`      | appareil approuvé → hub            | compte/appareil compromis et enrôlement distant          | `docs/adr/013-acces-exterieur-tailscale-route-privee.md`      |
+| Surface                     | How reached             | Trust boundary                     | Notes                                                     | Evidence                                                      |
+| --------------------------- | ----------------------- | ---------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------- |
+| App shell et service worker | navigation HTTPS locale | LAN → origine Friday               | code à privilège élevé dans l'origine                     | `docs/10-feuille-de-route-technique-implementation.md`, §7.1  |
+| `POST /api/sync/push`       | JSON HTTPS              | PWA → hub                          | rejeu, conflit, surcharge et validation                   | même document, §6.3–6.5                                       |
+| `GET /api/sync/pull`        | HTTPS + curseur         | PWA → hub                          | curseur forgé et fuite de changements                     | même document, §6.3                                           |
+| Routes auth et appairage    | JSON HTTPS              | appareil inconnu → hub             | brute force, inscription indue, fixation de session       | `apps/hub/src/app.ts`, `apps/hub/src/auth/`                   |
+| IndexedDB                   | API navigateur          | JavaScript de l'origine → stockage | clé utilisable par tout script compromis de l'origine     | même document, §7.2                                           |
+| Variables et fichiers TLS   | session Windows         | opérateur → processus hub          | secrets et permissions locales                            | même document, §7.3 et §13                                    |
+| Dépendances/build           | `pnpm install` et build | registre/Git → bundle              | scripts d'installation et code supply-chain               | même document, §4.1 et §12.4                                  |
+| Routes Chat                 | JSON HTTPS authentifié  | PWA → hub → Ollama local           | séparation profil et instructions hostiles                | `apps/hub/src/assistant/`, `docs/runbooks/assistant-gemma.md` |
+| API Tavily                  | HTTPS sortant           | hub → service externe              | fuite de requête, quota, contenu hostile et disponibilité | `apps/hub/src/assistant/tavily-search.ts`                     |
+| Route Tailscale future      | tunnel privé `/32`      | appareil approuvé → hub            | compte/appareil compromis et enrôlement distant           | `docs/adr/013-acces-exterieur-tailscale-route-privee.md`      |
 
 ## Top abuse paths
 
@@ -129,10 +132,11 @@ flowchart LR
 7. La clé privée de l'autorité locale quitte le PC → un faux hub présente un certificat de confiance → interception sur le LAN.
 8. Un client devine ou rejoue un code d'appairage → crée un compte ou appareil non autorisé → accède au foyer.
 9. Un appareil révoqué conserve une session encore acceptée → reprend la synchronisation → lit ou modifie des données après révocation.
-10. Un fichier de seed normalisé reste lisible par un autre compte Windows ou entre dans Git/Drive → fuite des revenus et dépenses du foyer.
-11. Deux appareils génèrent la même échéance récurrente avec des identifiants différents → double dépense ou double revenu dans les synthèses.
-12. Une page hostile injecte des instructions dans la recherche Assistant → tente d’altérer la réponse ou d’obtenir des données → fuite ou conseil trompeur.
-13. Un appareil Tailscale non autorisé atteint le hub → tente un nouvel enrôlement à distance → accès persistant au foyer.
+10. Une requête Chat contient une donnée personnelle ou une source contient une instruction hostile → fuite vers Tavily ou injection dans Gemma → exposition ou réponse trompeuse.
+11. Un fichier de seed normalisé reste lisible par un autre compte Windows ou entre dans Git/Drive → fuite des revenus et dépenses du foyer.
+12. Deux appareils génèrent la même échéance récurrente avec des identifiants différents → double dépense ou double revenu dans les synthèses.
+13. Un message hostile demande de révéler le prompt ou des données d’un autre profil → tente d’altérer la réponse → fuite ou réponse trompeuse.
+14. Un appareil Tailscale non autorisé atteint le hub → tente un nouvel enrôlement à distance → accès persistant au foyer.
 
 ## Threat model table
 
@@ -149,7 +153,7 @@ flowchart LR
 | TM-009    | appareil perdu ou session volée          | session et cache présents sur l'appareil         | tente de synchroniser ou lit le cache hors ligne      | lecture et altération persistantes  | sessions, données, journal            | session liée au `deviceId`, suppression des sessions et refus push/pull après révocation                   | cache téléchargé non effaçable à distance                            | verrouillage du téléphone, révocation rapide, future procédure de rotation/récupération                          | journal des refus et dernière activité par appareil            | medium     | high            | high     |
 | TM-010    | autre compte Windows ou erreur opérateur | seed réel en clair avec ACL héritées             | lit, copie ou versionne le fichier normalisé          | fuite financière du foyer           | revenus, dépenses, projets            | chemin imposé hors Git sous `D:\FridayData`, import sans libellés dans les logs                            | BitLocker non vérifiable sans élévation et ACL actuelles trop larges | bloquer le seed tant que BitLocker, sauvegarde et ACL compte Friday/SYSTEM/Administrateurs ne sont pas confirmés | contrôle préalable et inventaire ACL sans afficher les données | medium     | high            | high     |
 | TM-011    | deux clients légitimes hors ligne        | même série arrivée à échéance sur deux appareils | matérialise deux occurrences logiques                 | double comptage financier           | budget, projections, journal          | identifiant d'occurrence déterministe modèle + date, `operationId` déterministe et application idempotente | recette physique à deux appareils en attente                         | tests de convergence, contrainte d'identifiant et rapprochement après reconnexion                                | détection de couples modèle/date dupliqués                     | medium     | high            | high     |
-| TM-012    | contenu Web hostile                      | recherche Assistant consentie                    | injecte de fausses instructions ou sources            | réponse trompeuse ou fuite bornée   | conversations, sources, contexte      | consentement, sources bornées, validation d’identifiants et aucune mutation métier directe                 | qualité réelle et corpus hostile à approfondir                       | renforcer les tests de prompt injection et limiter les données transmises                                        | erreurs de citation et sources rejetées                        | medium     | medium          | medium   |
+| TM-012    | message utilisateur hostile              | conversation Chat locale                         | demande secrets, prompt ou données d’un autre profil  | réponse trompeuse ou fuite bornée   | conversations et contexte             | séparation serveur par profil, prompt système borné et aucune mutation métier directe                      | qualité réelle et corpus hostile à approfondir                       | renforcer les tests de prompt injection et limiter le contexte transmis                                          | erreurs de génération et refus attendus                        | low        | medium          | low      |
 | TM-013    | compte/appareil Tailscale compromis      | ADR-013 activée et appareil approuvé             | atteint `8443` et tente un enrôlement                 | accès distant persistant            | sessions, données, hub                | route `/32`, grants `TCP 8443`, auth Friday et approbation Tailscale prévues                               | Tailscale et enrôlement local non encore implantés                   | appareil approuvé uniquement, MFA, enrôlement LAN et révocation double                                           | journal Friday et inventaire des appareils Tailscale           | low        | high            | medium   |
 
 ## Criticality calibration
@@ -161,22 +165,22 @@ flowchart LR
 
 ## Focus paths for security review
 
-| Path                                                     | Why it matters                                   | Related Threat IDs     |
-| -------------------------------------------------------- | ------------------------------------------------ | ---------------------- |
-| `apps/web/src/crypto/`                                   | clé non extractible, IV et AAD                   | TM-001                 |
-| `apps/web/src/db/`                                       | transaction tâche + outbox et migrations         | TM-003, TM-006         |
-| `apps/web/src/sync/`                                     | validation des réponses et ordre push/pull       | TM-002, TM-003, TM-004 |
-| `apps/web/src/sw.ts`                                     | privilège de cache et mises à jour               | TM-006                 |
-| `apps/hub/src/app.ts`                                    | limite, origine et validation des requêtes       | TM-002, TM-008, TM-009 |
-| `apps/hub/src/sync/`                                     | idempotence, révisions et conflits               | TM-003, TM-004         |
-| `apps/hub/src/db/`                                       | transactions, contraintes et migrations          | TM-003, TM-005         |
-| `apps/hub/src/main.ts`                                   | TLS, origines approuvées et fichiers statiques   | TM-001, TM-002, TM-007 |
-| `apps/hub/src/auth/`                                     | inscription fermée, sessions et appairage        | TM-002, TM-008, TM-009 |
-| `apps/hub/src/budget/`                                   | validation, résumé non sensible et seed unique   | TM-010                 |
-| `apps/hub/src/assistant/`                                | séparation profil, file et contenus Web hostiles | TM-012                 |
-| `pnpm-lock.yaml`                                         | code tiers réellement installé                   | TM-005                 |
-| `infra/certificates/`                                    | procédure sans clé privée versionnée             | TM-007                 |
-| `docs/adr/013-acces-exterieur-tailscale-route-privee.md` | future frontière distante                        | TM-013                 |
+| Path                                                     | Why it matters                                 | Related Threat IDs     |
+| -------------------------------------------------------- | ---------------------------------------------- | ---------------------- |
+| `apps/web/src/crypto/`                                   | clé non extractible, IV et AAD                 | TM-001                 |
+| `apps/web/src/db/`                                       | transaction tâche + outbox et migrations       | TM-003, TM-006         |
+| `apps/web/src/sync/`                                     | validation des réponses et ordre push/pull     | TM-002, TM-003, TM-004 |
+| `apps/web/src/sw.ts`                                     | privilège de cache et mises à jour             | TM-006                 |
+| `apps/hub/src/app.ts`                                    | limite, origine et validation des requêtes     | TM-002, TM-008, TM-009 |
+| `apps/hub/src/sync/`                                     | idempotence, révisions et conflits             | TM-003, TM-004         |
+| `apps/hub/src/db/`                                       | transactions, contraintes et migrations        | TM-003, TM-005         |
+| `apps/hub/src/main.ts`                                   | TLS, origines approuvées et fichiers statiques | TM-001, TM-002, TM-007 |
+| `apps/hub/src/auth/`                                     | inscription fermée, sessions et appairage      | TM-002, TM-008, TM-009 |
+| `apps/hub/src/budget/`                                   | validation, résumé non sensible et seed unique | TM-010                 |
+| `apps/hub/src/assistant/`                                | séparation profil, file et prompts hostiles    | TM-012                 |
+| `pnpm-lock.yaml`                                         | code tiers réellement installé                 | TM-005                 |
+| `infra/certificates/`                                    | procédure sans clé privée versionnée           | TM-007                 |
+| `docs/adr/013-acces-exterieur-tailscale-route-privee.md` | future frontière distante                      | TM-013                 |
 
 ## Quality check
 

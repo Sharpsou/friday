@@ -1218,7 +1218,10 @@ export function App() {
                     >
                       <summary>Détails facultatifs</summary>
                       <div className="schedule-grid">
-                        <label htmlFor="task-date">
+                        <label
+                          className="schedule-native-date-time-field"
+                          htmlFor="task-date"
+                        >
                           <span>Date</span>
                           <input
                             id="task-date"
@@ -1237,7 +1240,10 @@ export function App() {
                             }}
                           />
                         </label>
-                        <label htmlFor="task-time">
+                        <label
+                          className="schedule-native-date-time-field"
+                          htmlFor="task-time"
+                        >
                           <span>Heure</span>
                           <input
                             id="task-time"
@@ -1336,7 +1342,10 @@ export function App() {
                           </label>
                         ) : null}
                         {recurrenceChoice !== 'none' ? (
-                          <label htmlFor="task-recurrence-end">
+                          <label
+                            className="schedule-native-date-time-field"
+                            htmlFor="task-recurrence-end"
+                          >
                             <span>Date de fin</span>
                             <input
                               id="task-recurrence-end"
@@ -1549,7 +1558,7 @@ export function App() {
           <Suspense
             fallback={
               <section className="panel">
-                <p>Chargement de l’Assistant…</p>
+                <p>Chargement du Chat…</p>
               </section>
             }
           >
@@ -2005,7 +2014,7 @@ export function App() {
         />
         <NavButton
           active={destination === 'assistant'}
-          label="Assistant"
+          label="Chat"
           onClick={() => setDestination('assistant')}
         />
         <NavButton

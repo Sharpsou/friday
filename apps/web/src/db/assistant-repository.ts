@@ -132,7 +132,7 @@ export async function listQueuedAssistantMessages(): Promise<
   return Promise.all(
     rows.map(async (row) => ({
       conversationId: row.conversationId,
-      input: AssistantSendMessageRequestSchema.parse(
+      input: parseQueuedAssistantInput(
         await decryptJson(
           key,
           row.encrypted,
@@ -141,6 +141,24 @@ export async function listQueuedAssistantMessages(): Promise<
       ),
     })),
   );
+}
+
+function parseQueuedAssistantInput(
+  input: unknown,
+): AssistantSendMessageRequest {
+  if (
+    input &&
+    typeof input === 'object' &&
+    'mode' in input &&
+    input.mode === 'classic'
+  ) {
+    return AssistantSendMessageRequestSchema.parse({
+      ...input,
+      mode: 'local',
+      thinkingPolicy: 'auto',
+    });
+  }
+  return AssistantSendMessageRequestSchema.parse(input);
 }
 
 export async function removeQueuedAssistantMessage(

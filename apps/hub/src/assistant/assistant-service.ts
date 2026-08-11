@@ -8,25 +8,31 @@ import {
   AssistantRunSchema,
   AssistantSourceSchema,
   type AssistantConversation,
-  type AssistantEffectiveMode,
   type AssistantMessage,
   type AssistantMode,
+  type AssistantResearchOutcome,
   type AssistantRun,
   type AssistantRunEvent,
   type AssistantRunStatus,
-  type AssistantWebDepth,
+  type AssistantStoredEffectiveMode,
+  type AssistantStoredWebDepth,
+  type AssistantThinkingPolicy,
+  AssistantWebUsageSchema,
+  type AssistantWebUsage,
 } from '@friday/contracts';
 
+import type { AssistantEngine } from './assistant-engine.js';
 import {
-  inferEffectiveMode,
-  inferWebDepth,
-  type AssistantEngine,
-} from './assistant-engine.js';
+  TavilySearchClient,
+  type TavilyEvidence,
+  type TavilySearchDepth,
+} from './tavily-search.js';
 
 interface ConversationRow {
   archived_at: string | null;
   created_at: string;
   id: string;
+  mode: AssistantMode;
   title: string;
   updated_at: string;
 }
@@ -35,30 +41,41 @@ interface MessageRow {
   content: string;
   conversation_id: string;
   created_at: string;
-  effective_mode: AssistantEffectiveMode | null;
+  effective_mode: AssistantStoredEffectiveMode | null;
   id: string;
-  requested_mode: AssistantMode | null;
+  conversation_mode: AssistantMode;
+  thinking_policy: AssistantThinkingPolicy;
+  thinking_used: 0 | 1;
+  research_outcome: AssistantResearchOutcome;
+  credits_used: number;
+  requested_mode: 'auto' | 'web' | 'classic' | null;
   role: 'user' | 'assistant';
   run_id: string | null;
-  web_depth: AssistantWebDepth | null;
+  web_depth: AssistantStoredWebDepth | null;
 }
 
 interface RunRow {
   assistant_message_id: string | null;
   conversation_id: string;
   created_at: string;
-  effective_mode: AssistantEffectiveMode | null;
+  effective_mode: AssistantStoredEffectiveMode | null;
   error_code: string | null;
   error_message: string | null;
   id: string;
+  conversation_mode: AssistantMode;
+  thinking_policy: AssistantThinkingPolicy;
+  thinking_used: 0 | 1;
+  research_outcome: AssistantResearchOutcome;
+  credits_used: number;
+  search_consent: 0 | 1;
   profile_id: string;
-  requested_mode: AssistantMode;
+  requested_mode: 'auto' | 'web' | 'classic';
   search_queries_json: string;
   stage_label: string;
   status: AssistantRunStatus;
   updated_at: string;
   user_message_id: string;
-  web_depth: AssistantWebDepth | null;
+  web_depth: AssistantStoredWebDepth | null;
 }
 
 interface SourceRow {
@@ -68,7 +85,20 @@ interface SourceRow {
   source_id: string;
   title: string;
   url: string;
+  excerpt?: string;
 }
+
+interface RunEventRow {
+  created_at: string;
+  label: string;
+  run_id: string;
+  sequence: number;
+  status: AssistantRunStatus;
+}
+
+const WEB_SOFT_LIMIT = 750;
+const WEB_DEEP_LIMIT = 850;
+const WEB_HARD_LIMIT = 950;
 
 const TERMINAL_STATUSES: AssistantRunStatus[] = [
   'completed',
@@ -88,6 +118,7 @@ export class AssistantService {
   constructor(
     private readonly database: Database.Database,
     private readonly engine: AssistantEngine,
+    private readonly tavily = new TavilySearchClient(undefined),
   ) {
     const now = new Date().toISOString();
     this.database
@@ -97,8 +128,10 @@ export class AssistantService {
                 stage_label = CASE WHEN attempt_count >= 2 THEN 'Échec après redémarrage' ELSE 'Dans la file' END,
                 error_code = CASE WHEN attempt_count >= 2 THEN 'repeated_restart' ELSE NULL END,
                 error_message = CASE WHEN attempt_count >= 2 THEN 'La demande a été interrompue deux fois.' ELSE NULL END,
+                effective_mode = NULL,
                 lease_until = NULL, updated_at = ?
-          WHERE status IN ('preparing', 'searching', 'reading', 'verifying', 'writing', 'cancel_requested')`,
+          WHERE status IN ('preparing', 'awaiting_search_consent', 'searching',
+                           'reading', 'verifying', 'writing', 'cancel_requested')`,
       )
       .run(now);
     this.schedule();
@@ -108,7 +141,7 @@ export class AssistantService {
     return (
       this.database
         .prepare(
-          `SELECT id, title, archived_at, created_at, updated_at
+          `SELECT id, title, mode, archived_at, created_at, updated_at
            FROM assistant_conversations WHERE profile_id = ?
           ORDER BY archived_at IS NOT NULL, updated_at DESC`,
         )
@@ -116,22 +149,30 @@ export class AssistantService {
     ).map((row) => this.toConversation(row));
   }
 
-  createConversation(profileId: string, title: string): AssistantConversation {
+  createConversation(
+    profileId: string,
+    title: string,
+    mode: AssistantMode = 'local',
+  ): AssistantConversation {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.database
       .prepare(
-        `INSERT INTO assistant_conversations(id, profile_id, title, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO assistant_conversations(id, profile_id, title, mode, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, profileId, title, now, now);
+      .run(id, profileId, title, mode, now, now);
     return this.getConversation(profileId, id);
   }
 
   updateConversation(
     profileId: string,
     id: string,
-    update: { archived?: boolean | undefined; title?: string | undefined },
+    update: {
+      archived?: boolean | undefined;
+      title?: string | undefined;
+      mode?: AssistantMode | undefined;
+    },
   ): AssistantConversation {
     this.getConversation(profileId, id);
     const current = this.getConversation(profileId, id);
@@ -139,11 +180,12 @@ export class AssistantService {
     this.database
       .prepare(
         `UPDATE assistant_conversations
-            SET title = ?, archived_at = ?, updated_at = ?
+            SET title = ?, mode = ?, archived_at = ?, updated_at = ?
           WHERE id = ? AND profile_id = ?`,
       )
       .run(
         update.title ?? current.title,
+        update.mode ?? current.mode,
         update.archived === undefined
           ? current.archivedAt
           : update.archived
@@ -187,7 +229,9 @@ export class AssistantService {
     const conversation = this.getConversation(profileId, conversationId);
     const rows = this.database
       .prepare(
-        `SELECT id, conversation_id, role, content, requested_mode, effective_mode, web_depth, run_id, created_at
+        `SELECT id, conversation_id, role, content, requested_mode, effective_mode, web_depth,
+                conversation_mode, thinking_policy, thinking_used, research_outcome, credits_used,
+                run_id, created_at
            FROM assistant_messages WHERE conversation_id = ? AND profile_id = ?
           ORDER BY created_at, id`,
       )
@@ -214,8 +258,8 @@ export class AssistantService {
     input: {
       clientRequestId: string;
       content: string;
-      mode: AssistantMode;
-      webDepth?: AssistantWebDepth | null | undefined;
+      mode: AssistantMode | 'classic';
+      thinkingPolicy?: AssistantThinkingPolicy;
     },
   ): { message: AssistantMessage; run: AssistantRun } {
     this.getConversation(profileId, conversationId);
@@ -252,20 +296,26 @@ export class AssistantService {
     const messageId = randomUUID();
     const runId = randomUUID();
     const now = new Date().toISOString();
+    const mode = input.mode === 'classic' ? 'local' : input.mode;
+    const thinkingPolicy = input.thinkingPolicy ?? 'auto';
+    const stored = storedMode(mode);
     this.database.transaction(() => {
       this.database
         .prepare(
           `INSERT INTO assistant_messages(
-             id, conversation_id, profile_id, role, content, requested_mode, web_depth, run_id, created_at
-           ) VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)`,
+             id, conversation_id, profile_id, role, content, requested_mode, web_depth,
+             conversation_mode, thinking_policy, run_id, created_at
+           ) VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           messageId,
           conversationId,
           profileId,
           input.content,
-          input.mode,
-          input.webDepth ?? null,
+          stored.requestedMode,
+          stored.webDepth,
+          mode,
+          thinkingPolicy,
           runId,
           now,
         );
@@ -273,8 +323,9 @@ export class AssistantService {
         .prepare(
           `INSERT INTO assistant_runs(
              id, client_request_id, conversation_id, profile_id, user_message_id,
-             requested_mode, web_depth, status, stage_label, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 'Dans la file', ?, ?)`,
+             requested_mode, web_depth, conversation_mode, thinking_policy,
+             status, stage_label, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 'Dans la file', ?, ?)`,
         )
         .run(
           runId,
@@ -282,16 +333,18 @@ export class AssistantService {
           conversationId,
           profileId,
           messageId,
-          input.mode,
-          input.webDepth ?? null,
+          stored.requestedMode,
+          stored.webDepth,
+          mode,
+          thinkingPolicy,
           now,
           now,
         );
       this.database
         .prepare(
-          'UPDATE assistant_conversations SET updated_at = ? WHERE id = ?',
+          'UPDATE assistant_conversations SET mode = ?, updated_at = ? WHERE id = ?',
         )
-        .run(now, conversationId);
+        .run(mode, now, conversationId);
       this.addEvent(runId, profileId, 'queued', 'Dans la file', now);
     })();
     this.schedule();
@@ -309,6 +362,74 @@ export class AssistantService {
     return this.toRun(row);
   }
 
+  async webUsage(
+    signal: AbortSignal = AbortSignal.timeout(10_000),
+  ): Promise<AssistantWebUsage> {
+    const month = new Date().toISOString().slice(0, 7);
+    const row = this.database
+      .prepare('SELECT credits_used FROM assistant_web_usage WHERE month = ?')
+      .get(month) as { credits_used: number } | undefined;
+    let creditsUsed = row?.credits_used ?? 0;
+    let planLimit = WEB_HARD_LIMIT;
+    let source: 'tavily' | 'local' = 'local';
+    if (this.tavily.available) {
+      try {
+        const remote = await this.tavily.usage(signal);
+        creditsUsed = Math.max(creditsUsed, remote.creditsUsed);
+        planLimit = remote.limit;
+        source = 'tavily';
+      } catch {
+        // Le compteur local garde l'interface et les garde-fous disponibles.
+      }
+    }
+    const effectiveLimit = Math.min(WEB_HARD_LIMIT, planLimit);
+    return AssistantWebUsageSchema.parse({
+      month,
+      creditsUsed,
+      remainingBasicSearches: Math.max(0, effectiveLimit - creditsUsed),
+      source,
+      softLimit: WEB_SOFT_LIMIT,
+      deepLimit: WEB_DEEP_LIMIT,
+      hardLimit: WEB_HARD_LIMIT,
+    });
+  }
+
+  consent(
+    profileId: string,
+    runId: string,
+    approved: boolean,
+    queries: string[],
+  ): AssistantRun {
+    const run = this.getRun(profileId, runId);
+    if (run.status !== 'awaiting_search_consent')
+      throw new AssistantConflictError(
+        'Cette demande n’attend pas de consentement.',
+      );
+    const now = new Date().toISOString();
+    this.database
+      .prepare(
+        `UPDATE assistant_runs
+            SET status = 'queued', stage_label = 'Dans la file', search_consent = ?,
+                search_queries_json = ?, conversation_mode = CASE WHEN ? THEN conversation_mode ELSE 'local' END,
+                requested_mode = CASE WHEN ? THEN requested_mode ELSE 'classic' END,
+                web_depth = CASE WHEN ? THEN web_depth ELSE NULL END, updated_at = ?
+          WHERE id = ? AND profile_id = ?`,
+      )
+      .run(
+        approved ? 1 : 0,
+        JSON.stringify(approved ? queries : []),
+        approved ? 1 : 0,
+        approved ? 1 : 0,
+        approved ? 1 : 0,
+        now,
+        runId,
+        profileId,
+      );
+    this.addEvent(runId, profileId, 'queued', 'Dans la file', now);
+    this.schedule();
+    return this.getRun(profileId, runId);
+  }
+
   listEvents(
     profileId: string,
     runId: string,
@@ -321,61 +442,9 @@ export class AssistantService {
            FROM assistant_run_events WHERE run_id = ? AND profile_id = ? AND sequence > ?
           ORDER BY sequence LIMIT 200`,
       )
-      .all(runId, profileId, after) as Array<{
-      sequence: number;
-      run_id: string;
-      status: AssistantRunStatus;
-      label: string;
-      created_at: string;
-    }>;
-    const events = rows.map((row) =>
-      AssistantRunEventSchema.parse({
-        sequence: row.sequence,
-        runId: row.run_id,
-        status: row.status,
-        label: row.label,
-        createdAt: row.created_at,
-      }),
-    );
+      .all(runId, profileId, after) as RunEventRow[];
+    const events = rows.map(toRunEvent);
     return { events, cursor: events.at(-1)?.sequence ?? after };
-  }
-
-  consent(
-    profileId: string,
-    runId: string,
-    approved: boolean,
-    queries: string[],
-  ): AssistantRun {
-    const run = this.getRun(profileId, runId);
-    if (run.status !== 'awaiting_search_consent')
-      throw new AssistantConflictError(
-        'Cette demande n’attend pas de confirmation.',
-      );
-    const now = new Date().toISOString();
-    if (!approved) {
-      this.setRunState(
-        runId,
-        profileId,
-        'cancelled',
-        'Recherche refusée',
-        now,
-        {
-          errorCode: 'search_consent_denied',
-          errorMessage:
-            'La recherche contenant des données personnelles a été refusée.',
-        },
-      );
-    } else {
-      this.database
-        .prepare(
-          `UPDATE assistant_runs SET status = 'queued', stage_label = 'Dans la file',
-             search_queries_json = ?, search_consent = 1, updated_at = ? WHERE id = ?`,
-        )
-        .run(JSON.stringify(queries), now, runId);
-      this.addEvent(runId, profileId, 'queued', 'Dans la file', now);
-      this.schedule();
-    }
-    return this.getRun(profileId, runId);
   }
 
   cancel(profileId: string, runId: string): AssistantRun {
@@ -463,84 +532,76 @@ export class AssistantService {
         (message) => message.id === row.user_message_id,
       );
       if (!userMessage) throw new Error('Message utilisateur introuvable.');
-      const effectiveMode = inferEffectiveMode(
-        row.requested_mode,
-        userMessage.content,
-      );
-      const webDepth =
-        effectiveMode === 'web'
-          ? inferWebDepth(
-              row.requested_mode,
-              row.web_depth,
-              userMessage.content,
-            )
-          : null;
+      let evidence: TavilyEvidence[] = [];
+      let creditsUsed = row.credits_used;
+      let researchOutcome: AssistantResearchOutcome = 'not_needed';
+      let effectiveMode: AssistantStoredEffectiveMode = 'classic';
+      if (row.conversation_mode !== 'local') {
+        const research = await this.research(row, history, controller.signal);
+        if (research.awaitingConsent) return;
+        evidence = research.evidence;
+        creditsUsed = research.creditsUsed;
+        researchOutcome = research.outcome;
+        effectiveMode = evidence.length > 0 ? 'web' : 'classic';
+      }
       this.database
         .prepare(
-          'UPDATE assistant_runs SET effective_mode = ?, web_depth = ? WHERE id = ?',
+          `UPDATE assistant_runs SET effective_mode = ?, research_outcome = ?,
+             credits_used = ? WHERE id = ?`,
         )
-        .run(effectiveMode, webDepth, row.id);
-
-      let result;
-      if (effectiveMode === 'web') {
-        let queries = JSON.parse(row.search_queries_json) as string[];
-        if (queries.length === 0) {
-          queries =
-            webDepth === 'fast'
-              ? [userMessage.content]
-              : await this.engine.planQueries(
-                  userMessage.content,
-                  controller.signal,
-                );
-        }
-        const consent = this.database
-          .prepare('SELECT search_consent FROM assistant_runs WHERE id = ?')
-          .get(row.id) as { search_consent: number };
-        if (
-          !consent.search_consent &&
-          this.requiresConsent(row.profile_id, queries)
-        ) {
-          const now = new Date().toISOString();
-          this.database
-            .prepare(
-              `UPDATE assistant_runs SET status = 'awaiting_search_consent',
-                 stage_label = 'Confirmation requise', search_queries_json = ?,
-                 lease_until = NULL, updated_at = ? WHERE id = ?`,
-            )
-            .run(JSON.stringify(queries), now, row.id);
-          this.addEvent(
-            row.id,
-            row.profile_id,
-            'awaiting_search_consent',
-            'Confirmation requise',
-            now,
-          );
-          return;
-        }
-        result = await this.engine.answerWeb(
-          history,
-          queries,
-          controller.signal,
-          (status, label) => {
-            this.setRunState(
-              row.id,
-              row.profile_id,
-              status,
-              label,
-              new Date().toISOString(),
-            );
-          },
-          webDepth ?? 'fast',
-        );
-      } else {
+        .run(effectiveMode, researchOutcome, creditsUsed, row.id);
+      this.setRunState(
+        row.id,
+        row.profile_id,
+        'writing',
+        evidence.length > 0
+          ? `Synthèse de ${evidence.length.toString()} source(s)`
+          : 'Rédaction locale',
+        new Date().toISOString(),
+      );
+      let result = await this.engine.answer(history, controller.signal, {
+        evidence,
+        mode: row.conversation_mode,
+        thinkingPolicy: row.thinking_policy,
+      });
+      if (result.thinkingUsed) {
         this.setRunState(
           row.id,
           row.profile_id,
           'writing',
-          'Rédaction',
+          'Réflexion approfondie utilisée',
           new Date().toISOString(),
         );
-        result = await this.engine.answerClassic(history, controller.signal);
+      }
+      if (
+        evidence.length > 0 &&
+        row.conversation_mode !== 'local' &&
+        this.engine.verifyAnswer
+      ) {
+        this.setRunState(
+          row.id,
+          row.profile_id,
+          'verifying',
+          'Vérification des affirmations',
+          new Date().toISOString(),
+        );
+        const verified = await this.engine.verifyAnswer(
+          result.content,
+          evidence,
+          row.conversation_mode,
+          controller.signal,
+        );
+        result = {
+          content: verified.content,
+          thinkingUsed: Boolean(result.thinkingUsed || verified.thinkingUsed),
+        };
+      }
+      if (
+        row.conversation_mode !== 'local' &&
+        evidence.length === 0 &&
+        researchOutcome !== 'not_needed'
+      ) {
+        result.content = `${researchFallbackNotice(researchOutcome)}\n\n${result.content}`;
       }
       if (controller.signal.aborted) throw controller.signal.reason;
       let generatedTitle: string | null = null;
@@ -555,8 +616,6 @@ export class AssistantService {
         try {
           generatedTitle = await this.engine.generateTitle(
             userMessage.content,
-            effectiveMode,
-            webDepth,
             controller.signal,
           );
         } catch {
@@ -564,7 +623,14 @@ export class AssistantService {
         }
       }
       if (controller.signal.aborted) throw controller.signal.reason;
-      this.complete(row, effectiveMode, webDepth, result, generatedTitle);
+      this.complete(
+        row,
+        result,
+        generatedTitle,
+        researchOutcome,
+        creditsUsed,
+        effectiveMode,
+      );
     } catch (error) {
       const current = this.getRun(row.profile_id, row.id);
       const now = new Date().toISOString();
@@ -583,6 +649,304 @@ export class AssistantService {
       this.activeController = null;
       this.activeRunId = null;
     }
+  }
+
+  private async research(
+    row: RunRow,
+    history: AssistantMessage[],
+    signal: AbortSignal,
+  ): Promise<{
+    awaitingConsent: boolean;
+    creditsUsed: number;
+    evidence: TavilyEvidence[];
+    outcome: AssistantResearchOutcome;
+  }> {
+    const maximumQueries = row.conversation_mode === 'web_light' ? 2 : 6;
+    let queries = JSON.parse(row.search_queries_json) as string[];
+    if (queries.length === 0) {
+      this.setRunState(
+        row.id,
+        row.profile_id,
+        'preparing',
+        'Analyse de la demande et décision Web',
+        new Date().toISOString(),
+      );
+      const plan = this.engine.planResearch
+        ? await this.engine.planResearch(
+            history,
+            row.conversation_mode as Exclude<AssistantMode, 'local'>,
+            maximumQueries,
+            signal,
+          )
+        : { searchNeeded: true, queries: [history.at(-1)?.content ?? ''] };
+      if (!plan.searchNeeded || plan.queries.length === 0) {
+        this.setRunState(
+          row.id,
+          row.profile_id,
+          'preparing',
+          'Recherche Web non nécessaire',
+          new Date().toISOString(),
+        );
+        return {
+          awaitingConsent: false,
+          creditsUsed: 0,
+          evidence: [],
+          outcome: 'not_needed',
+        };
+      }
+      const sanitized = plan.queries
+        .slice(0, maximumQueries)
+        .map(sanitizeSearchQuery);
+      queries = sanitized.map((item) => item.query);
+      this.setRunState(
+        row.id,
+        row.profile_id,
+        'preparing',
+        `Plan Web prêt · ${queries.length.toString()} recherche(s) ciblée(s)`,
+        new Date().toISOString(),
+      );
+      this.database
+        .prepare(
+          'UPDATE assistant_runs SET search_queries_json = ? WHERE id = ?',
+        )
+        .run(JSON.stringify(queries), row.id);
+      if (sanitized.some((item) => item.sensitive) && !row.search_consent) {
+        this.setRunState(
+          row.id,
+          row.profile_id,
+          'awaiting_search_consent',
+          'Consentement requis avant recherche',
+          new Date().toISOString(),
+        );
+        return {
+          awaitingConsent: true,
+          creditsUsed: 0,
+          evidence: [],
+          outcome: 'not_needed',
+        };
+      }
+    }
+
+    const usage = await this.webUsage(signal);
+    if (
+      usage.creditsUsed >= WEB_HARD_LIMIT ||
+      (row.conversation_mode === 'web_deep' &&
+        usage.creditsUsed >= WEB_DEEP_LIMIT)
+    ) {
+      this.setRunState(
+        row.id,
+        row.profile_id,
+        'preparing',
+        'Recherche Web ignorée · quota mensuel atteint',
+        new Date().toISOString(),
+      );
+      return {
+        awaitingConsent: false,
+        creditsUsed: 0,
+        evidence: [],
+        outcome: 'quota_exhausted',
+      };
+    }
+    if (!this.tavily.available) {
+      this.setRunState(
+        row.id,
+        row.profile_id,
+        'preparing',
+        'Recherche Web indisponible · réponse locale',
+        new Date().toISOString(),
+      );
+      return {
+        awaitingConsent: false,
+        creditsUsed: 0,
+        evidence: [],
+        outcome: 'unavailable',
+      };
+    }
+
+    const evidence = (
+      this.database
+        .prepare(
+          `SELECT title, url, published_at, excerpt
+             FROM assistant_sources WHERE run_id = ? ORDER BY source_id`,
+        )
+        .all(row.id) as Array<{
+        excerpt: string;
+        published_at: string | null;
+        title: string;
+        url: string;
+      }>
+    ).map((source) => ({
+      title: source.title,
+      url: source.url,
+      publishedAt: source.published_at,
+      content: source.excerpt,
+    }));
+    let creditsUsed = (
+      this.database
+        .prepare(
+          `SELECT COALESCE(SUM(credits_used), 0) AS credits
+             FROM assistant_research_attempts WHERE run_id = ?`,
+        )
+        .get(row.id) as { credits: number }
+    ).credits;
+    const creditsAtStart = creditsUsed;
+    let failures = 0;
+    const runBudget = row.conversation_mode === 'web_light' ? 2 : 8;
+    for (const [index, query] of queries.slice(0, maximumQueries).entries()) {
+      const depth: TavilySearchDepth =
+        row.conversation_mode === 'web_deep' && index >= 4
+          ? 'advanced'
+          : 'basic';
+      const expectedCredits = depth === 'advanced' ? 2 : 1;
+      const currentUsage = usage.creditsUsed + (creditsUsed - creditsAtStart);
+      if (
+        creditsUsed + expectedCredits > runBudget ||
+        currentUsage + expectedCredits > WEB_HARD_LIMIT
+      )
+        break;
+      const previousAttempt = this.database
+        .prepare(
+          `SELECT id, status FROM assistant_research_attempts
+            WHERE run_id = ? AND ordinal = ?`,
+        )
+        .get(row.id, index + 1) as
+        { id: string; status: 'planned' | 'completed' | 'failed' } | undefined;
+      if (previousAttempt?.status === 'completed') continue;
+      const attemptId = previousAttempt?.id ?? randomUUID();
+      const phase = index < 2 ? 'explore' : index < 4 ? 'gap' : 'adversarial';
+      const now = new Date().toISOString();
+      if (previousAttempt) {
+        this.database
+          .prepare(
+            `UPDATE assistant_research_attempts
+                SET status = 'planned', error = NULL, completed_at = NULL WHERE id = ?`,
+          )
+          .run(attemptId);
+      } else {
+        this.database
+          .prepare(
+            `INSERT INTO assistant_research_attempts(
+               id, run_id, ordinal, phase, query, search_depth, status, created_at
+             ) VALUES (?, ?, ?, ?, ?, ?, 'planned', ?)`,
+          )
+          .run(attemptId, row.id, index + 1, phase, query, depth, now);
+      }
+      this.setRunState(
+        row.id,
+        row.profile_id,
+        'searching',
+        `Recherche ${(index + 1).toString()}/${queries.length.toString()} · ${depth} · ${progressQuery(query)}`,
+        now,
+      );
+      try {
+        const result = await this.tavily.search(query, depth, signal);
+        creditsUsed += result.creditsUsed;
+        const newEvidence = result.evidence.filter(
+          (source) => !evidence.some((item) => item.url === source.url),
+        );
+        evidence.push(...newEvidence);
+        this.database.transaction(() => {
+          this.database
+            .prepare(
+              `UPDATE assistant_research_attempts
+                  SET status = 'completed', credits_used = ?, completed_at = ? WHERE id = ?`,
+            )
+            .run(result.creditsUsed, new Date().toISOString(), attemptId);
+          for (const source of newEvidence) {
+            const sourceId = `S${(
+              (
+                this.database
+                  .prepare(
+                    'SELECT COUNT(*) AS count FROM assistant_sources WHERE run_id = ?',
+                  )
+                  .get(row.id) as { count: number }
+              ).count + 1
+            ).toString()}`;
+            this.database
+              .prepare(
+                `INSERT INTO assistant_sources(
+                   run_id, source_id, title, url, domain, published_at, retrieved_at, excerpt
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              )
+              .run(
+                row.id,
+                sourceId,
+                source.title.slice(0, 500),
+                source.url,
+                new URL(source.url).hostname,
+                source.publishedAt,
+                new Date().toISOString(),
+                source.content.slice(0, 20_000),
+              );
+          }
+          this.recordWebUsage(result.creditsUsed);
+        })();
+        this.setRunState(
+          row.id,
+          row.profile_id,
+          'searching',
+          `Recherche ${(index + 1).toString()}/${queries.length.toString()} terminée · ${newEvidence.length.toString()} nouvelle(s) source(s)`,
+          new Date().toISOString(),
+        );
+      } catch (error) {
+        if (signal.aborted) throw signal.reason;
+        failures += 1;
+        this.database
+          .prepare(
+            `UPDATE assistant_research_attempts
+                SET status = 'failed', error = ?, completed_at = ? WHERE id = ?`,
+          )
+          .run(
+            error instanceof Error
+              ? error.message.slice(0, 1_000)
+              : String(error),
+            new Date().toISOString(),
+            attemptId,
+          );
+        this.setRunState(
+          row.id,
+          row.profile_id,
+          'searching',
+          `Recherche ${(index + 1).toString()}/${queries.length.toString()} indisponible · poursuite`,
+          new Date().toISOString(),
+        );
+      }
+    }
+    if (evidence.length > 0) {
+      this.setRunState(
+        row.id,
+        row.profile_id,
+        'searching',
+        `Lecture et rapprochement de ${evidence.length.toString()} source(s)`,
+        new Date().toISOString(),
+      );
+    }
+    return {
+      awaitingConsent: false,
+      creditsUsed,
+      evidence,
+      outcome:
+        evidence.length === 0
+          ? 'unavailable'
+          : failures > 0
+            ? 'partial'
+            : 'completed',
+    };
+  }
+
+  private recordWebUsage(credits: number): void {
+    const now = new Date().toISOString();
+    const month = now.slice(0, 7);
+    this.database
+      .prepare(
+        `INSERT INTO assistant_web_usage(month, credits_used, searches_used, updated_at)
+         VALUES (?, ?, 1, ?)
+         ON CONFLICT(month) DO UPDATE SET
+           credits_used = credits_used + excluded.credits_used,
+           searches_used = searches_used + 1,
+           updated_at = excluded.updated_at`,
+      )
+      .run(month, credits, now);
   }
 
   private claimNext(): RunRow | null {
@@ -630,10 +994,11 @@ export class AssistantService {
 
   private complete(
     row: RunRow,
-    effectiveMode: AssistantEffectiveMode,
-    webDepth: AssistantWebDepth | null,
-    result: Awaited<ReturnType<AssistantEngine['answerClassic']>>,
+    result: Awaited<ReturnType<AssistantEngine['answer']>>,
     generatedTitle: string | null,
+    researchOutcome: AssistantResearchOutcome,
+    creditsUsed: number,
+    effectiveMode: AssistantStoredEffectiveMode,
   ): void {
     const messageId = randomUUID();
     const now = new Date().toISOString();
@@ -641,8 +1006,10 @@ export class AssistantService {
       this.database
         .prepare(
           `INSERT INTO assistant_messages(
-             id, conversation_id, profile_id, role, content, effective_mode, web_depth, run_id, created_at
-           ) VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?, ?)`,
+             id, conversation_id, profile_id, role, content, effective_mode, web_depth,
+             conversation_mode, thinking_policy, thinking_used, research_outcome, credits_used,
+             run_id, created_at
+           ) VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           messageId,
@@ -650,33 +1017,30 @@ export class AssistantService {
           row.profile_id,
           result.content,
           effectiveMode,
-          webDepth,
+          row.web_depth,
+          row.conversation_mode,
+          row.thinking_policy,
+          result.thinkingUsed ? 1 : 0,
+          researchOutcome,
+          creditsUsed,
           row.id,
           now,
         );
-      const insertSource = this.database.prepare(
-        `INSERT INTO assistant_sources(
-           run_id, source_id, title, url, domain, published_at, retrieved_at, excerpt
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      );
-      for (const source of result.sources) {
-        insertSource.run(
-          row.id,
-          source.id,
-          source.title,
-          source.url,
-          source.domain,
-          source.publishedAt,
-          source.retrievedAt,
-          source.excerpt,
-        );
-      }
       this.database
         .prepare(
           `UPDATE assistant_runs SET assistant_message_id = ?, status = 'completed',
-             stage_label = 'Terminé', lease_until = NULL, updated_at = ? WHERE id = ?`,
+             stage_label = 'Terminé', thinking_used = ?, research_outcome = ?,
+             credits_used = ?, effective_mode = ?, lease_until = NULL, updated_at = ? WHERE id = ?`,
         )
-        .run(messageId, now, row.id);
+        .run(
+          messageId,
+          result.thinkingUsed ? 1 : 0,
+          researchOutcome,
+          creditsUsed,
+          effectiveMode,
+          now,
+          row.id,
+        );
       this.database
         .prepare(
           `UPDATE assistant_conversations
@@ -710,26 +1074,6 @@ export class AssistantService {
     return (
       conversation?.title === 'Nouvelle conversation' &&
       conversation.user_count === 1
-    );
-  }
-
-  private requiresConsent(profileId: string, queries: string[]): boolean {
-    const names = (
-      this.database
-        .prepare(
-          'SELECT name FROM household_members hm JOIN "user" u ON u.id = hm.user_id',
-        )
-        .all() as Array<{ name: string }>
-    ).map(({ name }) => name.toLocaleLowerCase('fr'));
-    const text = queries.join(' ').toLocaleLowerCase('fr');
-    return (
-      names.some((name) => name.length >= 3 && text.includes(name)) ||
-      /\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/iu.test(text) ||
-      /\b(?:\+33|0)[1-9](?:[ .-]?\d{2}){4}\b/u.test(text) ||
-      /\b(?:adresse|diagnostic|traitement|mot de passe|identifiant|compte bancaire)\b/iu.test(
-        text,
-      ) ||
-      text.includes(profileId.toLocaleLowerCase('fr'))
     );
   }
 
@@ -780,7 +1124,7 @@ export class AssistantService {
   ): AssistantConversation {
     const row = this.database
       .prepare(
-        'SELECT id, title, archived_at, created_at, updated_at FROM assistant_conversations WHERE id = ? AND profile_id = ?',
+        'SELECT id, title, mode, archived_at, created_at, updated_at FROM assistant_conversations WHERE id = ? AND profile_id = ?',
       )
       .get(id, profileId) as ConversationRow | undefined;
     if (!row) throw new AssistantNotFoundError('Conversation introuvable.');
@@ -790,7 +1134,9 @@ export class AssistantService {
   private getMessage(profileId: string, id: string): AssistantMessage {
     const row = this.database
       .prepare(
-        `SELECT id, conversation_id, role, content, requested_mode, effective_mode, web_depth, run_id, created_at
+        `SELECT id, conversation_id, role, content, requested_mode, effective_mode, web_depth,
+                conversation_mode, thinking_policy, thinking_used, research_outcome, credits_used,
+                run_id, created_at
            FROM assistant_messages WHERE id = ? AND profile_id = ?`,
       )
       .get(id, profileId) as MessageRow | undefined;
@@ -802,6 +1148,7 @@ export class AssistantService {
     return AssistantConversationSchema.parse({
       id: row.id,
       title: row.title,
+      mode: row.mode,
       archivedAt: row.archived_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -809,13 +1156,23 @@ export class AssistantService {
   }
 
   private toMessage(row: MessageRow): AssistantMessage {
-    const sourceRows = row.run_id
-      ? (this.database
-          .prepare(
-            'SELECT source_id, title, url, domain, published_at, retrieved_at FROM assistant_sources WHERE run_id = ? ORDER BY source_id',
-          )
-          .all(row.run_id) as SourceRow[])
-      : [];
+    const sourceRows =
+      row.role === 'assistant' && row.run_id
+        ? (this.database
+            .prepare(
+              'SELECT source_id, title, url, domain, published_at, retrieved_at FROM assistant_sources WHERE run_id = ? ORDER BY source_id',
+            )
+            .all(row.run_id) as SourceRow[])
+        : [];
+    const progressEventRows =
+      row.role === 'assistant' && row.run_id
+        ? (this.database
+            .prepare(
+              `SELECT sequence, run_id, status, label, created_at
+                 FROM assistant_run_events WHERE run_id = ? ORDER BY sequence`,
+            )
+            .all(row.run_id) as RunEventRow[])
+        : [];
     return AssistantMessageSchema.parse({
       id: row.id,
       conversationId: row.conversation_id,
@@ -824,6 +1181,11 @@ export class AssistantService {
       requestedMode: row.requested_mode,
       effectiveMode: row.effective_mode,
       webDepth: row.web_depth,
+      mode: row.conversation_mode,
+      thinkingPolicy: row.thinking_policy,
+      thinkingUsed: Boolean(row.thinking_used),
+      researchOutcome: row.research_outcome,
+      creditsUsed: row.credits_used,
       runId: row.run_id,
       sources: sourceRows.map((source) =>
         AssistantSourceSchema.parse({
@@ -835,6 +1197,7 @@ export class AssistantService {
           retrievedAt: source.retrieved_at,
         }),
       ),
+      progressEvents: progressEventRows.map(toRunEvent),
       createdAt: row.created_at,
     });
   }
@@ -848,6 +1211,11 @@ export class AssistantService {
       requestedMode: row.requested_mode,
       effectiveMode: row.effective_mode,
       webDepth: row.web_depth,
+      mode: row.conversation_mode,
+      thinkingPolicy: row.thinking_policy,
+      thinkingUsed: Boolean(row.thinking_used),
+      researchOutcome: row.research_outcome,
+      creditsUsed: row.credits_used,
       status: row.status,
       stageLabel: row.stage_label,
       queuePosition:
@@ -878,4 +1246,61 @@ export class AssistantService {
         .get(),
     );
   }
+}
+
+function toRunEvent(row: RunEventRow): AssistantRunEvent {
+  return AssistantRunEventSchema.parse({
+    sequence: row.sequence,
+    runId: row.run_id,
+    status: row.status,
+    label: row.label,
+    createdAt: row.created_at,
+  });
+}
+
+function progressQuery(query: string): string {
+  const compact = query.replace(/\s+/gu, ' ').trim();
+  return compact.length <= 88 ? compact : `${compact.slice(0, 85)}…`;
+}
+
+function storedMode(mode: AssistantMode): {
+  requestedMode: 'classic' | 'web';
+  webDepth: AssistantStoredWebDepth | null;
+} {
+  if (mode === 'local') return { requestedMode: 'classic', webDepth: null };
+  return {
+    requestedMode: 'web',
+    webDepth: mode === 'web_light' ? 'fast' : 'deep',
+  };
+}
+
+function sanitizeSearchQuery(input: string): {
+  query: string;
+  sensitive: boolean;
+} {
+  let sensitive = false;
+  const query = input
+    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/gu, () => {
+      sensitive = true;
+      return '[adresse e-mail retirée]';
+    })
+    .replace(/(?:\+33|0)[1-9](?:[ .-]?\d{2}){4}/gu, () => {
+      sensitive = true;
+      return '[numéro retiré]';
+    })
+    .replace(
+      /\b\d{1,4}\s+(?:rue|avenue|boulevard|chemin|impasse|allée)\b[^,;]*/giu,
+      () => {
+        sensitive = true;
+        return '[adresse retirée]';
+      },
+    )
+    .trim();
+  return { query, sensitive };
+}
+
+function researchFallbackNotice(outcome: AssistantResearchOutcome): string {
+  if (outcome === 'quota_exhausted')
+    return '_Recherche Web non effectuée : quota mensuel atteint. Réponse locale à vérifier._';
+  return '_Recherche Web indisponible ou incomplète. Réponse locale à vérifier._';
 }

@@ -1,53 +1,62 @@
-# Assistant local
+# Chat Gemma 4 avec Tavily optionnel
 
-## Runtime
+Date : 11 août 2026
 
-L’Assistant propose quatre choix : `Auto`, `Web rapide`, `Web approfondi` et `Classique`.
-
-- `Web rapide` utilise `ministral-3:8b`, une requête de recherche directe et une seule synthèse avec un contexte de 32768 tokens. Le contrôle déterministe retire les identifiants de sources inexistants.
-- `Web approfondi` utilise `gemma4-12b-multimodal:128k` pour planifier, rédiger puis vérifier la réponse avec un contexte de 131072 tokens.
-- `Auto` choisit le Web rapide pour les questions factuelles courantes, et le Web approfondi pour les demandes longues, comparatives ou sensibles. Les demandes sans besoin d’actualité peuvent rester classiques.
-- `Classique` utilise Gemma 4 sans recherche Web.
-
-Chaque génération impose `num_predict=4096`, une génération Friday à la fois et un `keep_alive` de deux minutes. Le client HTTP Ollama accepte jusqu’à douze minutes avant d’abandonner une génération longue.
-
-Après le premier échange d’une conversation encore nommée `Nouvelle conversation`, le modèle déjà utilisé produit un titre français de 3 à 6 mots avec `num_predict=24`. Cette finalisation est limitée à 30 secondes, n’écrase jamais un renommage manuel et son échec ne fait pas échouer la réponse principale.
-
-Variables facultatives du hub :
+## Configuration
 
 ```text
 FRIDAY_ASSISTANT_MODEL=gemma4-12b-multimodal:128k
-FRIDAY_ASSISTANT_FAST_MODEL=ministral-3:8b
 FRIDAY_ASSISTANT_TIMEOUT_MS=720000
-FRIDAY_ASSISTANT_GOOGLE_ENABLED=false
+FRIDAY_TAVILY_API_KEY=tvly-...
 ```
 
-`FRIDAY_ASSISTANT_GOOGLE_ENABLED` reste désactivé tant qu’une recherche canari Playwright reçoit HTTP 429 ou un captcha. Friday ne résout jamais les captchas. DuckDuckGo HTML, Brave et Bing restent les moteurs de repli.
+Seule la clé Tavily active les modes Web. Sans clé, `Local` reste pleinement fonctionnel et un mode Web revient sur une réponse locale avec un avertissement. La clé ne doit jamais être placée dans la PWA, Git ou un fichier servi au navigateur.
 
-Pour empêcher Ollama de charger plusieurs modèles ou contextes en parallèle, configurer le processus Ollama puis le redémarrer avec :
+Pour le lancement Windows, définir la variable dans le compte qui lance Friday, puis redémarrer le hub :
 
-```text
-OLLAMA_MAX_LOADED_MODELS=1
-OLLAMA_NUM_PARALLEL=1
-OLLAMA_MAX_QUEUE=8
+```powershell
+[Environment]::SetEnvironmentVariable('FRIDAY_TAVILY_API_KEY', 'tvly-...', 'User')
 ```
 
-Ces paramètres appartiennent au serveur Ollama, pas au processus Friday. OpenFox et OpenCode restent extérieurs à la file Friday ; si l’un d’eux utilise Ollama, Friday attend sans l’interrompre.
+Ouvrir ensuite un nouveau terminal ou relancer depuis le raccourci Bureau. Ne pas afficher la valeur dans les journaux.
 
-## Diagnostic
+## Runtime
 
-- `queued` persiste dans SQLite et survit au redémarrage.
-- Une exécution interrompue est reprise une fois, puis passe en échec après une deuxième interruption.
-- `awaiting_search_consent` ne conserve ni Gemma ni Playwright occupé.
-- Les contenus complets des pages ne sont pas conservés : seules les métadonnées et preuves bornées sont stockées.
-- Le cache mobile et l’outbox Assistant sont chiffrés par la clé de l’appareil.
+Ollama reste sur `127.0.0.1:11434`. La PWA appelle uniquement le hub. Le contexte est `131072`, le streaming est désactivé et le modèle par défaut est `gemma4-12b-multimodal:128k`.
 
-## Recette minimale
+- `Local` : 0 appel Tavily.
+- `Web léger` : 0 à 2 appels `basic`, plafond 2 crédits par réponse.
+- `Web approfondi` : 0 à 6 appels, plafond 8 crédits ; les appels 5 et 6 seulement peuvent être `advanced`.
+- seuils mensuels : avertissement 750, mode approfondi bloqué 850, Web bloqué 950.
 
-1. Créer deux conversations avec le premier profil et vérifier leur persistance.
-2. Envoyer une demande classique, une demande Web rapide et une demande Web approfondie ; contrôler le modèle annoncé, les citations et l’absence de seconde étape de vérification en mode rapide.
-3. Couper le réseau du téléphone, envoyer un message, recharger la PWA puis rétablir le réseau.
-4. Placer simultanément une demande dans chaque profil et vérifier l’alternance.
-5. Annuler une génération active et vérifier qu’aucune réponse partielle n’est publiée.
-6. Rechercher une donnée personnelle et vérifier la demande de consentement.
-7. Ne déclarer A17 ou iPhone validé qu’après cette recette physique.
+Le moteur décide d’abord si le Web est utile. Les sources sont numérotées `[S1]`, enregistrées avec leur URL et vérifiées dans une seconde passe Gemma. Les sources sont des données non fiables : leurs instructions éventuelles ne sont jamais exécutées.
+
+Le thinking est automatique selon la complexité et le mode. La case de l’interface le force pour le prochain message uniquement. Le contenu de thinking renvoyé par Ollama n’est jamais persisté.
+
+Le panneau de progression est ouvert pendant le traitement et se replie automatiquement avec la réponse finale. `Détails du traitement` permet ensuite de revoir les jalons et leur temps relatif. Ces libellés décrivent les opérations du pipeline, pas le raisonnement interne de Gemma.
+
+`Mettre en pause` interrompt l’appel Ollama sans enregistrer de réponse partielle. `Reprendre` relance le même run et réutilise ses recherches terminées. Le temps affiché est un temps de traitement cumulé : file, consentement et pause ne sont pas comptés. Le délai `FRIDAY_ASSISTANT_TIMEOUT_MS` commence au lancement de chaque appel Ollama, jamais à la création du message.
+
+## File, reprise et confidentialité
+
+- Une génération lourde s’exécute à la fois ; les profils alternent équitablement.
+- Messages, runs, requêtes, tentatives, sources et crédits sont persistés dans SQLite.
+- Une recherche déjà réussie est reprise depuis son checkpoint après redémarrage.
+- Après deux interruptions du même run, l’échec reste visible.
+- L’annulation ne conserve aucune réponse partielle.
+- E-mail, téléphone et adresse postale sont retirés d’une requête ; l’envoi de la version nettoyée demande un consentement.
+
+## Recette
+
+1. Vérifier `ollama list`, créer une conversation `Local`, envoyer deux messages liés et confirmer que le second tient compte du premier.
+2. Cocher `Forcer la réflexion`, envoyer un message, vérifier l’étiquette `réflexion active`, puis confirmer que la case est revenue à zéro.
+3. Passer en `Web léger`, poser une question actuelle, vérifier les sources et un maximum de 2 crédits.
+4. Envoyer un simple message conversationnel dans ce même mode et vérifier qu’aucune recherche n’est consommée.
+5. Passer en `Web approfondi`, vérifier sources, statut de vérification et plafond de 8 crédits.
+6. Pendant une réponse Web, vérifier que la progression ouverte détaille le plan, chaque recherche, les sources, la synthèse et la vérification ; après la réponse, rouvrir `Détails du traitement`, puis refaire l’essai hors ligne après rechargement.
+7. Placer une seconde demande derrière une génération longue : vérifier que son temps reste à zéro dans la file, puis qu’il démarre à sa prise en charge. Mettre cette réponse en pause, attendre, la reprendre et vérifier que l’attente intermédiaire n’est pas ajoutée au traitement cumulé.
+8. Tester une requête avec une adresse e-mail fictive : vérifier la version nettoyée et les choix `Autoriser` / `Rester en local`.
+9. Couper Internet ou retirer temporairement la clé : vérifier le repli local explicite sans impact sur Agenda, Courses, Budget et synchronisation.
+10. Saisir un message hors connexion, redémarrer la PWA, puis vérifier l’envoi unique au retour du hub.
+
+Ne pas déclarer la recette mobile réussie sans essai physique correspondant.

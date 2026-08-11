@@ -25,6 +25,7 @@ describe('Assistant local encrypted repository', () => {
   it('caches conversations and messages without retaining plaintext', async () => {
     const conversation = {
       id: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+      mode: 'local' as const,
       title: 'Conversation secrète',
       archivedAt: null,
       createdAt: '2026-08-10T12:00:00.000Z',
@@ -37,8 +38,14 @@ describe('Assistant local encrypted repository', () => {
       content: 'Donnée très privée',
       requestedMode: 'classic' as const,
       effectiveMode: null,
+      mode: 'local' as const,
+      thinkingPolicy: 'auto' as const,
+      thinkingUsed: false,
+      researchOutcome: 'not_needed' as const,
+      creditsUsed: 0,
       runId: '51bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
       sources: [],
+      progressEvents: [],
       createdAt: '2026-08-10T12:00:01.000Z',
     };
 
@@ -57,7 +64,8 @@ describe('Assistant local encrypted repository', () => {
     const input = {
       clientRequestId: '41bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
       content: 'Message hors ligne',
-      mode: 'auto' as const,
+      mode: 'local' as const,
+      thinkingPolicy: 'auto' as const,
     };
     const conversationId = '31bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
     await queueAssistantMessage(conversationId, input);

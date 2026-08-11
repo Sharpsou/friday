@@ -572,11 +572,12 @@ Une restauration de test sur un répertoire vide est obligatoire avant de consid
 | résumé et digest | Gemma 4 en job de fond |
 | réponse quotidienne | modèle rapide, avec contexte borné et données datées |
 
-### 10.2 Modèles initiaux
+### 10.2 Modèle du Chat
 
-- `ministral-3:8b` : mode Web rapide et routage borné ;
-- `gemma4-12b-multimodal:128k` : mode classique, planification Web approfondie, rédaction et vérification ;
-- un modèle ne remplace ces choix qu’après comparaison sur un jeu d’évaluation documenté.
+- `gemma4-12b-multimodal:128k` : unique modèle du Chat et de son orchestration ;
+- Tavily est l’unique connecteur Web, sans navigateur automatisé ni seconde voie rapide ;
+- `ministral-3:8b` reste réservé au classement facultatif des courses ;
+- un modèle ne remplace Gemma qu’après comparaison sur un jeu d’évaluation documenté.
 
 Ces noms correspondent au runtime candidat du 10 août 2026 et doivent être vérifiés par `ollama list` au bootstrap. Friday ne télécharge jamais automatiquement un modèle volumineux.
 
@@ -594,7 +595,7 @@ Chaque appel structuré :
 
 Chaîne d’action : `texte → intention structurée → validation → aperçu → confirmation → commande déterministe → audit`.
 
-État d’exécution au 10 août 2026 : une destination `Assistant` privée par profil est candidate avec conversations, cache/outbox chiffrés, file SQLite persistante, annulation/reprise, consentement Web, sources vérifiées et rendu Markdown sans HTML brut. Les migrations SQLite 10/11 et Dexie 5 sont appliquées. Le checkpoint est dans `docs/13-etat-assistant-local.md` et le runtime dans `docs/runbooks/assistant-gemma.md`. Cette preuve automatisée ne valide ni la qualité des réponses réelles ni les parcours physiques A17/iPhone.
+État d’exécution au 11 août 2026 : la destination `Chat` privée par profil conserve conversations, cache/outbox chiffrés, file SQLite persistante, pause/reprise, journal opérationnel et rendu Markdown sans HTML brut. Les modes `Local`, `Web léger` et `Web approfondi` utilisent Gemma 4 ; Tavily est appelé seulement après décision locale, avec budgets, checkpoints, consentement et vérification des sources. Les durées excluent la file, le consentement et les pauses. La migration SQLite 14 conserve la compatibilité historique. L’état produit est dans `docs/13-etat-assistant-local.md`, le checkpoint consolidé dans `docs/15-checkpoint-chat-tavily.md` et le runtime dans `docs/runbooks/assistant-gemma.md`.
 
 ### 10.4 Veille RSS-first
 
@@ -626,7 +627,7 @@ Un spike embeddings n’est autorisé que si, sur un corpus réel d’au moins 3
 - **Agenda** : tâches et rendez-vous en vues Liste, Semaine et Mois ;
 - **Courses** : liste partagée, quantité facultative, état acheté et présentation unique regroupée par rayon ;
 - **Budget** : réalisé, prévisionnel, enveloppes, provisions, réserve et épargne partagés ;
-- **Assistant** : conversations privées par profil, modes classique et Web consentis ;
+- **Chat** : conversations privées par profil, Gemma 4 local avec recherche Tavily optionnelle ;
 - **Veille** : digest, articles et thèmes du profil ;
 - bouton `+` persistant hors Assistant : Tâche, Course, Dépense/Revenu, Capture.
 
@@ -848,7 +849,7 @@ Travaux :
 
 Sortie : deux profils obtiennent des digests différents ; toute proposition doit être confirmée ; une panne Ollama ne bloque ni collecte ni application Maison.
 
-État d’exécution au 10 août 2026 : l’Assistant conversationnel est candidat avec les quatre modes documentés, mais la veille RSS, les digests et le briefing restent à construire. Une panne Ollama reste hors du chemin critique Maison.
+État d’exécution au 11 août 2026 : le Chat propose trois profondeurs, avec Gemma 4 local et Tavily optionnel, borné et sourcé. La veille RSS, les digests et le briefing restent à construire. Une panne Ollama reste hors du chemin critique Maison.
 
 ### Lot 3 — sauvegarde et durcissement (1 à 3 heures)
 

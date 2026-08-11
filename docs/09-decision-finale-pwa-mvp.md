@@ -35,7 +35,7 @@ Six destinations :
 2. **Agenda** : tâches, rendez-vous et vues liste/semaine/mois ;
 3. **Courses** : liste partagée et produits déjà achetés ;
 4. **Budget** : réalisé, prévisionnel, enveloppes, provisions et épargne partagés ;
-5. **Assistant** : conversations privées par profil, modes classique et Web consentis ;
+5. **Chat** : conversations privées par profil, Gemma 4 avec modes `Local`, `Web léger` et `Web approfondi` via Tavily côté hub ;
 6. **Veille** : digest et thèmes du profil actif.
 
 Un bouton `+` permanent hors Assistant ouvre la saisie rapide.
@@ -92,10 +92,9 @@ Friday distingue toujours l'épargne réellement versée du simple reste disponi
 
 - thèmes, mots-clés, sources et fréquence choisis par profil ;
 - collecte RSS/Atom et déduplication sur le PC ;
-- Ministral 3 8B pour les réponses Web rapides et le routage borné ;
-- Gemma 4 12B pour les réponses classiques, les recherches approfondies et les résumés en arrière-plan ;
-- conversations et files Assistant séparées par profil ;
-- consentement explicite avant recherche Web et sources vérifiées ;
+- Gemma 4 12B pour le Chat, son orchestration et les résumés en arrière-plan ;
+- conversations et files Chat séparées par profil ;
+- Tavily est le seul outil Internet du Chat ; aucun navigateur automatisé, et le mode `Local` garantit zéro appel externe ;
 - aucune dépendance à Ollama pour les tâches, courses, budget ou données offline ;
 - FTS5 avant tout usage d'embeddings ;
 - éventuels embeddings conservés plus tard sur le PC uniquement.

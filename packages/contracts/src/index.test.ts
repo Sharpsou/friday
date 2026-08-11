@@ -21,9 +21,8 @@ describe('Assistant contracts', () => {
     expect(
       AssistantSendMessageRequestSchema.safeParse({
         clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
-        content: 'Vérifie cette information',
-        mode: 'web',
-        webDepth: 'fast',
+        content: 'Réponds localement',
+        mode: 'local',
       }).success,
     ).toBe(true);
     expect(
@@ -47,9 +46,8 @@ describe('Assistant contracts', () => {
     expect(
       AssistantSendMessageRequestSchema.safeParse({
         clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
-        content: 'Sans recherche',
+        content: 'Recherche en ligne',
         mode: 'classic',
-        webDepth: 'deep',
       }).success,
     ).toBe(false);
   });

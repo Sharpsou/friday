@@ -6,9 +6,7 @@ import { buildHub } from '../app.js';
 const apps: Awaited<ReturnType<typeof buildHub>>[] = [];
 const engine: AssistantEngine = {
   generateTitle: async () => 'Titre automatique',
-  planQueries: async () => ['test'],
-  answerClassic: async () => ({ content: 'Bonjour', sources: [] }),
-  answerWeb: async () => ({ content: 'Bonjour Web', sources: [] }),
+  answer: async () => ({ content: 'Bonjour' }),
 };
 
 afterEach(async () => {
@@ -76,11 +74,25 @@ describe('Assistant API profile isolation', () => {
       payload: {
         clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
         content: 'Mon secret',
-        mode: 'classic',
+        mode: 'local',
       },
     });
     expect(submitted.statusCode, submitted.body).toBe(200);
     const runId = submitted.json().run.id as string;
+    const rejectedWebMode = await app.inject({
+      method: 'POST',
+      url: `/api/assistant/conversations/${conversationId}/messages`,
+      headers: { cookie: ownerCookie },
+      payload: {
+        clientRequestId: '81bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        content: 'Cherche sur Internet',
+        mode: 'web',
+      },
+    });
+    expect(rejectedWebMode.statusCode).toBe(400);
+    expect(rejectedWebMode.json()).toEqual({
+      error: 'invalid_assistant_message',
+    });
 
     const adultList = await app.inject({
       method: 'GET',

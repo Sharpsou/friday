@@ -1,4 +1,47 @@
-import type { AssistantMessage } from '@friday/contracts';
+import type {
+  AssistantMessage,
+  AssistantRunEvent,
+  AssistantRunStatus,
+} from '@friday/contracts';
+
+const PROCESSING_STATUSES = new Set<AssistantRunStatus>([
+  'preparing',
+  'searching',
+  'reading',
+  'verifying',
+  'writing',
+  'cancel_requested',
+]);
+
+export function processingOffsets(events: AssistantRunEvent[]): number[] {
+  const offsets: number[] = [];
+  let duration = 0;
+  for (const [index, event] of events.entries()) {
+    const previous = events[index - 1];
+    if (previous && PROCESSING_STATUSES.has(previous.status)) {
+      const elapsed =
+        Date.parse(event.createdAt) - Date.parse(previous.createdAt);
+      if (Number.isFinite(elapsed)) duration += Math.max(0, elapsed);
+    }
+    offsets.push(duration);
+  }
+  return offsets;
+}
+
+export function processingDuration(
+  events: AssistantRunEvent[],
+  now?: number,
+): number {
+  if (events.length === 0) return 0;
+  const duration = processingOffsets(events).at(-1) ?? 0;
+  const last = events.at(-1);
+  if (!last || now === undefined || !PROCESSING_STATUSES.has(last.status))
+    return duration;
+  const activeElapsed = now - Date.parse(last.createdAt);
+  return (
+    duration + (Number.isFinite(activeElapsed) ? Math.max(0, activeElapsed) : 0)
+  );
+}
 
 export function responseDurations(
   messages: AssistantMessage[],
@@ -12,7 +55,12 @@ export function responseDurations(
     if (message.role === 'user') {
       userStartedAt = createdAt;
     } else if (userStartedAt !== null) {
-      durations.set(message.id, Math.max(0, createdAt - userStartedAt));
+      durations.set(
+        message.id,
+        message.progressEvents.length > 0
+          ? processingDuration(message.progressEvents)
+          : Math.max(0, createdAt - userStartedAt),
+      );
       userStartedAt = null;
     }
   }

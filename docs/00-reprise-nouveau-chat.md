@@ -78,13 +78,15 @@ Chemin : `D:\prog\friday`
 - la détection de mise à jour PWA conserve désormais le signal même s'il arrive avant le montage de l'interface ; une recherche est lancée au démarrage, au retour au premier plan, au retour réseau et lors d'un clic sur l'état de connexion, puis l'utilisateur confirme avec `Mettre à jour` avant le rechargement ; l'utilisateur a confirmé le 9 août 2026 que l'iPhone avait bien reçu la mise à jour, sans préciser le déclencheur exact ;
 - l'ADR-008 documente désormais une sauvegarde portable : snapshot SQLite cohérent, archive avec manifeste et secret d'authentification, chiffrement `age`, partage natif ou téléchargement, import prévalidé et génération de restauration empêchant la réinjection d'une ancienne outbox ; cette solution est acceptée comme conception mais n'est pas encore implantée ;
 - le budget partagé est un candidat fonctionnel complet : cinquième onglet, mouvements réels, revenus/frais récurrents déterministes, enveloppes modifiables et supprimables, provisions, réserve, corrections et tombstones empruntent le cache chiffré et l’outbox existante ; les sections longues sont condensées et repliables à 360 px ;
-- l’Assistant est une sixième destination privée par profil : conversations et outbox chiffrées localement, file SQLite persistante, annulation/reprise, modes `Auto`, `Web rapide`, `Web approfondi` et `Classique`, consentement Web et sources vérifiées ; aucune mutation métier directe n’est autorisée ;
+- le Chat est une sixième destination privée par profil : conversations et outbox chiffrées localement, file SQLite persistante, pause/reprise, progression persistante avec temps effectif et rendu Markdown ; `gemma4-12b-multimodal:128k` orchestre les modes `Local`, `Web léger` et `Web approfondi`, Tavily restant optionnel et strictement côté hub ; aucune mutation métier directe ; le checkpoint consolidé est `docs/15-checkpoint-chat-tavily.md` ;
+- le navigateur Playwright côté hub, le cache FTS5 de pages et le modèle Assistant rapide restent retirés ; la migration SQLite 14 remplace les anciennes tables expérimentales par le journal Tavily, ses checkpoints et son compteur de crédits, tout en conservant l’historique lisible ;
 - aucune donnée financière réelle n’a été chargée : BitLocker, les ACL de `D:\FridayData` et la sauvegarde SQLite préalable restent une porte bloquante explicitée dans `docs/runbooks/reprise-budget.md` ;
 - la taxonomie `retail-fr-v1` couvre 11 familles de magasins et 25 rayons de supermarché. Le pipeline hybride applique les corrections exactes du foyer puis les règles courantes avant Ministral 3 8B ; chaque réponse porte l'index du produit. Le corpus local de 150 libellés atteint 99,3 % famille/rayon avec 96,7 % de couverture déterministe ; le corpus difficile atteint 88,9 % en 10,4 s à chaud lors de la mesure du 9 août 2026 ;
 - la décision complète est consignée dans `docs/adr/010-classement-courses-par-rayon.md`, la taxonomie dans `docs/reference/taxonomie-courses-retail-fr-v1.md` et l'exploitation dans `docs/runbooks/classement-courses.md` ;
 - le candidat avec les destinations distinctes `Agenda` et `Courses` a été redémarré sur `https://192.168.1.14:8443` le 9 août 2026 ; le healthcheck réussit et `/api/auth/state` confirme un foyer initialisé (`bootstrapRequired: false`) sans ouvrir de session à un client non authentifié ;
 - l’accès extérieur retenu pour une reprise ultérieure est une route Tailscale privée limitée à `192.168.1.14/32`, sans ouverture de box ni changement d’origine ; sa mise en œuvre et l’enrôlement local uniquement sont documentés mais en pause ;
-- dernier contrôle complet du candidat du 10 août 2026 : `pnpm verify` réussi avec 142 tests unitaires/intégration et 22 scénarios Chrome mobile ; une sauvegarde pré-migration a été créée hors dépôt, les migrations SQLite 10 et 11 ont été appliquées, puis le runtime a été reconstruit et son healthcheck HTTPS a réussi ;
+- une sauvegarde pré-migration 12 intègre a été créée hors dépôt le 10 août 2026 ; la migration de retrait 13 conserve ce filet de restauration tout en supprimant les tables Web devenues inutiles ;
+- dernier contrôle complet du candidat du 11 août 2026 : `pnpm verify` réussi avec 150 tests unitaires/intégration, le build PWA/hub et 22 scénarios Chrome mobile ;
 - terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026 ; la recette physique responsable/filtre reste à confirmer ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
@@ -315,7 +317,7 @@ sans navigateur et documente la preuve.
 
 ## 12. Contrôles réalisés et limites
 
-Contrôles automatiques actualisés sur le candidat Assistant du 10 août 2026 :
+Contrôles automatiques actualisés sur le candidat Chat local du 11 août 2026 :
 
 - documentation active, README et instructions agent contrôlés ;
 - aucun lien Markdown local manquant ;
@@ -325,7 +327,7 @@ Contrôles automatiques actualisés sur le candidat Assistant du 10 août 2026 :
 - aucune signature évidente de clé privée, token OpenAI ou clé Google dans les documents ;
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
 - présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
-- `pnpm verify` réussi avec 142 tests unitaires/intégration, le build PWA/hub et 22 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi avec 150 tests unitaires/intégration, le build PWA/hub et 22 scénarios E2E Google Chrome mobile ;
 - health checks local et LAN réussis après redémarrage sans navigateur.
 
 Ce que cet audit ne prétend pas avoir validé :

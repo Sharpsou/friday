@@ -820,9 +820,18 @@ export const GroceryClassificationPullResponseSchema = z
   })
   .strict();
 
-export const AssistantModeSchema = z.enum(['auto', 'web', 'classic']);
-export const AssistantEffectiveModeSchema = z.enum(['web', 'classic']);
-export const AssistantWebDepthSchema = z.enum(['fast', 'deep']);
+export const AssistantModeSchema = z.enum(['local', 'web_light', 'web_deep']);
+export const AssistantThinkingPolicySchema = z.enum(['auto', 'forced']);
+export const AssistantResearchOutcomeSchema = z.enum([
+  'not_needed',
+  'completed',
+  'partial',
+  'unavailable',
+  'quota_exhausted',
+]);
+export const AssistantStoredModeSchema = z.enum(['auto', 'web', 'classic']);
+export const AssistantStoredEffectiveModeSchema = z.enum(['web', 'classic']);
+export const AssistantStoredWebDepthSchema = z.enum(['fast', 'deep']);
 export const AssistantRunStatusSchema = z.enum([
   'queued',
   'preparing',
@@ -840,6 +849,7 @@ export const AssistantConversationSchema = z
   .object({
     id: UuidSchema,
     title: z.string().trim().min(1).max(80),
+    mode: AssistantModeSchema.default('local'),
     archivedAt: UtcInstantSchema.nullable(),
     createdAt: UtcInstantSchema,
     updatedAt: UtcInstantSchema,
@@ -855,41 +865,6 @@ export const AssistantSourceSchema = z
     retrievedAt: UtcInstantSchema,
   })
   .strict();
-export const AssistantMessageSchema = z
-  .object({
-    id: UuidSchema,
-    conversationId: UuidSchema,
-    role: z.enum(['user', 'assistant']),
-    content: z.string().max(100_000),
-    requestedMode: AssistantModeSchema.nullable(),
-    effectiveMode: AssistantEffectiveModeSchema.nullable(),
-    webDepth: AssistantWebDepthSchema.nullable().optional(),
-    runId: UuidSchema.nullable(),
-    sources: z.array(AssistantSourceSchema),
-    createdAt: UtcInstantSchema,
-  })
-  .strict();
-export const AssistantRunSchema = z
-  .object({
-    id: UuidSchema,
-    conversationId: UuidSchema,
-    userMessageId: UuidSchema,
-    assistantMessageId: UuidSchema.nullable(),
-    requestedMode: AssistantModeSchema,
-    effectiveMode: AssistantEffectiveModeSchema.nullable(),
-    webDepth: AssistantWebDepthSchema.nullable().optional(),
-    status: AssistantRunStatusSchema,
-    stageLabel: z.string().min(1).max(160),
-    queuePosition: z.number().int().positive().nullable(),
-    searchQueries: z.array(z.string().min(1).max(500)).max(3),
-    error: z
-      .object({ code: z.string().min(1), message: z.string().min(1) })
-      .strict()
-      .nullable(),
-    createdAt: UtcInstantSchema,
-    updatedAt: UtcInstantSchema,
-  })
-  .strict();
 export const AssistantRunEventSchema = z
   .object({
     sequence: z.number().int().positive(),
@@ -899,39 +874,94 @@ export const AssistantRunEventSchema = z
     createdAt: UtcInstantSchema,
   })
   .strict();
+export const AssistantMessageSchema = z
+  .object({
+    id: UuidSchema,
+    conversationId: UuidSchema,
+    role: z.enum(['user', 'assistant']),
+    content: z.string().max(100_000),
+    requestedMode: AssistantStoredModeSchema.nullable(),
+    effectiveMode: AssistantStoredEffectiveModeSchema.nullable(),
+    webDepth: AssistantStoredWebDepthSchema.nullable().optional(),
+    mode: AssistantModeSchema.default('local'),
+    thinkingPolicy: AssistantThinkingPolicySchema.default('auto'),
+    thinkingUsed: z.boolean().default(false),
+    researchOutcome: AssistantResearchOutcomeSchema.default('not_needed'),
+    creditsUsed: z.number().int().nonnegative().default(0),
+    runId: UuidSchema.nullable(),
+    sources: z.array(AssistantSourceSchema),
+    progressEvents: z.array(AssistantRunEventSchema).default([]),
+    createdAt: UtcInstantSchema,
+  })
+  .strict();
+export const AssistantRunSchema = z
+  .object({
+    id: UuidSchema,
+    conversationId: UuidSchema,
+    userMessageId: UuidSchema,
+    assistantMessageId: UuidSchema.nullable(),
+    requestedMode: AssistantStoredModeSchema,
+    effectiveMode: AssistantStoredEffectiveModeSchema.nullable(),
+    webDepth: AssistantStoredWebDepthSchema.nullable().optional(),
+    mode: AssistantModeSchema.default('local'),
+    thinkingPolicy: AssistantThinkingPolicySchema.default('auto'),
+    thinkingUsed: z.boolean().default(false),
+    researchOutcome: AssistantResearchOutcomeSchema.default('not_needed'),
+    creditsUsed: z.number().int().nonnegative().default(0),
+    status: AssistantRunStatusSchema,
+    stageLabel: z.string().min(1).max(160),
+    queuePosition: z.number().int().positive().nullable(),
+    searchQueries: z.array(z.string().min(1).max(500)).max(6),
+    error: z
+      .object({ code: z.string().min(1), message: z.string().min(1) })
+      .strict()
+      .nullable(),
+    createdAt: UtcInstantSchema,
+    updatedAt: UtcInstantSchema,
+  })
+  .strict();
 export const AssistantCreateConversationRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(80).default('Nouvelle conversation'),
+    mode: AssistantModeSchema.default('local'),
   })
   .strict();
 export const AssistantUpdateConversationRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(80).optional(),
     archived: z.boolean().optional(),
+    mode: AssistantModeSchema.optional(),
   })
   .strict()
-  .refine((value) => value.title !== undefined || value.archived !== undefined);
+  .refine(
+    (value) =>
+      value.title !== undefined ||
+      value.archived !== undefined ||
+      value.mode !== undefined,
+  );
 export const AssistantSendMessageRequestSchema = z
   .object({
     clientRequestId: UuidSchema,
     content: z.string().trim().min(1).max(8_000),
     mode: AssistantModeSchema,
-    webDepth: AssistantWebDepthSchema.nullable().optional(),
+    thinkingPolicy: AssistantThinkingPolicySchema.default('auto'),
   })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.mode === 'classic' && value.webDepth != null) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Le mode classique ne prend pas de profondeur Web.',
-        path: ['webDepth'],
-      });
-    }
-  });
+  .strict();
 export const AssistantSearchConsentRequestSchema = z
   .object({
     approved: z.boolean(),
-    queries: z.array(z.string().trim().min(1).max(500)).min(1).max(3),
+    queries: z.array(z.string().trim().min(1).max(500)).min(1).max(6),
+  })
+  .strict();
+export const AssistantWebUsageSchema = z
+  .object({
+    month: z.string().regex(/^\d{4}-\d{2}$/u),
+    creditsUsed: z.number().int().nonnegative(),
+    remainingBasicSearches: z.number().int().nonnegative(),
+    source: z.enum(['tavily', 'local']),
+    softLimit: z.number().int().positive(),
+    deepLimit: z.number().int().positive(),
+    hardLimit: z.number().int().positive(),
   })
   .strict();
 export const AssistantConversationsResponseSchema = z
@@ -1124,10 +1154,18 @@ export type GroceryClassificationPullResponse = z.infer<
   typeof GroceryClassificationPullResponseSchema
 >;
 export type AssistantMode = z.infer<typeof AssistantModeSchema>;
-export type AssistantEffectiveMode = z.infer<
-  typeof AssistantEffectiveModeSchema
+export type AssistantThinkingPolicy = z.infer<
+  typeof AssistantThinkingPolicySchema
 >;
-export type AssistantWebDepth = z.infer<typeof AssistantWebDepthSchema>;
+export type AssistantResearchOutcome = z.infer<
+  typeof AssistantResearchOutcomeSchema
+>;
+export type AssistantStoredEffectiveMode = z.infer<
+  typeof AssistantStoredEffectiveModeSchema
+>;
+export type AssistantStoredWebDepth = z.infer<
+  typeof AssistantStoredWebDepthSchema
+>;
 export type AssistantRunStatus = z.infer<typeof AssistantRunStatusSchema>;
 export type AssistantConversation = z.infer<typeof AssistantConversationSchema>;
 export type AssistantSource = z.infer<typeof AssistantSourceSchema>;
@@ -1137,6 +1175,7 @@ export type AssistantRunEvent = z.infer<typeof AssistantRunEventSchema>;
 export type AssistantSendMessageRequest = z.infer<
   typeof AssistantSendMessageRequestSchema
 >;
+export type AssistantWebUsage = z.infer<typeof AssistantWebUsageSchema>;
 export type SyncOperation = z.infer<typeof SyncOperationSchema>;
 export type PushRequest = z.infer<typeof PushRequestSchema>;
 export type OperationAck = z.infer<typeof OperationAckSchema>;

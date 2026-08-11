@@ -2,11 +2,16 @@ import {
   AssistantConversationSchema,
   AssistantConversationsResponseSchema,
   AssistantMessagesResponseSchema,
+  AssistantRunEventsResponseSchema,
   AssistantRunSchema,
+  AssistantSearchConsentRequestSchema,
   AssistantSendMessageRequestSchema,
   AssistantSubmissionResponseSchema,
+  AssistantWebUsageSchema,
   type AssistantConversation,
+  type AssistantMode,
   type AssistantRun,
+  type AssistantRunEvent,
   type AssistantSendMessageRequest,
 } from '@friday/contracts';
 
@@ -56,12 +61,13 @@ export async function listAssistantConversations(): Promise<
 
 export async function createAssistantConversation(
   title = 'Nouvelle conversation',
+  mode: AssistantMode = 'local',
 ): Promise<AssistantConversation> {
   const conversation = await parse(
     await fetch('/api/assistant/conversations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, mode }),
     }),
     AssistantConversationSchema,
   );
@@ -71,7 +77,7 @@ export async function createAssistantConversation(
 
 export async function updateAssistantConversation(
   id: string,
-  update: { archived?: boolean; title?: string },
+  update: { archived?: boolean; title?: string; mode?: AssistantMode },
 ): Promise<AssistantConversation> {
   const conversation = await parse(
     await fetch(`/api/assistant/conversations/${encodeURIComponent(id)}`, {
@@ -168,6 +174,18 @@ export async function getAssistantRun(runId: string): Promise<AssistantRun> {
   );
 }
 
+export async function getAssistantRunEvents(
+  runId: string,
+): Promise<AssistantRunEvent[]> {
+  const result = await parse(
+    await fetch(
+      `/api/assistant/runs/${encodeURIComponent(runId)}/events?after=0`,
+    ),
+    AssistantRunEventsResponseSchema,
+  );
+  return result.events;
+}
+
 export async function cancelAssistantRun(runId: string): Promise<AssistantRun> {
   return parse(
     await fetch(`/api/assistant/runs/${encodeURIComponent(runId)}/cancel`, {
@@ -186,20 +204,31 @@ export async function retryAssistantRun(runId: string): Promise<AssistantRun> {
   );
 }
 
-export async function answerAssistantSearchConsent(
+export async function submitAssistantSearchConsent(
   runId: string,
   approved: boolean,
   queries: string[],
 ): Promise<AssistantRun> {
+  const payload = AssistantSearchConsentRequestSchema.parse({
+    approved,
+    queries,
+  });
   return parse(
     await fetch(
       `/api/assistant/runs/${encodeURIComponent(runId)}/search-consent`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ approved, queries }),
+        body: JSON.stringify(payload),
       },
     ),
     AssistantRunSchema,
+  );
+}
+
+export async function getAssistantWebUsage() {
+  return parse(
+    await fetch('/api/assistant/web/usage'),
+    AssistantWebUsageSchema,
   );
 }

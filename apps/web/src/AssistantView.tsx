@@ -13,30 +13,91 @@ import type {
   AssistantMessage,
   AssistantMode,
   AssistantRun,
+  AssistantRunEvent,
+  AssistantWebUsage,
 } from '@friday/contracts';
 
 import {
-  answerAssistantSearchConsent,
   cancelAssistantRun,
   createAssistantConversation,
   deleteAssistantConversation,
   flushAssistantOutbox,
   getAssistantMessages,
   getAssistantRun,
+  getAssistantRunEvents,
+  getAssistantWebUsage,
   hasQueuedAssistantMessages,
   listAssistantConversations,
   retryAssistantRun,
   sendAssistantMessage,
+  submitAssistantSearchConsent,
   updateAssistantConversation,
 } from './sync/assistant-client.js';
 import {
   formatResponseDuration,
+  processingDuration,
+  processingOffsets,
   responseDurations,
 } from './assistant-duration.js';
 
 const TERMINAL = new Set(['completed', 'cancelled', 'failed']);
 const AssistantMarkdown = lazy(() => import('./AssistantMarkdown.js'));
-type UiMode = 'auto' | 'web-fast' | 'web-deep' | 'classic';
+
+function modeLabel(mode: AssistantMode): string {
+  if (mode === 'web_light') return 'Web léger';
+  if (mode === 'web_deep') return 'Web approfondi';
+  return 'local';
+}
+
+function formatProgressOffset(durationMs: number) {
+  const seconds = Math.max(0, Math.round(durationMs / 1_000));
+  if (seconds < 60) return `+${seconds.toString()} s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds === 0
+    ? `+${minutes.toString()} min`
+    : `+${minutes.toString()} min ${remainingSeconds.toString()} s`;
+}
+
+function AssistantProgress({
+  active,
+  events,
+  runId,
+}: {
+  active: boolean;
+  events: AssistantRunEvent[];
+  runId: string;
+}) {
+  const lastLabel = events.at(-1)?.label ?? 'Préparation';
+  const offsets = processingOffsets(events);
+  return (
+    <details
+      className={`assistant-progress${active ? ' is-active' : ''}`}
+      open={active ? true : undefined}
+      key={`${runId}-${active ? 'active' : 'complete'}`}
+    >
+      <summary>
+        {active
+          ? `Traitement en cours · ${lastLabel}`
+          : `Détails du traitement · ${events.length.toString()} étape(s)`}
+      </summary>
+      <ol aria-live={active ? 'polite' : 'off'}>
+        {events.map((event, index) => (
+          <li className={`is-${event.status}`} key={event.sequence}>
+            <span>{event.label}</span>
+            <time dateTime={event.createdAt}>
+              {formatProgressOffset(offsets[index] ?? 0)}
+            </time>
+          </li>
+        ))}
+      </ol>
+      <small>
+        Étapes opérationnelles uniquement : le raisonnement interne brut n’est
+        pas enregistré.
+      </small>
+    </details>
+  );
+}
 
 export default function AssistantView() {
   const [conversations, setConversations] = useState<AssistantConversation[]>(
@@ -45,17 +106,24 @@ export default function AssistantView() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [activeRun, setActiveRun] = useState<AssistantRun | null>(null);
-  const [mode, setMode] = useState<UiMode>('auto');
+  const [activeRunEvents, setActiveRunEvents] = useState<AssistantRunEvent[]>(
+    [],
+  );
   const [draft, setDraft] = useState('');
-  const [consentQueries, setConsentQueries] = useState<string[]>([]);
   const [offlinePending, setOfflinePending] = useState(false);
-  const [elapsedMinutes, setElapsedMinutes] = useState(0);
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
+  const [forceThinking, setForceThinking] = useState(false);
+  const [webUsage, setWebUsage] = useState<AssistantWebUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reloadConversations = useCallback(async () => {
-    const next = await listAssistantConversations();
+    const [next, usage] = await Promise.all([
+      listAssistantConversations(),
+      navigator.onLine ? getAssistantWebUsage().catch(() => null) : null,
+    ]);
     setConversations(next);
+    setWebUsage(usage);
     setSelectedId(
       (current) => current ?? next.find((item) => !item.archivedAt)?.id ?? null,
     );
@@ -66,12 +134,13 @@ export default function AssistantView() {
       getAssistantMessages(conversationId),
       hasQueuedAssistantMessages(),
     ]);
+    const progressEvents = result.activeRun
+      ? await getAssistantRunEvents(result.activeRun.id).catch(() => [])
+      : [];
     setMessages(result.messages);
     setActiveRun(result.activeRun);
+    setActiveRunEvents(progressEvents);
     setOfflinePending(pending);
-    if (result.activeRun?.status === 'awaiting_search_consent') {
-      setConsentQueries(result.activeRun.searchQueries);
-    }
   }, []);
 
   useEffect(() => {
@@ -102,17 +171,14 @@ export default function AssistantView() {
   useEffect(() => {
     if (!activeRun || TERMINAL.has(activeRun.status)) return;
     const interval = window.setInterval(() => {
-      setElapsedMinutes(
-        Math.max(
-          0,
-          Math.floor((Date.now() - Date.parse(activeRun.createdAt)) / 60_000),
-        ),
-      );
-      void getAssistantRun(activeRun.id)
-        .then(async (run) => {
+      setClockNow(Date.now());
+      void Promise.all([
+        getAssistantRun(activeRun.id),
+        getAssistantRunEvents(activeRun.id),
+      ])
+        .then(async ([run, events]) => {
           setActiveRun(run);
-          if (run.status === 'awaiting_search_consent')
-            setConsentQueries(run.searchQueries);
+          setActiveRunEvents(events);
           if (TERMINAL.has(run.status) && selectedId) {
             await Promise.all([
               reloadMessages(selectedId),
@@ -163,16 +229,19 @@ export default function AssistantView() {
     if (!selectedId || !content) return;
     setBusy(true);
     setError(null);
+    const mode =
+      conversations.find((conversation) => conversation.id === selectedId)
+        ?.mode ?? 'local';
     const input = {
       clientRequestId: crypto.randomUUID(),
       content,
-      mode: (mode.startsWith('web-') ? 'web' : mode) as AssistantMode,
-      webDepth:
-        mode === 'web-fast' ? 'fast' : mode === 'web-deep' ? 'deep' : null,
+      mode,
+      thinkingPolicy: forceThinking ? 'forced' : 'auto',
     } as const;
     try {
       const result = await sendAssistantMessage(selectedId, input);
       setDraft('');
+      setForceThinking(false);
       if (result) {
         setActiveRun(result.run);
         await reloadMessages(selectedId);
@@ -193,6 +262,48 @@ export default function AssistantView() {
     if (!title || title === conversation.title) return;
     await updateAssistantConversation(conversation.id, { title });
     await reloadConversations();
+  }
+
+  async function changeMode(mode: AssistantMode) {
+    if (!selectedId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateAssistantConversation(selectedId, { mode });
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === updated.id ? updated : conversation,
+        ),
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Changement de mode impossible.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleConsent(approved: boolean) {
+    if (!activeRun) return;
+    setBusy(true);
+    try {
+      setActiveRun(
+        await submitAssistantSearchConsent(
+          activeRun.id,
+          approved,
+          activeRun.searchQueries,
+        ),
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : 'Réponse impossible.',
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function archiveConversation(conversation: AssistantConversation) {
@@ -218,21 +329,22 @@ export default function AssistantView() {
 
   async function handleRunAction(action: 'cancel' | 'retry') {
     if (!activeRun) return;
-    const run =
-      action === 'cancel'
-        ? await cancelAssistantRun(activeRun.id)
-        : await retryAssistantRun(activeRun.id);
-    setActiveRun(run);
-  }
-
-  async function consent(approved: boolean) {
-    if (!activeRun) return;
-    const run = await answerAssistantSearchConsent(
-      activeRun.id,
-      approved,
-      consentQueries,
-    );
-    setActiveRun(run);
+    setBusy(true);
+    setError(null);
+    try {
+      const run =
+        action === 'cancel'
+          ? await cancelAssistantRun(activeRun.id)
+          : await retryAssistantRun(activeRun.id);
+      const events = await getAssistantRunEvents(run.id).catch(() => []);
+      setActiveRun(run);
+      setActiveRunEvents(events);
+      setClockNow(Date.now());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Action impossible.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   const selected =
@@ -242,22 +354,37 @@ export default function AssistantView() {
     () => responseDurations(messages),
     [messages],
   );
+  const activeProcessingDuration = useMemo(
+    () => processingDuration(activeRunEvents, clockNow),
+    [activeRunEvents, clockNow],
+  );
 
   return (
     <section className="assistant-view" aria-labelledby="assistant-title">
       <header className="section-heading assistant-heading">
         <div>
           <span className="eyebrow">Personnel</span>
-          <h2 id="assistant-title">Assistant</h2>
+          <h2 id="assistant-title">Chat</h2>
         </div>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={() => void createConversation()}
-          disabled={busy}
-        >
-          Nouvelle conversation
-        </button>
+        <div className="assistant-heading-actions">
+          {webUsage ? (
+            <small
+              className="assistant-remaining-searches"
+              aria-label={`${webUsage.remainingBasicSearches.toString()} recherches Web légères restantes ce mois, quota partagé entre les deux profils`}
+              title="Compteur commun aux deux profils. Une recherche approfondie peut compter double."
+            >
+              Web · {webUsage.remainingBasicSearches} req. restantes
+            </small>
+          ) : null}
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => void createConversation()}
+            disabled={busy}
+          >
+            Nouvelle conversation
+          </button>
+        </div>
       </header>
 
       <div className="assistant-layout">
@@ -336,17 +463,26 @@ export default function AssistantView() {
                     )}
                     {message.role === 'assistant' ? (
                       <small>
-                        {message.effectiveMode === 'web'
-                          ? message.webDepth === 'deep'
-                            ? 'Web approfondi'
-                            : 'Web rapide'
-                          : 'Classique'}
+                        Gemma 4 · {modeLabel(message.mode)}
+                        {message.thinkingUsed ? ' · réflexion active' : ''}
+                        {message.creditsUsed > 0
+                          ? ` · ${message.creditsUsed.toString()} crédit(s)`
+                          : ''}
                         {durationsByMessage.has(message.id)
                           ? ` · ${formatResponseDuration(
                               durationsByMessage.get(message.id) ?? 0,
-                            )} au total`
+                            )} de traitement`
                           : ''}
                       </small>
+                    ) : null}
+                    {message.role === 'assistant' &&
+                    message.runId &&
+                    message.progressEvents.length > 0 ? (
+                      <AssistantProgress
+                        active={false}
+                        events={message.progressEvents}
+                        runId={message.runId}
+                      />
                     ) : null}
                     {message.sources.length > 0 ? (
                       <details className="assistant-sources">
@@ -379,58 +515,84 @@ export default function AssistantView() {
                 ) : null}
                 {activeRun && !TERMINAL.has(activeRun.status) ? (
                   <div className="assistant-run" role="status">
-                    <strong>{activeRun.stageLabel}</strong>
+                    <AssistantProgress
+                      active
+                      events={activeRunEvents}
+                      runId={activeRun.id}
+                    />
                     {activeRun.queuePosition ? (
                       <span>
                         {activeRun.queuePosition - 1} demande(s) avant la vôtre
                       </span>
                     ) : null}
-                    <small>{elapsedMinutes} min écoulée(s)</small>
+                    <small>
+                      {activeRun.status === 'queued'
+                        ? 'Traitement · en attente'
+                        : `Traitement cumulé · ${formatResponseDuration(
+                            activeProcessingDuration,
+                          )}`}
+                    </small>
                     {activeRun.status === 'awaiting_search_consent' ? (
                       <div className="assistant-consent">
                         <p>
-                          Ces requêtes peuvent contenir des informations
-                          personnelles :
+                          Une requête contenait une donnée potentiellement
+                          personnelle. La version ci-dessous a été nettoyée.
+                          Autoriser son envoi à Tavily ?
                         </p>
-                        {consentQueries.map((query, index) => (
-                          <input
-                            key={`${activeRun.id}-${index.toString()}`}
-                            value={query}
-                            onChange={(event) =>
-                              setConsentQueries((current) =>
-                                current.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? event.target.value
-                                    : item,
-                                ),
-                              )
-                            }
-                          />
-                        ))}
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => void consent(false)}
-                          >
-                            Refuser
-                          </button>
-                          <button
-                            type="button"
-                            className="primary-button"
-                            onClick={() => void consent(true)}
-                          >
-                            Autoriser
-                          </button>
-                        </div>
+                        <ul>
+                          {activeRun.searchQueries.map((query) => (
+                            <li key={query}>{query}</li>
+                          ))}
+                        </ul>
+                        <button
+                          type="button"
+                          onClick={() => void handleConsent(true)}
+                        >
+                          Autoriser
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleConsent(false)}
+                        >
+                          Rester en local
+                        </button>
                       </div>
                     ) : (
                       <button
                         type="button"
+                        disabled={
+                          busy || activeRun.status === 'cancel_requested'
+                        }
                         onClick={() => void handleRunAction('cancel')}
                       >
-                        Annuler
+                        {activeRun.status === 'cancel_requested'
+                          ? 'Mise en pause…'
+                          : 'Mettre en pause'}
                       </button>
                     )}
+                  </div>
+                ) : null}
+                {activeRun?.status === 'cancelled' ? (
+                  <div className="assistant-run" role="status">
+                    <strong>Réponse mise en pause.</strong>
+                    {activeRunEvents.length > 0 ? (
+                      <AssistantProgress
+                        active={false}
+                        events={activeRunEvents}
+                        runId={activeRun.id}
+                      />
+                    ) : null}
+                    <small>
+                      Traitement cumulé ·{' '}
+                      {formatResponseDuration(activeProcessingDuration)}
+                    </small>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleRunAction('retry')}
+                    >
+                      Reprendre
+                    </button>
                   </div>
                 ) : null}
                 {activeRun?.status === 'failed' ? (
@@ -438,8 +600,20 @@ export default function AssistantView() {
                     <strong>
                       {activeRun.error?.message ?? 'La demande a échoué.'}
                     </strong>
+                    {activeRunEvents.length > 0 ? (
+                      <AssistantProgress
+                        active={false}
+                        events={activeRunEvents}
+                        runId={activeRun.id}
+                      />
+                    ) : null}
+                    <small>
+                      Traitement cumulé ·{' '}
+                      {formatResponseDuration(activeProcessingDuration)}
+                    </small>
                     <button
                       type="button"
+                      disabled={busy}
                       onClick={() => void handleRunAction('retry')}
                     >
                       Réessayer
@@ -453,25 +627,36 @@ export default function AssistantView() {
                 onSubmit={(event) => void sendMessage(event)}
               >
                 <div className="assistant-mode" aria-label="Mode de réponse">
-                  {(['auto', 'web-fast', 'web-deep', 'classic'] as const).map(
-                    (value) => (
-                      <button
-                        key={value}
-                        type="button"
-                        aria-pressed={mode === value}
-                        onClick={() => setMode(value)}
-                      >
-                        {value === 'auto'
-                          ? 'Auto'
-                          : value === 'web-fast'
-                            ? 'Web rapide'
-                            : value === 'web-deep'
-                              ? 'Web approfondi'
-                              : 'Classique'}
-                      </button>
-                    ),
-                  )}
+                  {(
+                    [
+                      ['local', 'Local'],
+                      ['web_light', 'Web léger'],
+                      ['web_deep', 'Web approfondi'],
+                    ] as const
+                  ).map(([mode, label]) => (
+                    <button
+                      type="button"
+                      key={mode}
+                      className={selected.mode === mode ? 'is-selected' : ''}
+                      aria-pressed={selected.mode === mode}
+                      disabled={
+                        busy ||
+                        Boolean(activeRun && !TERMINAL.has(activeRun.status))
+                      }
+                      onClick={() => void changeMode(mode)}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
+                <label className="assistant-thinking">
+                  <input
+                    type="checkbox"
+                    checked={forceThinking}
+                    onChange={(event) => setForceThinking(event.target.checked)}
+                  />
+                  Forcer la réflexion pour ce message
+                </label>
                 <textarea
                   value={draft}
                   maxLength={8_000}
