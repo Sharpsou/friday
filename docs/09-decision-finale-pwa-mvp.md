@@ -303,7 +303,7 @@ Pour chaque session sur le Galaxy A17, noter :
 
 ## Campagne iPhone en cours
 
-L'iPhone utilise la même PWA après stabilisation du MVP Android. La réception d’une mise à jour et la suppression de l’auto-zoom des champs ont été confirmées physiquement ; l’appairage, l’authentification et le parcours offline complet restent à jouer. Cette campagne ne nécessite pas de build natif.
+L'iPhone utilise la même PWA après stabilisation du MVP Android. Mise à jour, appairage, authentification, redémarrage offline, convergence à deux appareils et suppression de l’auto-zoom des champs ont été confirmés physiquement le 18 août 2026. Cette campagne ne nécessite pas de build natif ; seule l’observation d’usage prolongée reste ouverte.
 
 À vérifier plus tard :
 

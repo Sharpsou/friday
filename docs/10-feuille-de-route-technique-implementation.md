@@ -811,7 +811,7 @@ Ordre d’exécution après fermeture du Lot 0B :
 4. implémenter l’authentification fermée et l’appairage avant les données réelles ou l’usage à deux ;
 5. ajouter les courses partagées, puis finaliser conflits et tombstones.
 
-État d’exécution au 9 août 2026 : les points 1 à 3 sont candidats avec la même voie locale/outbox, y compris heure/durée, responsables, note, récurrence bornée, occurrences futures, édition au toucher et suppression unitaire ou de série. Le mode `Modifier` conserve le bouton `Supprimer` directement visible. Une tâche éditée peut viser l'occurrence ou toute la série ; une course éditée accepte libellé, quantité et rayon manuel offline-first. Le point 4 est implémenté avec Better Auth/SQLite, identifiant Friday simple sans adresse e-mail à fournir, bootstrap fermé du propriétaire, appairage du second adulte par code de 8 chiffres valable 10 minutes et à usage unique, sessions liées aux appareils, contrôle d'identité de push/pull, révocation et remplacement de l'appareil révoqué. Après révocation, le propriétaire peut aussi oublier explicitement l'ancien compte adulte et créer une nouvelle identité sans supprimer les données partagées. Le propriétaire a initialisé le foyer ; l'appairage physique d'un second appareil reste à valider. Le point 5 couvre les courses partagées et leur classement facultatif : libellé/quantité, achat/réouverture, tombstone, résumé `Aujourd'hui`, cache chiffré, outbox, taxonomie `retail-fr-v1`, règles apprises, job SQLite persistant/arrêtable et présentation unique regroupée par rayon. Les migrations passent à SQLite 7 et Dexie 3 ; les deux nouvelles colonnes portent la correction manuelle de rayon partagée, prioritaire sur le classement automatique. Après indexation des entrées/réponses, le corpus local de 150 libellés atteint 99,3 % famille/rayon avec 96,7 % traités par règles ; le corpus difficile atteint 88,9 % avec Ministral 3 8B en 10,4 secondes à chaud. Gemma 4 12B atteint 77,8 % en 36 secondes et reste écarté du runtime quotidien. Le cache local d'un appareil lié reste utilisable hors ligne et Ollama ne bloque jamais les mutations. L'ADR-011 reste la décision de repli pour les conflits et la purge, mais l'utilisateur reporte leur implémentation jusqu'à un signal d'usage réel ; aucune purge physique n'est active. Le prochain lot fonctionnel — budget recommandé, Calendar en lecture ou période d'usage Maison — doit être discuté avant implantation. Les recettes `galaxy-a17-lot-1a-auth.md`, `galaxy-a17-lot-1a-groceries.md` et `galaxy-a17-lot-1a-grocery-classification.md` restent à confirmer physiquement.
+État d’exécution au 9 août 2026 : les points 1 à 3 sont candidats avec la même voie locale/outbox, y compris heure/durée, responsables, note, récurrence bornée, occurrences futures, édition au toucher et suppression unitaire ou de série. Le mode `Modifier` conserve le bouton `Supprimer` directement visible. Une tâche éditée peut viser l'occurrence ou toute la série ; une course éditée accepte libellé, quantité et rayon manuel offline-first. Le point 4 est implémenté avec Better Auth/SQLite, identifiant Friday simple sans adresse e-mail à fournir, bootstrap fermé du propriétaire, appairage du second adulte par code de 8 chiffres valable 10 minutes et à usage unique, sessions liées aux appareils, contrôle d'identité de push/pull, révocation et remplacement de l'appareil révoqué. Après révocation, le propriétaire peut aussi oublier explicitement l'ancien compte adulte et créer une nouvelle identité sans supprimer les données partagées. Le propriétaire a initialisé le foyer ; le second adulte est ensuite appairé et validé physiquement sur l’iPhone le 18 août pour auth, offline et convergence. Le point 5 couvre les courses partagées et leur classement facultatif : libellé/quantité, achat/réouverture, tombstone, résumé `Aujourd'hui`, cache chiffré, outbox, taxonomie `retail-fr-v1`, règles apprises, job SQLite persistant/arrêtable et présentation unique regroupée par rayon. Les migrations passent à SQLite 7 et Dexie 3 ; les deux nouvelles colonnes portent la correction manuelle de rayon partagée, prioritaire sur le classement automatique. Après indexation des entrées/réponses, le corpus local de 150 libellés atteint 99,3 % famille/rayon avec 96,7 % traités par règles ; le corpus difficile atteint 88,9 % avec Ministral 3 8B en 10,4 secondes à chaud. Gemma 4 12B atteint 77,8 % en 36 secondes et reste écarté du runtime quotidien. Le cache local d'un appareil lié reste utilisable hors ligne et Ollama ne bloque jamais les mutations. L'ADR-011 reste la décision de repli pour les conflits et la purge, mais l'utilisateur reporte leur implémentation jusqu'à un signal d'usage réel ; aucune purge physique n'est active. Le prochain lot fonctionnel — budget recommandé, Calendar en lecture ou période d'usage Maison — doit être discuté avant implantation. Les recettes `galaxy-a17-lot-1a-auth.md`, `galaxy-a17-lot-1a-groceries.md` et `galaxy-a17-lot-1a-grocery-classification.md` restent à confirmer physiquement sur l’A17.
 
 ### Lot 1B — budget et agenda (1 à 3 heures)
 
@@ -873,7 +873,7 @@ Travaux :
 
 Sortie : restauration sur hub vide, redémarrage automatique, aucune vulnérabilité critique connue, runbook exécutable sans mémoire du développeur.
 
-### Lot 4 — iPhone différé
+### Lot 4 — iPhone validé, observation en cours
 
 Après stabilisation Android :
 
@@ -883,6 +883,8 @@ Après stabilisation Android :
 - vérifier retour au premier plan et Web Push ;
 - corriger uniquement les divergences réelles ;
 - utiliser les deux téléphones pendant 14 jours avant de déclarer le partage familial terminé.
+
+État d’exécution au 18 août 2026 : certificat/origine, mise à jour PWA, appairage du second adulte, authentification, redémarrage offline, convergence à deux appareils et suppression de l’auto-zoom des champs sont confirmés physiquement sur l’iPhone. L’observation d’usage prolongée reste ouverte.
 
 ### Estimation consolidée
 
@@ -901,7 +903,7 @@ La borne basse suppose peu de retours UX et une intégration Google directe. Cet
 
 1. suivre `docs/14-prochaines-etapes-apres-assistant.md` ;
 2. faire confirmer les recettes physiques A17 auth/courses/classement/`En course`/budget/Assistant ;
-3. reprendre la recette iPhone auth/offline/convergence lorsqu’il est disponible ;
+3. conserver la recette iPhone validée en observation d’usage à deux ;
 4. valider BitLocker, ACL et sauvegarde avant toute donnée financière réelle ;
 5. laisser conflits et tombstones en observation jusqu’à un signal réel ;
 6. maintenir l’accès Tailscale `/32` en pause jusqu’à une reprise explicite ;

@@ -70,7 +70,7 @@ Chemin : `D:\prog\friday`
 - le choix de suppression récurrente a reçu un retour UX positif de l’utilisateur le 8 août 2026 ; sa recette physique complète hors ligne/reconnexion reste à confirmer avant de fermer le checkpoint Lot 1A ;
 - les réglages locaux limitent séparément le nombre de tâches affichées dans `Aujourd'hui` et dans chaque liste `Agenda`, sans changer les compteurs totaux ;
 - authentification fermée candidate : identifiant Friday simple sans adresse e-mail à fournir, Better Auth/SQLite, initialisation du propriétaire seulement sur foyer vide, inscription publique masquée, second adulte appairé par code de 8 chiffres valable 10 minutes et à usage unique ;
-- le propriétaire a initialisé le foyer le 9 août 2026 ; l'appairage d'un second appareil n'est pas encore validé physiquement : le RG405M sous Firefox 151.0.3 atteint Friday mais garde un avertissement de certificat ; l’iPhone a reçu une mise à jour PWA et le correctif d’auto-zoom des champs Tâche/Course, mais son auth et son parcours offline/convergence restent ouverts ;
+- le propriétaire a initialisé le foyer le 9 août 2026 ; le RG405M sous Firefox 151.0.3 garde un avertissement de certificat, mais le second adulte est appairé sur l’iPhone de la compagne ; mise à jour PWA, authentification, redémarrage offline, convergence à deux appareils et correctif d’auto-zoom des champs Tâche/Course y sont confirmés physiquement ;
 - chaque session est liée à un appareil et chaque synchronisation vérifie le foyer, le profil et l'appareil ; le propriétaire peut révoquer le second appareil puis le remplacer avec un nouveau code et la phrase secrète existante ;
 - après révocation, le propriétaire peut aussi oublier explicitement le compte du second adulte pour permettre une nouvelle identité ; les données partagées et le profil métier stable sont conservés ;
 - les cookies sont `HttpOnly`, `Secure` sur l'origine HTTPS et `SameSite=Strict` ; les mutations refusent les origines navigateur non approuvées, le secret serveur est généré hors dépôt et les événements sensibles sont journalisés ;
@@ -142,7 +142,7 @@ Les autres modèles lourds ne font pas partie du service quotidien.
 - Le PC Windows est le hub, la base canonique et l’hôte Ollama.
 - Le PC peut rester allumé deux à trois jours puis être redémarré ; son indisponibilité ne bloque pas les écritures Maison locales.
 - Le Samsung Galaxy A17 sert au développement, à l’UX et à la preuve offline.
-- L’iPhone 11 Pro Max utilise la même PWA ; mise à jour et correctif d’auto-zoom sont confirmés, auth/offline restent à tester.
+- L’iPhone 11 Pro Max utilise la même PWA ; mise à jour, appairage/auth, offline/convergence et correctif d’auto-zoom sont confirmés.
 - Aucun build Xcode, Flutter, App Store ou abonnement Apple.
 - Quatre destinations : Aujourd’hui, Agenda, Courses, Veille ; bouton `+` permanent et contextuel.
 
@@ -277,7 +277,7 @@ Le nouveau chat doit :
 2. constater l'état publié et les éventuelles modifications locales avec `git status -sb` et `git log -5 --oneline`, sans réinitialiser le dépôt ;
 3. préserver les lots vérifiés `En course`, Budget, Assistant et mise à jour PWA sans les réimplémenter ;
 4. suivre `docs/14-prochaines-etapes-apres-assistant.md` ; les recettes A17 restent ouvertes mais ne bloquent pas le choix fonctionnel suivant ;
-5. poursuivre la recette iPhone pour l’appairage, l’authentification et la convergence offline ;
+5. conserver la recette iPhone validée en observation d’usage à deux ;
 6. laisser conflits et tombstones en observation conformément à l'ADR-011 ;
 7. conserver Budget et Assistant à leurs checkpoints documentés jusqu’à un retour d’usage ou une recette physique ;
 8. maintenir la décision Tailscale `/32` en pause jusqu’à une reprise explicite ;
@@ -299,8 +299,8 @@ réinitialise pas Git, ne recrée pas le projet, ne refais pas le cadrage géné
 et ne modifie aucun projet source dans D:\prog. Vérifie d’abord l’état courant,
 puis préserve les lots publiés `En course`, Budget, Assistant et fiabilisation
 de la mise à jour PWA : ils sont déjà vérifiés et déployés, il ne faut pas les
-réimplémenter. L'iPhone attend
-le retour de sa compagne et ne bloque pas la suite. Ne revendique aucune preuve
+réimplémenter. L'iPhone est validé pour mise à jour, appairage/auth,
+offline/convergence et auto-zoom ; son observation d’usage ne bloque pas la suite. Ne revendique aucune preuve
 physique A17/iPhone non confirmée. L'ADR-011
 existe déjà ; conflits et tombstones restent en observation jusqu'à un signal
 d'usage réel. Le budget partagé est déjà implanté et documenté dans
@@ -354,6 +354,6 @@ Ce que cet audit ne prétend pas avoir validé :
 - création ou autorisations du compte Google Maison ;
 - configuration Google Drive Desktop ou BitLocker ;
 - sécurité complète du code au-delà des contrôles et documents déjà présents ;
-- appairage et parcours offline complets sur iPhone ; seules la réception d'une mise à jour PWA et la suppression de l’auto-zoom des champs Tâche/Course ont été confirmées physiquement.
+- usage continu de l’iPhone sur plusieurs jours ; mise à jour PWA, appairage/auth, redémarrage offline, convergence et suppression de l’auto-zoom des champs Tâche/Course sont confirmés physiquement.
 
 Ces limites sont des tâches de Lot 0/P1, pas des informations perdues.

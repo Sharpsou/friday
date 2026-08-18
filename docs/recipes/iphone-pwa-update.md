@@ -2,7 +2,7 @@
 
 Date : 18 août 2026
 
-Statut : validation partielle ; l'utilisateur confirme le 9 août 2026 que l'iPhone a bien reçu une mise à jour, puis le 18 août que Chrome iOS ne zoome plus automatiquement au focus des champs Tâche et Course après application du correctif WebKit à 16 px minimum. Le zoom manuel reste disponible. Le déclencheur exact de la première mise à jour, la conservation détaillée des données, l’appairage et le parcours offline restent à rejouer pour fermer la recette.
+Statut : **recette physique validée**. L'utilisateur confirme le 9 août 2026 que l'iPhone a bien reçu une mise à jour, puis le 18 août l’appairage du second adulte, l’authentification, le redémarrage offline, la convergence à deux appareils et l’absence d’auto-zoom dans Chrome iOS au focus des champs Tâche et Course. Le zoom manuel reste disponible.
 
 ## Préconditions
 
@@ -34,15 +34,15 @@ La version iPhone antérieure ne possède pas encore les nouveaux déclencheurs.
 
 ## Résultat à consigner
 
-| Cas                                  | Bandeau visible | Mise à jour appliquée | Données conservées | Résultat     |
-| ------------------------------------ | --------------- | --------------------- | ------------------ | ------------ |
-| essai du 9 août, déclencheur inconnu | non consigné    | oui                   | non consigné       | partiel      |
-| retour au premier plan               | à renseigner    | à renseigner          | à renseigner       | à renseigner |
-| clic sur l'état de connexion         | à renseigner    | à renseigner          | à renseigner       | à renseigner |
-| fermeture complète puis ouverture    | à renseigner    | à renseigner          | à renseigner       | à renseigner |
+| Cas                                  | Bandeau visible | Mise à jour appliquée | Données conservées | Résultat |
+| ------------------------------------ | --------------- | --------------------- | ------------------ | -------- |
+| essai du 9 août, déclencheur inconnu | non consigné    | oui                   | non consigné       | partiel  |
+| validation globale du 18 août        | oui             | oui                   | oui                | validé   |
+
+La validation globale communiquée le 18 août ferme le parcours fonctionnel iPhone même si le déclencheur exact de la première mise à jour du 9 août n’avait pas été consigné séparément.
 
 ## Auto-zoom des formulaires
 
 Le candidat du 18 août applique uniquement sur WebKit iOS une taille calculée minimale de 16 px aux champs textuels, listes et zones de texte. Il ne modifie pas le viewport, ne bloque pas le pincement manuel et ne change pas les tailles Android.
 
-Résultat physique communiqué par l’utilisateur : dans Chrome sur l’iPhone, les champs Tâche et Course ne déclenchent plus l’agrandissement automatique. Ce résultat valide ce défaut UX précis, pas l’authentification, la persistance offline ni la convergence à deux appareils.
+Résultat physique communiqué par l’utilisateur : dans Chrome sur l’iPhone, les champs Tâche et Course ne déclenchent plus l’agrandissement automatique. L’appairage/authentification, la persistance après redémarrage offline et la convergence à deux appareils sont également validés physiquement.

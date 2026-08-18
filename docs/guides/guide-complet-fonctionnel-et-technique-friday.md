@@ -46,7 +46,7 @@ Cette règle reste vraie même lorsque le PC est disponible. Il n’existe donc 
 
 Le candidat du 18 août 2026 passe `pnpm verify` avec 192 tests unitaires/intégration et 23 scénarios Chrome mobile. Cela valide le code automatisé, pas tous les comportements physiques.
 
-La persistance et la convergence offline des tâches ont été confirmées sur le Galaxy A17. Les recettes physiques complètes d’authentification, Courses, classement, `En course`, Budget, Chat et Veille restent ouvertes. Sur l’iPhone, la réception d’une mise à jour PWA et la suppression de l’auto-zoom des champs Tâche/Course sont confirmées ; l’appairage et le parcours offline complet restent ouverts.
+La persistance et la convergence offline des tâches ont été confirmées sur le Galaxy A17. Les recettes physiques complètes d’authentification, Courses, classement, `En course`, Budget, Chat et Veille restent ouvertes sur l’A17. Sur l’iPhone, mise à jour PWA, appairage du second adulte, authentification, redémarrage offline, convergence à deux appareils et suppression de l’auto-zoom des champs Tâche/Course sont confirmés ; seule l’observation d’usage prolongée reste ouverte.
 
 ## 3. Le modèle mental en une page
 

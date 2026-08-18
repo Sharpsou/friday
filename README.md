@@ -18,7 +18,7 @@ Friday sera une **Progressive Web App offline-first** :
 5. Google Drive reçoit uniquement des sauvegardes chiffrées ;
 6. Google Calendar « Maison » reste la source de vérité de l'agenda.
 
-La mise au point et la recette MVP utilisent le PC et le Samsung Galaxy A17. La même PWA fonctionne sur l’iPhone sans build Apple : la réception d’une mise à jour et la suppression de l’auto-zoom des champs ont été confirmées physiquement, tandis que l’appairage et le parcours offline complet restent à valider.
+La mise au point et la recette MVP utilisent le PC et le Samsung Galaxy A17. La même PWA fonctionne sur l’iPhone sans build Apple : mise à jour, appairage, authentification, parcours offline, convergence et suppression de l’auto-zoom des champs ont été confirmés physiquement.
 
 ## MVP retenu
 
@@ -61,7 +61,7 @@ La construction est pilotée en temps agentique : environ **8 à 16 heures cumul
 - [Recette A17 du classement des courses](docs/recipes/galaxy-a17-lot-1a-grocery-classification.md)
 - [Recette A17 de l’authentification et de l’appairage](docs/recipes/galaxy-a17-lot-1a-auth.md) — **checkpoint physique**
 - [Recette A17 des courses partagées](docs/recipes/galaxy-a17-lot-1a-groceries.md) — **checkpoint physique**
-- [Recette iPhone de mise à jour PWA](docs/recipes/iphone-pwa-update.md) — **mise à jour et correctif d’auto-zoom reçus, auth/offline encore ouverts**
+- [Recette iPhone de mise à jour PWA](docs/recipes/iphone-pwa-update.md) — **mise à jour, auth, offline/synchronisation et auto-zoom validés**
 - [Étude PWA offline](docs/08-option-pwa-offline.md) — étude ayant conduit à la décision
 - [Décisions précédentes](docs/07-decisions-apres-reponses.md) — historique avant bascule PWA
 - [Questions, réponses et points ouverts](docs/06-questions.md)
