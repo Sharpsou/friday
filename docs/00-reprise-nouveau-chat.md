@@ -1,6 +1,15 @@
 # Friday — point de reprise pour un nouveau chat
 
-Date de l’audit : 10 août 2026
+> Mise à jour du 18 août 2026 : la Veille orchestrée remplace le premier
+> candidat RSS. Elle propose une liste de dossiers privés, un `+` contextuel,
+> une découverte multi-sources incluant le journalisme, des concepts à trois
+> états, la fusion des articles en sujets, une synthèse sourcée et un complément
+> Web borné. Voir `docs/17-etat-veille-orchestree.md`.
+> La migration SQLite 18 sépare maintenant initialisation, échéance, rattrapage,
+> lancement manuel et reprise : un simple redémarrage avant l'heure configurée ne
+> collecte et n'analyse plus la Veille.
+
+Date de l’audit : 10 août 2026 ; état actualisé le 18 août 2026
 
 Statut : **point d’entrée canonique**
 
@@ -61,11 +70,11 @@ Chemin : `D:\prog\friday`
 - le choix de suppression récurrente a reçu un retour UX positif de l’utilisateur le 8 août 2026 ; sa recette physique complète hors ligne/reconnexion reste à confirmer avant de fermer le checkpoint Lot 1A ;
 - les réglages locaux limitent séparément le nombre de tâches affichées dans `Aujourd'hui` et dans chaque liste `Agenda`, sans changer les compteurs totaux ;
 - authentification fermée candidate : identifiant Friday simple sans adresse e-mail à fournir, Better Auth/SQLite, initialisation du propriétaire seulement sur foyer vide, inscription publique masquée, second adulte appairé par code de 8 chiffres valable 10 minutes et à usage unique ;
-- le propriétaire a initialisé le foyer le 9 août 2026 ; l'appairage d'un second appareil n'est pas encore validé physiquement : le RG405M sous Firefox 151.0.3 atteint Friday mais garde un avertissement de certificat, et la reprise de l'essai iPhone attend le retour de la compagne de l'utilisateur ;
+- le propriétaire a initialisé le foyer le 9 août 2026 ; l'appairage d'un second appareil n'est pas encore validé physiquement : le RG405M sous Firefox 151.0.3 atteint Friday mais garde un avertissement de certificat ; l’iPhone a reçu une mise à jour PWA et le correctif d’auto-zoom des champs Tâche/Course, mais son auth et son parcours offline/convergence restent ouverts ;
 - chaque session est liée à un appareil et chaque synchronisation vérifie le foyer, le profil et l'appareil ; le propriétaire peut révoquer le second appareil puis le remplacer avec un nouveau code et la phrase secrète existante ;
 - après révocation, le propriétaire peut aussi oublier explicitement le compte du second adulte pour permettre une nouvelle identité ; les données partagées et le profil métier stable sont conservés ;
 - les cookies sont `HttpOnly`, `Secure` sur l'origine HTTPS et `SameSite=Strict` ; les mutations refusent les origines navigateur non approuvées, le secret serveur est généré hors dépôt et les événements sensibles sont journalisés ;
-- le cache chiffré d'un appareil déjà lié reste disponible hors ligne ; une révocation empêche les échanges serveur mais ne peut pas effacer à distance les données déjà téléchargées ;
+- le cache chiffré d'un appareil déjà lié s'ouvre immédiatement hors ligne, y compris lorsque le réseau mobile fait croire au navigateur qu'Internet est disponible alors que l'IP privée du hub est inaccessible ; la vérification du hub est bornée à cinq secondes et se poursuit après l'hydratation locale ; une déconnexion volontaire en attente reste bloquante, et une révocation empêche les échanges serveur mais ne peut pas effacer à distance les données déjà téléchargées ;
 - navigation corrigée selon le retour utilisateur : `Maison` devient `Agenda` et `Courses` est une quatrième destination principale, sans sous-onglet intermédiaire ;
 - courses partagées candidates : la destination `Courses` permet d'ajouter un produit avec quantité facultative, le marquer acheté ou à reprendre et le supprimer ; `Aujourd'hui` résume les produits restants ; chaque action passe par le cache chiffré et la même outbox en ligne et hors ligne ;
 - les contrats partagés, la migration SQLite 5, la migration Dexie 2, le push/pull et les tombstones de courses sont couverts ; un correctif recopie aussi l'identité d'appareil de la session authentifiée avant synchronisation pour empêcher un rejet d'identité après appairage ;
@@ -78,15 +87,16 @@ Chemin : `D:\prog\friday`
 - la détection de mise à jour PWA conserve désormais le signal même s'il arrive avant le montage de l'interface ; une recherche est lancée au démarrage, au retour au premier plan, au retour réseau et lors d'un clic sur l'état de connexion, puis l'utilisateur confirme avec `Mettre à jour` avant le rechargement ; l'utilisateur a confirmé le 9 août 2026 que l'iPhone avait bien reçu la mise à jour, sans préciser le déclencheur exact ;
 - l'ADR-008 documente désormais une sauvegarde portable : snapshot SQLite cohérent, archive avec manifeste et secret d'authentification, chiffrement `age`, partage natif ou téléchargement, import prévalidé et génération de restauration empêchant la réinjection d'une ancienne outbox ; cette solution est acceptée comme conception mais n'est pas encore implantée ;
 - le budget partagé est un candidat fonctionnel complet : cinquième onglet, mouvements réels, revenus/frais récurrents déterministes, enveloppes modifiables et supprimables, provisions, réserve, corrections et tombstones empruntent le cache chiffré et l’outbox existante ; les sections longues sont condensées et repliables à 360 px ;
-- le Chat est une sixième destination privée par profil : conversations et outbox chiffrées localement, file SQLite persistante, pause/reprise, progression persistante avec temps effectif et rendu Markdown ; `gemma4-12b-multimodal:128k` orchestre les modes `Local`, `Web léger` et `Web approfondi`, Tavily restant optionnel et strictement côté hub ; aucune mutation métier directe ; le checkpoint consolidé est `docs/15-checkpoint-chat-tavily.md` ;
-- le navigateur Playwright côté hub, le cache FTS5 de pages et le modèle Assistant rapide restent retirés ; la migration SQLite 14 remplace les anciennes tables expérimentales par le journal Tavily, ses checkpoints et son compteur de crédits, tout en conservant l’historique lisible ;
+- le Chat est une sixième destination privée par profil : conversations et outbox chiffrées localement, file SQLite persistante, pause/reprise, progression persistante avec temps effectif et rendu Markdown ; `qwen3.5:9b-q4_K_M` est le modèle par défaut et Gemma 4 reste sélectionnable ; Tavily alimente `Web léger`, tandis que `Web approfondi` combine Tavily et Exa MCP anonyme côté hub ; aucune mutation métier directe ; le checkpoint consolidé est `docs/15-checkpoint-chat-tavily.md` ;
+- le navigateur Playwright côté hub, le cache FTS5 de pages et le modèle Assistant rapide restent retirés ; les migrations SQLite 14–15 portent le journal Tavily et le modèle, 16–18 la Veille orchestrée et 19 les fournisseurs/diagnostics Exa, tout en conservant l’historique lisible ;
+- la Veille orchestrée privée par profil est candidate : découverte et validation multi-sources, référence initiale immédiate, cadence quotidienne/hebdomadaire, collecte et analyse uniquement lors d'un run autorisé, rattrapage unique d'une échéance manquée, mémoire concepts/sujets et complément Web borné ; l'état actif est dans `docs/17-etat-veille-orchestree.md` ;
 - aucune donnée financière réelle n’a été chargée : BitLocker, les ACL de `D:\FridayData` et la sauvegarde SQLite préalable restent une porte bloquante explicitée dans `docs/runbooks/reprise-budget.md` ;
 - la taxonomie `retail-fr-v1` couvre 11 familles de magasins et 25 rayons de supermarché. Le pipeline hybride applique les corrections exactes du foyer puis les règles courantes avant Ministral 3 8B ; chaque réponse porte l'index du produit. Le corpus local de 150 libellés atteint 99,3 % famille/rayon avec 96,7 % de couverture déterministe ; le corpus difficile atteint 88,9 % en 10,4 s à chaud lors de la mesure du 9 août 2026 ;
 - la décision complète est consignée dans `docs/adr/010-classement-courses-par-rayon.md`, la taxonomie dans `docs/reference/taxonomie-courses-retail-fr-v1.md` et l'exploitation dans `docs/runbooks/classement-courses.md` ;
 - le candidat avec les destinations distinctes `Agenda` et `Courses` a été redémarré sur `https://192.168.1.14:8443` le 9 août 2026 ; le healthcheck réussit et `/api/auth/state` confirme un foyer initialisé (`bootstrapRequired: false`) sans ouvrir de session à un client non authentifié ;
 - l’accès extérieur retenu pour une reprise ultérieure est une route Tailscale privée limitée à `192.168.1.14/32`, sans ouverture de box ni changement d’origine ; sa mise en œuvre et l’enrôlement local uniquement sont documentés mais en pause ;
 - une sauvegarde pré-migration 12 intègre a été créée hors dépôt le 10 août 2026 ; la migration de retrait 13 conserve ce filet de restauration tout en supprimant les tables Web devenues inutiles ;
-- dernier contrôle complet du candidat du 11 août 2026 : `pnpm verify` réussi avec 150 tests unitaires/intégration, le build PWA/hub et 22 scénarios Chrome mobile ;
+- dernier contrôle complet du candidat du 18 août 2026 : `pnpm verify` réussi avec 192 tests unitaires/intégration, les builds PWA/hub et 23 scénarios Chrome mobile ;
 - terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026 ; la recette physique responsable/filtre reste à confirmer ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
@@ -132,7 +142,7 @@ Les autres modèles lourds ne font pas partie du service quotidien.
 - Le PC Windows est le hub, la base canonique et l’hôte Ollama.
 - Le PC peut rester allumé deux à trois jours puis être redémarré ; son indisponibilité ne bloque pas les écritures Maison locales.
 - Le Samsung Galaxy A17 sert au développement, à l’UX et à la preuve offline.
-- L’iPhone 11 Pro Max sera testé plus tard avec la même PWA.
+- L’iPhone 11 Pro Max utilise la même PWA ; mise à jour et correctif d’auto-zoom sont confirmés, auth/offline restent à tester.
 - Aucun build Xcode, Flutter, App Store ou abonnement Apple.
 - Quatre destinations : Aujourd’hui, Agenda, Courses, Veille ; bouton `+` permanent et contextuel.
 
@@ -178,7 +188,7 @@ Les autres modèles lourds ne font pas partie du service quotidien.
 ### Veille et IA
 
 - RSS/Atom d’abord, sources et thèmes choisis par profil ;
-- Granite 4 3B pour le rapide ; Gemma 4 12B pour le fond ; benchmark avant remplacement ;
+- Qwen 3.5 9B Q4 par défaut avec délibération courte automatique, ou Gemma 4 12B avec thinking natif automatique en remplacement local par appareil ; modèle persisté par run ; contextes 8K/16K/32K selon l’étape ;
 - Ollama n’est jamais dans le chemin critique des tâches, courses, budget ou synchronisation ;
 - toute action IA devient une proposition structurée à confirmer ;
 - SQL/FTS5 avant embeddings ; aucun RAG au MVP.
@@ -267,7 +277,7 @@ Le nouveau chat doit :
 2. constater l'état publié et les éventuelles modifications locales avec `git status -sb` et `git log -5 --oneline`, sans réinitialiser le dépôt ;
 3. préserver les lots vérifiés `En course`, Budget, Assistant et mise à jour PWA sans les réimplémenter ;
 4. suivre `docs/14-prochaines-etapes-apres-assistant.md` ; les recettes A17 restent ouvertes mais ne bloquent pas le choix fonctionnel suivant ;
-5. attendre le retour de la compagne pour la recette iPhone, sans transformer ce délai en attente de développement ;
+5. poursuivre la recette iPhone pour l’appairage, l’authentification et la convergence offline ;
 6. laisser conflits et tombstones en observation conformément à l'ADR-011 ;
 7. conserver Budget et Assistant à leurs checkpoints documentés jusqu’à un retour d’usage ou une recette physique ;
 8. maintenir la décision Tailscale `/32` en pause jusqu’à une reprise explicite ;
@@ -317,7 +327,7 @@ sans navigateur et documente la preuve.
 
 ## 12. Contrôles réalisés et limites
 
-Contrôles automatiques actualisés sur le candidat Chat local du 11 août 2026 :
+Contrôles automatiques actualisés sur le candidat complet du 18 août 2026 :
 
 - documentation active, README et instructions agent contrôlés ;
 - aucun lien Markdown local manquant ;
@@ -327,7 +337,7 @@ Contrôles automatiques actualisés sur le candidat Chat local du 11 août 2026 
 - aucune signature évidente de clé privée, token OpenAI ou clé Google dans les documents ;
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
 - présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
-- `pnpm verify` réussi avec 150 tests unitaires/intégration, le build PWA/hub et 22 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi avec 192 tests unitaires/intégration, les builds PWA/hub et 23 scénarios E2E Google Chrome mobile ;
 - health checks local et LAN réussis après redémarrage sans navigateur.
 
 Ce que cet audit ne prétend pas avoir validé :
@@ -344,6 +354,6 @@ Ce que cet audit ne prétend pas avoir validé :
 - création ou autorisations du compte Google Maison ;
 - configuration Google Drive Desktop ou BitLocker ;
 - sécurité complète du code au-delà des contrôles et documents déjà présents ;
-- appairage et parcours offline complets sur iPhone ; seule la réception d'une mise à jour PWA a été confirmée physiquement.
+- appairage et parcours offline complets sur iPhone ; seules la réception d'une mise à jour PWA et la suppression de l’auto-zoom des champs Tâche/Course ont été confirmées physiquement.
 
 Ces limites sont des tâches de Lot 0/P1, pas des informations perdues.

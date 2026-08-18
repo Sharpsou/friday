@@ -25,6 +25,7 @@ const AUTH_SESSION_CACHE_KEY = 'authSessionCache';
 const AUTH_LOGOUT_PENDING_KEY = 'authLogoutPending';
 const CURRENT_PROFILE_KEY = 'currentProfileId';
 const DEVICE_ID_KEY = 'deviceId';
+const AUTH_STATE_TIMEOUT_MS = 5_000;
 
 export interface LocalAuthState {
   bootstrapRequired: boolean;
@@ -76,21 +77,34 @@ export async function loadCachedAuthSession(): Promise<AuthSession | null> {
   return parsed.success ? parsed.data : null;
 }
 
-export async function loadAuthState(): Promise<LocalAuthState> {
+export async function loadLocalAuthState(): Promise<LocalAuthState> {
   const [cachedSession, logoutPendingRow] = await Promise.all([
     loadCachedAuthSession(),
     fridayDb.settings.get(AUTH_LOGOUT_PENDING_KEY),
   ]);
+  return {
+    bootstrapRequired: false,
+    connection: 'offline',
+    session: logoutPendingRow?.value === true ? null : cachedSession,
+  };
+}
+
+export async function loadAuthState(): Promise<LocalAuthState> {
+  const [localState, logoutPendingRow] = await Promise.all([
+    loadLocalAuthState(),
+    fridayDb.settings.get(AUTH_LOGOUT_PENDING_KEY),
+  ]);
   const logoutPending = logoutPendingRow?.value === true;
+  if (globalThis.navigator?.onLine === false) return localState;
   try {
     if (logoutPending) {
-      const signOutResponse = await fetch('/api/auth/sign-out', {
+      const signOutResponse = await fetchWithTimeout('/api/auth/sign-out', {
         method: 'POST',
       });
       if (!signOutResponse.ok) throw new Error('Déconnexion en attente.');
       await fridayDb.settings.delete(AUTH_LOGOUT_PENDING_KEY);
     }
-    const response = await fetch('/api/auth/state', {
+    const response = await fetchWithTimeout('/api/auth/state', {
       headers: { accept: 'application/json' },
     });
     const state = await parseResponse(response, AuthStateResponseSchema);
@@ -104,8 +118,34 @@ export async function loadAuthState(): Promise<LocalAuthState> {
     return {
       bootstrapRequired: false,
       connection: 'offline',
-      session: logoutPending ? null : cachedSession,
+      session: localState.session,
     };
+  }
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(
+    () =>
+      controller.abort(new DOMException('Hub injoignable.', 'TimeoutError')),
+    AUTH_STATE_TIMEOUT_MS,
+  );
+  try {
+    return await Promise.race([
+      fetch(input, { ...init, signal: controller.signal }),
+      new Promise<never>((_resolve, reject) => {
+        controller.signal.addEventListener(
+          'abort',
+          () => reject(controller.signal.reason),
+          { once: true },
+        );
+      }),
+    ]);
+  } finally {
+    globalThis.clearTimeout(timeout);
   }
 }
 

@@ -82,6 +82,7 @@ export function GroceryClassificationDialog({
   job,
   onApply,
   onClose,
+  onDiscard,
 }: {
   busy: boolean;
   items: readonly LocalGroceryItem[];
@@ -90,6 +91,7 @@ export function GroceryClassificationDialog({
     classifications: GroceryClassificationApplyRequest['classifications'],
   ) => void;
   onClose: () => void;
+  onDiscard: () => void;
 }) {
   const proposal = useMemo(() => job.proposal ?? [], [job.proposal]);
   const [draft, setDraft] = useState(
@@ -139,8 +141,9 @@ export function GroceryClassificationDialog({
           </button>
         </div>
         <p>
-          Corrigez si besoin. Les corrections seront retenues pour les prochains
-          produits portant le même nom.
+          Seuls les nouveaux produits sans rayon sont proposés. Corrigez si
+          besoin : les corrections seront retenues pour les prochains produits
+          portant le même nom.
         </p>
         {staleCount > 0 ? (
           <p className="classification-stale-notice" role="status">
@@ -212,8 +215,13 @@ export function GroceryClassificationDialog({
           })}
         </ul>
         <div className="settings-actions">
-          <button className="secondary-button" type="button" onClick={onClose}>
-            Plus tard
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={busy}
+            onClick={onDiscard}
+          >
+            Conserver le classement actuel
           </button>
           <button
             className="primary-button"

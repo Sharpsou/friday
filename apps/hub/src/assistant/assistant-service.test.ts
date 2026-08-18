@@ -6,6 +6,7 @@ import {
   AssistantService,
 } from './assistant-service.js';
 import { openDatabase } from '../db/database.js';
+import { ExaMcpSearchClient } from './exa-mcp-search.js';
 import { TavilySearchClient } from './tavily-search.js';
 
 const PROFILE_ONE = 'f61f8f8b-8d09-4575-8e83-357618e881ac';
@@ -52,26 +53,38 @@ describe('AssistantService', () => {
   function createService(
     engine = fakeEngine(),
     tavily = new TavilySearchClient(undefined),
+    exa = new ExaMcpSearchClient(),
   ) {
     const database = openDatabase(':memory:');
     databases.push(database);
-    const service = new AssistantService(database, engine, tavily);
+    const service = new AssistantService(database, engine, tavily, exa);
     services.push(service);
     return service;
   }
 
   it('persists a classic conversation and handles duplicate requests idempotently', async () => {
-    const service = createService();
+    let selectedModel: string | undefined;
+    const service = createService(
+      fakeEngine({
+        answer: async (history, _signal, options) => {
+          selectedModel = options?.model;
+          return { content: `Réponse: ${history.at(-1)?.content ?? ''}` };
+        },
+      }),
+    );
     const conversation = service.createConversation(PROFILE_ONE, 'Privé');
     const input = {
       clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
       content: 'Bonjour Gemma',
       mode: 'classic' as const,
+      model: 'qwen3.5' as const,
+      thinkingPolicy: 'forced' as const,
     };
 
     const first = service.submit(PROFILE_ONE, conversation.id, input);
     const duplicate = service.submit(PROFILE_ONE, conversation.id, input);
     expect(duplicate.run.id).toBe(first.run.id);
+    expect(first.run.thinkingPolicy).toBe('auto');
 
     await waitFor(
       () => service.getRun(PROFILE_ONE, first.run.id).status === 'completed',
@@ -84,8 +97,11 @@ describe('AssistantService', () => {
     expect(state.messages[1]).toMatchObject({
       content: 'Réponse: Bonjour Gemma',
       effectiveMode: 'classic',
+      model: 'qwen3.5',
+      thinkingPolicy: 'auto',
       sources: [],
     });
+    expect(selectedModel).toBe('qwen3.5');
   });
 
   it('uses the light Web budget, persists sources and verifies the answer', async () => {
@@ -157,8 +173,8 @@ describe('AssistantService', () => {
       expect.arrayContaining([
         'Analyse de la demande et décision Web',
         'Plan Web prêt · 2 recherche(s) ciblée(s)',
-        'Recherche 1/2 · basic · fait récent',
-        'Recherche 1/2 terminée · 1 nouvelle(s) source(s)',
+        'Tavily 1/2 · basic · fait récent',
+        'Tavily terminé · 1 nouvelle(s) source(s)',
         'Lecture et rapprochement de 1 source(s)',
         'Synthèse de 1 source(s)',
         'Réflexion approfondie utilisée',
@@ -171,12 +187,227 @@ describe('AssistantService', () => {
     expect(verifyCalls).toBe(1);
   });
 
-  it('uses Gemma to title only the first exchange of a default conversation', async () => {
-    let titleCalls = 0;
+  it('forces deep Web and starts Tavily and anonymous Exa MCP in parallel', async () => {
+    const bothStarted = deferred();
+    let started = 0;
+    let exaCalls = 0;
+    const gate = async () => {
+      started += 1;
+      if (started === 2) bothStarted.resolve();
+      await bothStarted.promise;
+    };
+    const tavily = new TavilySearchClient('test', async (input) => {
+      if (String(input).endsWith('/usage'))
+        return new Response(
+          JSON.stringify({ account: { plan_usage: 0, plan_limit: 1_000 } }),
+        );
+      await gate();
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              title: 'Tavily',
+              url: 'https://primary.example/source',
+              content: 'primaire',
+            },
+          ],
+          usage: { credits: 1 },
+        }),
+      );
+    });
+    const exa = new ExaMcpSearchClient(async () => {
+      exaCalls += 1;
+      await gate();
+      return new Response(
+        JSON.stringify({
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: [
+                  'Title: Exa 1\nURL: https://exa-one.example/a\nPublished: N/A\nHighlights:\nun',
+                  'Title: Exa 2\nURL: https://exa-two.example/b\nPublished: N/A\nHighlights:\ndeux',
+                  'Title: Exa 3\nURL: https://exa-three.example/c\nPublished: N/A\nHighlights:\ntrois',
+                ].join('\n\n---\n\n'),
+              },
+            ],
+          },
+        }),
+      );
+    });
     const service = createService(
       fakeEngine({
-        generateTitle: async () => {
+        planResearch: async () => ({
+          searchNeeded: false,
+          queries: ['vérification internet explicite'],
+        }),
+        answer: async (_history, _signal, options) => ({
+          content: `Réponse fondée sur ${options?.evidence?.length.toString()} sources`,
+        }),
+      }),
+      tavily,
+      exa,
+    );
+    const conversation = service.createConversation(
+      PROFILE_ONE,
+      'Recherche profonde',
+      'web_deep',
+    );
+    const submission = service.submit(PROFILE_ONE, conversation.id, {
+      clientRequestId: '91919191-e269-46b3-9ac7-1c8cb7b310bb',
+      content: 'Regarde sur Internet',
+      mode: 'web_deep',
+    });
+
+    await waitFor(
+      () =>
+        service.getRun(PROFILE_ONE, submission.run.id).status === 'completed',
+    );
+    const answer = service
+      .getMessages(PROFILE_ONE, conversation.id)
+      .messages.at(-1);
+    expect(started).toBe(2);
+    expect(exaCalls).toBe(1);
+    expect(answer?.content).toBe('Réponse fondée sur 4 sources');
+    expect(answer?.sources).toHaveLength(4);
+    expect(service.exaUsage()).toMatchObject({ calls: 1, successes: 1 });
+    expect(
+      service.researchDiagnostics(PROFILE_ONE, conversation.id).diagnostics,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'tavily', status: 'success' }),
+        expect.objectContaining({
+          provider: 'exa',
+          status: 'success',
+          calls: 1,
+        }),
+      ]),
+    );
+  });
+
+  it('stops before a second Exa call after an anonymous rate limit', async () => {
+    let exaCalls = 0;
+    const exa = new ExaMcpSearchClient(async () => {
+      exaCalls += 1;
+      return new Response('limited', { status: 429 });
+    });
+    const tavily = new TavilySearchClient(
+      'test',
+      async (input) =>
+        new Response(
+          String(input).endsWith('/usage')
+            ? JSON.stringify({
+                account: { plan_usage: 0, plan_limit: 1_000 },
+              })
+            : JSON.stringify({
+                results: [
+                  {
+                    title: 'Tavily seulement',
+                    url: 'https://only.example/source',
+                    content: 'source',
+                  },
+                ],
+                usage: { credits: 1 },
+              }),
+        ),
+    );
+    const service = createService(
+      fakeEngine({
+        planResearch: async () => ({
+          searchNeeded: true,
+          queries: ['exploration', 'lacune'],
+        }),
+      }),
+      tavily,
+      exa,
+    );
+    const conversation = service.createConversation(
+      PROFILE_ONE,
+      'Limite Exa',
+      'web_deep',
+    );
+    const submission = service.submit(PROFILE_ONE, conversation.id, {
+      clientRequestId: '92929292-e269-46b3-9ac7-1c8cb7b310bb',
+      content: 'Recherche approfondie',
+      mode: 'web_deep',
+    });
+
+    await waitFor(
+      () =>
+        service.getRun(PROFILE_ONE, submission.run.id).status === 'completed',
+    );
+    expect(exaCalls).toBe(1);
+    expect(service.exaUsage()).toMatchObject({
+      calls: 1,
+      rateLimits: 1,
+      status: 'rate_limited',
+    });
+  });
+
+  it('adds one adaptive Exa gap call when the first pass lacks coverage', async () => {
+    let exaCalls = 0;
+    const exa = new ExaMcpSearchClient(async () => {
+      exaCalls += 1;
+      const text =
+        exaCalls === 1
+          ? 'No search results found. Please try a different query.'
+          : 'Title: Complément Exa\nURL: https://complement.example/fait\nPublished: N/A\nHighlights:\ncomplément';
+      return new Response(
+        JSON.stringify({ result: { content: [{ type: 'text', text }] } }),
+      );
+    });
+    const tavily = new TavilySearchClient(
+      'test',
+      async (input) =>
+        new Response(
+          String(input).endsWith('/usage')
+            ? JSON.stringify({
+                account: { plan_usage: 0, plan_limit: 1_000 },
+              })
+            : JSON.stringify({ results: [], usage: { credits: 1 } }),
+        ),
+    );
+    const service = createService(
+      fakeEngine({
+        planResearch: async () => ({
+          searchNeeded: true,
+          queries: ['exploration étroite', 'lacune ciblée'],
+        }),
+      }),
+      tavily,
+      exa,
+    );
+    const conversation = service.createConversation(
+      PROFILE_ONE,
+      'Complément Exa',
+      'web_deep',
+    );
+    const submission = service.submit(PROFILE_ONE, conversation.id, {
+      clientRequestId: '93939393-e269-46b3-9ac7-1c8cb7b310bb',
+      content: 'Approfondis',
+      mode: 'web_deep',
+    });
+
+    await waitFor(
+      () =>
+        service.getRun(PROFILE_ONE, submission.run.id).status === 'completed',
+    );
+    expect(exaCalls).toBe(2);
+    expect(service.exaUsage()).toMatchObject({
+      calls: 2,
+      successes: 1,
+      emptyResults: 1,
+    });
+  });
+
+  it('uses the selected model to title only the first exchange', async () => {
+    let titleCalls = 0;
+    let titleModel: string | undefined;
+    const service = createService(
+      fakeEngine({
+        generateTitle: async (_input, _signal, model) => {
           titleCalls += 1;
+          titleModel = model;
           return 'Organisation voyage familial';
         },
       }),
@@ -199,6 +430,7 @@ describe('AssistantService', () => {
       'Organisation voyage familial',
     );
     expect(titleCalls).toBe(1);
+    expect(titleModel).toBe('qwen3.5');
   });
 
   it('passes the complete conversation history to every new answer', async () => {
@@ -329,12 +561,17 @@ describe('AssistantService', () => {
     ).toHaveLength(1);
   });
 
-  it('resumes a paused generation without losing its run history', async () => {
+  it('resumes a paused generation with the newly selected conversation mode', async () => {
     const started = deferred();
     let calls = 0;
+    let resumedMode: string | undefined;
     const service = createService(
       fakeEngine({
-        answer: async (_history, signal) => {
+        planResearch: async () => ({
+          searchNeeded: false,
+          queries: ['réponse reprise'],
+        }),
+        answer: async (_history, signal, options) => {
           calls += 1;
           if (calls === 1) {
             started.resolve();
@@ -344,9 +581,31 @@ describe('AssistantService', () => {
               });
             });
           }
+          resumedMode = options?.mode;
           return { content: 'réponse reprise' };
         },
       }),
+      new TavilySearchClient(
+        'test',
+        async (input) =>
+          new Response(
+            String(input).endsWith('/usage')
+              ? JSON.stringify({
+                  account: { plan_usage: 0, plan_limit: 1_000 },
+                })
+              : JSON.stringify({
+                  results: [
+                    {
+                      title: 'Source reprise',
+                      url: 'https://example.com/reprise',
+                      content: 'Source disponible',
+                    },
+                  ],
+                  usage: { credits: 1 },
+                }),
+            { status: 200 },
+          ),
+      ),
     );
     const conversation = service.createConversation(PROFILE_ONE, 'Reprise');
     const submission = service.submit(PROFILE_ONE, conversation.id, {
@@ -361,19 +620,32 @@ describe('AssistantService', () => {
         service.getRun(PROFILE_ONE, submission.run.id).status === 'cancelled',
     );
 
-    service.retry(PROFILE_ONE, submission.run.id);
+    service.updateConversation(PROFILE_ONE, conversation.id, {
+      mode: 'web_light',
+    });
+    const resumed = service.retry(PROFILE_ONE, submission.run.id);
+    expect(resumed).toMatchObject({
+      mode: 'web_light',
+      requestedMode: 'web',
+      webDepth: 'fast',
+    });
     await waitFor(
       () =>
         service.getRun(PROFILE_ONE, submission.run.id).status === 'completed',
     );
 
     const state = service.getMessages(PROFILE_ONE, conversation.id);
-    expect(state.messages.at(-1)?.content).toBe('réponse reprise');
+    expect(state.messages.at(-1)?.content).toContain('réponse reprise');
+    expect(state.messages.at(-1)?.mode).toBe('web_light');
+    expect(resumedMode).toBe('web_light');
     expect(
       state.messages.at(-1)?.progressEvents.map((event) => event.status),
     ).toEqual(
       expect.arrayContaining(['cancelled', 'queued', 'writing', 'completed']),
     );
+    expect(
+      state.messages.at(-1)?.progressEvents.map((event) => event.label),
+    ).toContain('Reprise en Web léger · ancien traitement écarté');
     expect(calls).toBe(2);
   });
 

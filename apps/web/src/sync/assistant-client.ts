@@ -1,7 +1,9 @@
 import {
   AssistantConversationSchema,
   AssistantConversationsResponseSchema,
+  AssistantExaUsageSchema,
   AssistantMessagesResponseSchema,
+  AssistantResearchDiagnosticsResponseSchema,
   AssistantRunEventsResponseSchema,
   AssistantRunSchema,
   AssistantSearchConsentRequestSchema,
@@ -230,5 +232,21 @@ export async function getAssistantWebUsage() {
   return parse(
     await fetch('/api/assistant/web/usage'),
     AssistantWebUsageSchema,
+  );
+}
+
+export async function getAssistantExaUsage() {
+  return parse(
+    await fetch('/api/assistant/web/exa-usage'),
+    AssistantExaUsageSchema,
+  );
+}
+
+export async function getAssistantResearchDiagnostics(conversationId: string) {
+  return parse(
+    await fetch(
+      `/api/assistant/conversations/${encodeURIComponent(conversationId)}/research-diagnostics`,
+    ),
+    AssistantResearchDiagnosticsResponseSchema,
   );
 }

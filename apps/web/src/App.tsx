@@ -14,6 +14,7 @@ import type {
   AuthDeviceApprovalRequest,
   AuthMember,
   GroceryClassificationRecord,
+  InferenceStatus,
 } from '@friday/contracts';
 
 import { AuthGate } from './auth/AuthGate.js';
@@ -77,6 +78,7 @@ import {
   updateServiceWorker,
 } from './pwa.js';
 import { syncGroceryClassifications } from './sync/grocery-classification-client.js';
+import { getInferenceStatus } from './sync/inference-client.js';
 import {
   AuthenticationRequiredError,
   cancelActiveSync,
@@ -98,6 +100,7 @@ import { ShoppingMode } from './ShoppingMode.js';
 import { GroceryEditorDialog, TaskEditorDialog } from './ItemEditorDialogs.js';
 
 const AssistantView = lazy(() => import('./AssistantView.js'));
+const WatchView = lazy(() => import('./WatchView.js'));
 
 type Destination =
   'today' | 'agenda' | 'groceries' | 'budget' | 'assistant' | 'watch';
@@ -145,6 +148,37 @@ function formatTaskSchedule(task: LocalTask): string | null {
   return `${dateLabel} à ${task.dueTime} · ${durationLabel}`;
 }
 
+function InferenceIndicator({ status }: { status: InferenceStatus }) {
+  const activeLabel =
+    status.active?.kind === 'watch'
+      ? 'IA occupée par la Veille'
+      : status.active?.kind === 'assistant'
+        ? 'IA occupée par le Chat'
+        : 'IA en attente';
+  const waiting: string[] = [];
+  if (status.queued.assistant > 0)
+    waiting.push(
+      `${status.queued.assistant.toString()} demande${status.queued.assistant > 1 ? 's' : ''} Chat en attente`,
+    );
+  if (status.queued.watch > 0)
+    waiting.push(
+      `${status.queued.watch.toString()} traitement${status.queued.watch > 1 ? 's' : ''} Veille en attente`,
+    );
+  return (
+    <aside
+      className="background-job-indicator is-active inference-indicator"
+      aria-live="polite"
+      role="status"
+    >
+      <span className="background-job-dot" aria-hidden="true" />
+      <span className="background-job-copy">
+        <strong>{activeLabel}</strong>
+        {waiting.length > 0 ? <small>{waiting.join(' · ')}</small> : null}
+      </span>
+    </aside>
+  );
+}
+
 export function App() {
   const auth = useClosedAuth();
   const authSession = auth.session;
@@ -158,6 +192,10 @@ export function App() {
   >([]);
   const [budgetState, setBudgetState] = useState(EMPTY_BUDGET_STATE);
   const [budgetQuickAddOpen, setBudgetQuickAddOpen] = useState(false);
+  const [watchCreatorOpen, setWatchCreatorOpen] = useState(false);
+  const [assistantCreateRequest, setAssistantCreateRequest] = useState(0);
+  const [inferenceStatus, setInferenceStatus] =
+    useState<InferenceStatus | null>(null);
   const [classificationPreviewOpen, setClassificationPreviewOpen] =
     useState(false);
   const [groceryLabel, setGroceryLabel] = useState('');
@@ -338,6 +376,28 @@ export function App() {
   useEffect(() => {
     window.queueMicrotask(() => void reloadAuthManagement());
   }, [reloadAuthManagement]);
+
+  useEffect(() => {
+    if (!authSession) {
+      return undefined;
+    }
+    let stopped = false;
+    const refresh = async () => {
+      if (!navigator.onLine || document.visibilityState !== 'visible') return;
+      try {
+        const status = await getInferenceStatus();
+        if (!stopped) setInferenceStatus(status);
+      } catch {
+        if (!stopped) setInferenceStatus(null);
+      }
+    };
+    window.queueMicrotask(() => void refresh());
+    const timer = window.setInterval(() => void refresh(), 2_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [authSession]);
 
   useEffect(() => {
     if (!authSession) {
@@ -686,6 +746,11 @@ export function App() {
     try {
       await synchronize(true);
       const job = await groceryClassification.start();
+      if (job.status === 'completed' && (job.proposal?.length ?? 0) === 0) {
+        await groceryClassification.dismiss();
+        setMessage('Tous les produits ont déjà un rayon.');
+        return;
+      }
       setMessage(
         job.status === 'completed'
           ? 'Le classement est prêt à être vérifié.'
@@ -767,6 +832,12 @@ export function App() {
           : 'Impossible d’appliquer le classement.',
       );
     }
+  }
+
+  async function discardGroceryAisleClassification() {
+    await groceryClassification.dismiss();
+    setClassificationPreviewOpen(false);
+    setMessage('Proposition ignorée. Le classement précédent est conservé.');
   }
 
   function openQuickAdd() {
@@ -961,6 +1032,13 @@ export function App() {
         />
       ) : null}
 
+      {inferenceStatus &&
+      (inferenceStatus.active ||
+        inferenceStatus.queued.assistant > 0 ||
+        inferenceStatus.queued.watch > 0) ? (
+        <InferenceIndicator status={inferenceStatus} />
+      ) : null}
+
       {deviceApprovalRequests.length > 0 ? (
         <section className="device-approval-banner" aria-live="polite">
           {deviceApprovalRequests.map((request) => (
@@ -1071,6 +1149,8 @@ export function App() {
               onOpen={() => setDestination('budget')}
             />
 
+            <WatchTodaySummary onOpen={() => setDestination('watch')} />
+
             {conflicts > 0 ? (
               <aside className="conflict-notice" aria-live="polite">
                 <div>
@@ -1115,27 +1195,7 @@ export function App() {
         )}
 
         {destination === 'agenda' && (
-          <section className="screen" aria-labelledby="agenda-title">
-            <div className="section-heading page-heading">
-              <div>
-                <span className="eyebrow">Planification</span>
-                <h2 id="agenda-title">Agenda</h2>
-              </div>
-              <div className="page-actions">
-                <span className="count-badge">{filteredTasks.length}</span>
-                {taskView === 'list' && filteredTasks.length > 0 ? (
-                  <button
-                    className="edit-toggle"
-                    type="button"
-                    aria-pressed={editingTasks}
-                    onClick={() => setEditingTasks((current) => !current)}
-                  >
-                    {editingTasks ? 'Terminer' : 'Modifier'}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
+          <section className="screen" aria-label="Agenda">
             <div
               className="task-view-switch"
               role="group"
@@ -1161,6 +1221,19 @@ export function App() {
             </div>
 
             <div className="task-filter-row">
+              <div className="page-actions">
+                <span className="count-badge">{filteredTasks.length}</span>
+                {taskView === 'list' && filteredTasks.length > 0 ? (
+                  <button
+                    className="edit-toggle"
+                    type="button"
+                    aria-pressed={editingTasks}
+                    onClick={() => setEditingTasks((current) => !current)}
+                  >
+                    {editingTasks ? 'Terminer' : 'Modifier'}
+                  </button>
+                ) : null}
+              </div>
               <label className="task-assignee-filter" htmlFor="assignee-filter">
                 <span>Responsable</span>
                 <select
@@ -1454,12 +1527,8 @@ export function App() {
         )}
 
         {destination === 'groceries' && (
-          <section className="screen" aria-labelledby="groceries-title">
-            <div className="section-heading page-heading">
-              <div>
-                <span className="eyebrow">Liste partagée</span>
-                <h2 id="groceries-title">Courses</h2>
-              </div>
+          <section className="screen" aria-label="Courses">
+            <div className="grocery-classification-toolbar">
               <div className="page-actions">
                 <span className="count-badge">{groceryItems.length}</span>
                 {groceryItems.length > 0 ? (
@@ -1473,9 +1542,6 @@ export function App() {
                   </button>
                 ) : null}
               </div>
-            </div>
-
-            <div className="grocery-classification-toolbar">
               <button
                 className="shopping-mode-button"
                 type="button"
@@ -1562,21 +1628,27 @@ export function App() {
               </section>
             }
           >
-            <AssistantView />
+            <AssistantView
+              assistantModel={preferences.assistantModel}
+              createRequest={assistantCreateRequest}
+            />
           </Suspense>
         ) : null}
 
-        {destination === 'watch' && (
-          <section className="screen centered" aria-labelledby="watch-title">
-            <div className="placeholder-mark">V</div>
-            <span className="eyebrow">Veille</span>
-            <h2 id="watch-title">Fonction non disponible dans ce lot.</h2>
-            <p>
-              La veille sera implémentée après validation de la synchronisation
-              hors ligne.
-            </p>
-          </section>
-        )}
+        {destination === 'watch' ? (
+          <Suspense
+            fallback={
+              <section className="panel">
+                <p>Chargement de la Veille…</p>
+              </section>
+            }
+          >
+            <WatchView
+              creatorOpen={watchCreatorOpen}
+              onCreatorOpenChange={setWatchCreatorOpen}
+            />
+          </Suspense>
+        ) : null}
       </main>
 
       {updateAvailable && (
@@ -1598,6 +1670,7 @@ export function App() {
             void applyGroceryAisleClassification(classifications)
           }
           onClose={() => setClassificationPreviewOpen(false)}
+          onDiscard={() => void discardGroceryAisleClassification()}
         />
       ) : null}
 
@@ -1752,9 +1825,7 @@ export function App() {
                           <strong>{request.deviceName}</strong>
                           <small>
                             Demande en attente
-                            {request.requestIp
-                              ? ` Â· ${request.requestIp}`
-                              : ''}
+                            {request.requestIp ? ` · ${request.requestIp}` : ''}
                           </small>
                         </span>
                         <button
@@ -1921,6 +1992,35 @@ export function App() {
                 </div>
               </fieldset>
               <fieldset>
+                <legend>Modèle du Chat</legend>
+                <p>
+                  Le modèle choisi sera utilisé pour les nouveaux messages sur
+                  cet appareil. Une demande relancée conserve son modèle
+                  initial.
+                </p>
+                <label htmlFor="assistant-model">
+                  <span>Modèle local</span>
+                  <select
+                    id="assistant-model"
+                    value={preferencesDraft.assistantModel}
+                    onChange={(event) =>
+                      setPreferencesDraft((current) => ({
+                        ...current,
+                        assistantModel:
+                          event.target.value === 'qwen3.5'
+                            ? 'qwen3.5'
+                            : 'gemma4',
+                      }))
+                    }
+                  >
+                    <option value="qwen3.5">Qwen 3.5 9B Q4 · recommandé</option>
+                    <option value="gemma4">
+                      Gemma 4 12B · thinking approfondi
+                    </option>
+                  </select>
+                </label>
+              </fieldset>
+              <fieldset>
                 <legend>Nombre de tâches affichées</legend>
                 <label htmlFor="today-task-limit">
                   <span>Aujourd’hui</span>
@@ -1974,22 +2074,30 @@ export function App() {
         </div>
       ) : null}
 
-      {destination !== 'assistant' ? (
-        <button
-          className="fab"
-          type="button"
-          onClick={
-            destination === 'groceries'
+      <button
+        className="fab"
+        type="button"
+        onClick={
+          destination === 'assistant'
+            ? () => setAssistantCreateRequest((current) => current + 1)
+            : destination === 'groceries'
               ? openGroceryQuickAdd
               : destination === 'budget'
                 ? () => setBudgetQuickAddOpen(true)
-                : openQuickAdd
-          }
-          aria-label="Ajouter rapidement"
-        >
-          +
-        </button>
-      ) : null}
+                : destination === 'watch'
+                  ? () => setWatchCreatorOpen(true)
+                  : openQuickAdd
+        }
+        aria-label={
+          destination === 'assistant'
+            ? 'Nouvelle conversation'
+            : destination === 'watch'
+              ? 'Créer une veille'
+              : 'Ajouter rapidement'
+        }
+      >
+        +
+      </button>
 
       <nav className="bottom-nav" aria-label="Navigation principale">
         <NavButton
@@ -2072,6 +2180,134 @@ function BudgetTodayAlert({
         Voir
       </button>
     </aside>
+  );
+}
+
+function WatchTodaySummary({ onOpen }: { onOpen: () => void }) {
+  const refreshInFlight = useRef(false);
+  const [summary, setSummary] = useState<{
+    count: number;
+    detail: string;
+    kind: 'active' | 'completed' | 'failed' | 'news';
+    latestAt: string | null;
+    title: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const reload = async (refresh = false) => {
+      if (refresh && refreshInFlight.current) return;
+      if (refresh) refreshInFlight.current = true;
+      try {
+        const { getWatchOverview } = await import('./sync/watch-client.js');
+        const overview = await getWatchOverview({ refresh });
+        if (!active) return;
+        const run = overview.runs[0] ?? null;
+        const topicCount = overview.topics.length;
+        const latestAt =
+          overview.digests[0]?.createdAt ?? run?.updatedAt ?? null;
+        if (run?.stage === 'failed') {
+          setSummary({
+            count: 0,
+            detail: 'Ouvrez la veille pour consulter le problème et relancer.',
+            kind: 'failed',
+            latestAt,
+            title: 'Veille interrompue',
+          });
+        } else if (run && !['completed', 'failed'].includes(run.stage)) {
+          setSummary({
+            count: 0,
+            detail:
+              run.total > 0
+                ? `${runStageLabelForToday(run.stage)} · ${run.current.toString()}/${run.total.toString()}`
+                : runStageLabelForToday(run.stage),
+            kind: 'active',
+            latestAt,
+            title: 'Actualisation de la veille',
+          });
+        } else if (overview.unreadRelevantCount > 0) {
+          setSummary({
+            count: overview.unreadRelevantCount,
+            detail: latestAt
+              ? `Mise à jour du ${new Date(latestAt).toLocaleDateString('fr-FR')}`
+              : 'Une nouvelle synthèse est disponible.',
+            kind: 'news',
+            latestAt,
+            title: `${overview.unreadRelevantCount.toString()} nouveauté${overview.unreadRelevantCount > 1 ? 's' : ''}`,
+          });
+        } else if (
+          run?.stage === 'completed' &&
+          overview.digests.length === 0 &&
+          topicCount > 0
+        ) {
+          setSummary({
+            count: topicCount,
+            detail:
+              'Référence constituée. Les prochaines analyses signaleront les évolutions.',
+            kind: 'completed',
+            latestAt,
+            title: `${topicCount.toString()} thème${topicCount > 1 ? 's' : ''} suivi${topicCount > 1 ? 's' : ''}`,
+          });
+        } else if (latestAt) {
+          setSummary({
+            count: 0,
+            detail: `Dernière mise à jour le ${new Date(latestAt).toLocaleDateString('fr-FR')}`,
+            kind: 'completed',
+            latestAt,
+            title: 'Veille à jour',
+          });
+        } else {
+          setSummary(null);
+        }
+      } catch {
+        // Today remains usable with the last rendered Watch status.
+      } finally {
+        if (refresh) refreshInFlight.current = false;
+      }
+    };
+    void reload().then(() => {
+      if (navigator.onLine) void reload(true);
+    });
+    const onOnline = () => void reload(true);
+    window.addEventListener('online', onOnline);
+    const timer = window.setInterval(() => {
+      if (navigator.onLine && document.visibilityState === 'visible')
+        void reload(true);
+    }, 5_000);
+    return () => {
+      active = false;
+      window.removeEventListener('online', onOnline);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  if (!summary) return null;
+  return (
+    <aside
+      className={`budget-today-alert watch-today-alert is-${summary.kind}`}
+      aria-live="polite"
+    >
+      <div>
+        <strong>{summary.title}</strong>
+        <span>{summary.detail}</span>
+      </div>
+      <button type="button" onClick={onOpen}>
+        Ouvrir
+      </button>
+    </aside>
+  );
+}
+
+function runStageLabelForToday(stage: string): string {
+  return (
+    {
+      queued: 'En attente',
+      discovering: 'Recherche des sources',
+      collecting: 'Collecte des articles',
+      extracting: 'Analyse des articles',
+      clustering: 'Classement par thèmes',
+      synthesizing: 'Rédaction de la synthèse',
+    }[stage] ?? 'Traitement en cours'
   );
 }
 

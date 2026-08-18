@@ -142,6 +142,51 @@ describe('persistent grocery classification service', () => {
         .getJob(HOUSEHOLD_ID, learnedJob.id)
         .proposal?.find((item) => item.itemId === secondMilkId),
     ).toMatchObject({ aisleId: 'dairy-eggs', source: 'rule' });
+    expect(service.getJob(HOUSEHOLD_ID, learnedJob.id).proposal).toHaveLength(
+      1,
+    );
+
+    const firstClassifications = service.pull(HOUSEHOLD_ID, 0).changes;
+    expect(firstClassifications).toHaveLength(2);
+    expect(firstClassifications).toContainEqual(
+      expect.objectContaining({
+        classification: expect.objectContaining({
+          itemId: milkId,
+          aisleId: 'dairy-eggs',
+          source: 'manual',
+        }),
+      }),
+    );
+
+    await service.stop();
+    database.close();
+  });
+
+  it('only proposes unclassified products and preserves a direct manual aisle', async () => {
+    const database = openDatabase(':memory:');
+    const engine = new ProduceEngine();
+    const service = new GroceryClassificationService(database, engine);
+    const manualItemId = 'a85cac6b-d927-42f2-bd5d-334ac84a1df5';
+    const newItemId = '4a4477ec-d374-4317-9c74-545d999bbb5f';
+    seedGrocery(database, manualItemId, 'Vis inox');
+    database
+      .prepare(
+        `UPDATE grocery_items
+            SET manual_store_family_id = 'diy', manual_aisle_id = 'hardware'
+          WHERE id = ?`,
+      )
+      .run(manualItemId);
+    seedGrocery(database, newItemId, 'Produit secret beta');
+
+    const started = service.createOrGetActiveJob(HOUSEHOLD_ID, PROFILE_ID);
+    await vi.waitFor(() =>
+      expect(service.getJob(HOUSEHOLD_ID, started.id).status).toBe('completed'),
+    );
+
+    expect(service.getJob(HOUSEHOLD_ID, started.id).proposal).toEqual([
+      expect.objectContaining({ itemId: newItemId }),
+    ]);
+    expect(engine.calls).toEqual([['Produit secret beta']]);
 
     await service.stop();
     database.close();

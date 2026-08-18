@@ -103,10 +103,17 @@ export class GroceryClassificationService {
 
     const groceries = this.database
       .prepare(
-        `SELECT id, revision, label
-           FROM grocery_items
-          WHERE household_id = ? AND checked_at IS NULL AND deleted_at IS NULL
-          ORDER BY created_at, id`,
+        `SELECT grocery.id, grocery.revision, grocery.label
+           FROM grocery_items grocery
+           LEFT JOIN grocery_classifications classification
+             ON classification.item_id = grocery.id
+          WHERE grocery.household_id = ?
+            AND grocery.checked_at IS NULL
+            AND grocery.deleted_at IS NULL
+            AND grocery.manual_store_family_id IS NULL
+            AND grocery.manual_aisle_id IS NULL
+            AND classification.item_id IS NULL
+          ORDER BY grocery.created_at, grocery.id`,
       )
       .all(householdId) as Array<{
       id: string;

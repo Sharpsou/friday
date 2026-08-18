@@ -38,7 +38,7 @@ La taxonomie versionnée `retail-fr-v1` est définie dans les contrats partagés
 - après redémarrage du hub, un job `running` repasse en file d'attente et un job `cancelling` devient `cancelled` ;
 - une proposition terminée expire après 24 heures.
 
-Le snapshot du job contient l'identifiant, la révision et l'empreinte du libellé de chaque article non acheté. L'application saute tout article supprimé, acheté, renommé ou révisé depuis ce snapshot. Elle vérifie également la révision de sa classification précédente.
+Le snapshot du job est incrémental : il contient seulement les articles non achetés qui ne possèdent encore ni classification partagée, ni rayon choisi directement dans le mode `Modifier`. Une relance après ajout d'un produit ne repropose donc que ce nouveau produit et conserve tous les rayons existants. Pour chaque article retenu, le snapshot porte l'identifiant, la révision et l'empreinte du libellé. L'application saute tout article supprimé, acheté, renommé ou révisé depuis ce snapshot. Elle vérifie également la révision de sa classification précédente.
 
 ### Contrats HTTP
 
@@ -56,7 +56,7 @@ Les corps et réponses sont validés par les schémas Zod du paquet `@friday/con
 
 ### Confirmation et fusion
 
-Le job ne modifie jamais directement les courses. Il produit un aperçu que l'utilisateur peut corriger puis confirmer avec `POST /api/groceries/classifications/apply`. Cette application est transactionnelle et idempotente : une répétition de la même requête renvoie la première réponse enregistrée.
+Le job ne modifie jamais directement les courses. Il produit un aperçu que l'utilisateur peut corriger puis confirmer avec `POST /api/groceries/classifications/apply`. L'action `Conserver le classement actuel` écarte l'aperçu sans appeler cette route et sans modifier les classifications précédentes. Cette application est transactionnelle et idempotente : une répétition de la même requête renvoie la première réponse enregistrée.
 
 Une correction humaine faite dans l'aperçu reçoit la source `manual`, la confiance `1` et devient une règle exacte partagée pour le foyer. Une proposition automatique ne remplace pas silencieusement une classification manuelle actuelle. Les deux profils écrivent dans la même classification par article ; il n'existe donc pas deux sections concurrentes à fusionner dans l'interface. Le journal de changements dédié distribue la valeur commune aux appareils avec son propre curseur.
 

@@ -77,6 +77,23 @@ export interface AssistantOutboxRow {
   profileId: string;
 }
 
+export interface WatchSnapshotRow {
+  encrypted: EncryptedEnvelope;
+  profileId: string;
+  updatedAt: string;
+}
+
+export interface WatchOutboxRow {
+  articleId?: string;
+  conceptId?: string;
+  createdAt: string;
+  encrypted: EncryptedEnvelope;
+  kind?: 'article' | 'concept';
+  operationId: string;
+  profileId: string;
+  watchId: string;
+}
+
 class FridayDatabase extends Dexie {
   assistantConversations!: EntityTable<AssistantConversationRow, 'id'>;
   assistantMessages!: EntityTable<AssistantMessageRow, 'id'>;
@@ -92,6 +109,8 @@ class FridayDatabase extends Dexie {
   outbox!: EntityTable<OutboxRow, 'operationId'>;
   settings!: EntityTable<SettingRow, 'key'>;
   tasks!: EntityTable<TaskRow, 'id'>;
+  watchOutbox!: EntityTable<WatchOutboxRow, 'operationId'>;
+  watchSnapshots!: EntityTable<WatchSnapshotRow, 'profileId'>;
 
   constructor() {
     super('friday');
@@ -145,6 +164,44 @@ class FridayDatabase extends Dexie {
       outbox: '&operationId, entityId, createdAt, state',
       settings: '&key',
       tasks: '&id, revision, updatedAt, syncState',
+    });
+    this.version(6).stores({
+      assistantConversations: '&id, profileId, archivedAt, updatedAt',
+      assistantMessages:
+        '&id, [profileId+conversationId], conversationId, createdAt',
+      assistantOutbox: '&clientRequestId, profileId, conversationId, createdAt',
+      budgetEntries: '&id, revision, updatedAt, syncState',
+      budgetEnvelopes: '&id, revision, updatedAt, syncState',
+      budgetPlannedExpenses: '&id, revision, updatedAt, syncState',
+      budgetRecurringTemplates: '&id, revision, updatedAt, syncState',
+      budgetSavingsMonths: '&id, revision, updatedAt, syncState',
+      groceryClassifications: '&itemId, revision, updatedAt',
+      groceryItems: '&id, revision, updatedAt, syncState',
+      keys: '&id',
+      outbox: '&operationId, entityId, createdAt, state',
+      settings: '&key',
+      tasks: '&id, revision, updatedAt, syncState',
+      watchOutbox: '&operationId, profileId, watchId, articleId, createdAt',
+      watchSnapshots: '&profileId, updatedAt',
+    });
+    this.version(7).stores({
+      assistantConversations: '&id, profileId, archivedAt, updatedAt',
+      assistantMessages:
+        '&id, [profileId+conversationId], conversationId, createdAt',
+      assistantOutbox: '&clientRequestId, profileId, conversationId, createdAt',
+      budgetEntries: '&id, revision, updatedAt, syncState',
+      budgetEnvelopes: '&id, revision, updatedAt, syncState',
+      budgetPlannedExpenses: '&id, revision, updatedAt, syncState',
+      budgetRecurringTemplates: '&id, revision, updatedAt, syncState',
+      budgetSavingsMonths: '&id, revision, updatedAt, syncState',
+      groceryClassifications: '&itemId, revision, updatedAt',
+      groceryItems: '&id, revision, updatedAt, syncState',
+      keys: '&id',
+      outbox: '&operationId, entityId, createdAt, state',
+      settings: '&key',
+      tasks: '&id, revision, updatedAt, syncState',
+      watchOutbox: '&operationId, profileId, kind, watchId, createdAt',
+      watchSnapshots: '&profileId, updatedAt',
     });
   }
 }

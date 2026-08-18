@@ -39,6 +39,7 @@ describe('Assistant local encrypted repository', () => {
       requestedMode: 'classic' as const,
       effectiveMode: null,
       mode: 'local' as const,
+      model: 'gemma4' as const,
       thinkingPolicy: 'auto' as const,
       thinkingUsed: false,
       researchOutcome: 'not_needed' as const,
@@ -65,6 +66,7 @@ describe('Assistant local encrypted repository', () => {
       clientRequestId: '41bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
       content: 'Message hors ligne',
       mode: 'local' as const,
+      model: 'gemma4' as const,
       thinkingPolicy: 'auto' as const,
     };
     const conversationId = '31bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';

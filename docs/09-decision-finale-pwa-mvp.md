@@ -35,7 +35,7 @@ Six destinations :
 2. **Agenda** : tâches, rendez-vous et vues liste/semaine/mois ;
 3. **Courses** : liste partagée et produits déjà achetés ;
 4. **Budget** : réalisé, prévisionnel, enveloppes, provisions et épargne partagés ;
-5. **Chat** : conversations privées par profil, Gemma 4 avec modes `Local`, `Web léger` et `Web approfondi` via Tavily côté hub ;
+5. **Chat** : conversations privées par profil, Qwen 3.5 9B Q4 par défaut ou Gemma 4 sélectionnable avec modes `Local`, `Web léger` et `Web approfondi` via Tavily et Exa MCP côté hub ;
 6. **Veille** : digest et thèmes du profil actif.
 
 Un bouton `+` permanent hors Assistant ouvre la saisie rapide.
@@ -92,9 +92,9 @@ Friday distingue toujours l'épargne réellement versée du simple reste disponi
 
 - thèmes, mots-clés, sources et fréquence choisis par profil ;
 - collecte RSS/Atom et déduplication sur le PC ;
-- Gemma 4 12B pour le Chat, son orchestration et les résumés en arrière-plan ;
+- Qwen 3.5 9B Q4 par défaut pour le Chat et Gemma 4 12B avec thinking natif comme option approfondie par appareil ;
 - conversations et files Chat séparées par profil ;
-- Tavily est le seul outil Internet du Chat ; aucun navigateur automatisé, et le mode `Local` garantit zéro appel externe ;
+- Tavily alimente les modes Web et Exa MCP anonyme complète uniquement `Web approfondi` ; aucun navigateur automatisé, et le mode `Local` garantit zéro appel externe ;
 - aucune dépendance à Ollama pour les tâches, courses, budget ou données offline ;
 - FTS5 avant tout usage d'embeddings ;
 - éventuels embeddings conservés plus tard sur le PC uniquement.
@@ -301,9 +301,9 @@ Pour chaque session sur le Galaxy A17, noter :
 - défaut UX observé ;
 - résultat après reconnexion.
 
-## Campagne iPhone différée
+## Campagne iPhone en cours
 
-L'iPhone sera testé après stabilisation du MVP Android/PWA. Cette campagne ne nécessite pas de build natif.
+L'iPhone utilise la même PWA après stabilisation du MVP Android. La réception d’une mise à jour et la suppression de l’auto-zoom des champs ont été confirmées physiquement ; l’appairage, l’authentification et le parcours offline complet restent à jouer. Cette campagne ne nécessite pas de build natif.
 
 À vérifier plus tard :
 

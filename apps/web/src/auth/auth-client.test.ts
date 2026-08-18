@@ -9,6 +9,7 @@ import {
   getLocalDeviceId,
   login,
   loadCachedAuthSession,
+  loadLocalAuthState,
   loadAuthState,
   logout,
 } from './auth-client.js';
@@ -30,6 +31,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   await fridayDb.delete();
 });
@@ -96,6 +98,68 @@ describe('closed auth client', () => {
       connection: 'offline',
       session: SESSION,
     });
+  });
+
+  it('hydrates an enrolled device from IndexedDB without waiting for the hub', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(SESSION), {
+            headers: { 'content-type': 'application/json' },
+            status: 200,
+          }),
+      ),
+    );
+    await bootstrapHousehold({
+      deviceName: 'Galaxy A17',
+      identifier: 'adulte1',
+      name: 'Adulte 1',
+      password: 'phrase-secrete-friday',
+    });
+    const fetchMock = vi.fn(() => new Promise<Response>(() => undefined));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(loadLocalAuthState()).resolves.toEqual({
+      bootstrapRequired: false,
+      connection: 'offline',
+      session: SESSION,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('opens the cached household when cellular connectivity cannot reach the private hub', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(SESSION), {
+            headers: { 'content-type': 'application/json' },
+            status: 200,
+          }),
+      ),
+    );
+    await bootstrapHousehold({
+      deviceName: 'Galaxy A17',
+      identifier: 'adulte1',
+      name: 'Adulte 1',
+      password: 'phrase-secrete-friday',
+    });
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+
+    const statePromise = loadAuthState();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(statePromise).resolves.toEqual({
+      bootstrapRequired: false,
+      connection: 'offline',
+      session: SESSION,
+    });
+    vi.useRealTimers();
   });
 
   it('keeps a new device approval request out of the local session cache', async () => {

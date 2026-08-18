@@ -1,5 +1,11 @@
 # Friday — feuille de route technique de développement et d’implémentation
 
+> Extension active du 18 août 2026 : la Veille utilise les migrations SQLite
+> 16 à 18 pour son socle RSS, sa découverte multi-sources, sa mémoire
+> concepts/sujets, sa synthèse sourcée et ses déclenchements persistants. Le
+> Chat utilise la migration 19 pour Tavily et Exa MCP. Voir
+> `docs/17-etat-veille-orchestree.md` et `docs/15-checkpoint-chat-tavily.md`.
+
 Date : 8 août 2026
 
 Statut : **support d’exécution de référence**
@@ -500,7 +506,7 @@ Changer de nom ou d’IP change l’origine Web et rend l’ancien stockage inac
 - limitation du nombre de tentatives et journal d’événements d’authentification ;
 - aucun secret de session accessible au JavaScript de la PWA.
 
-Le mode offline n’authentifie pas auprès du PC. Il déverrouille seulement la copie déjà liée à l’appareil et compte sur le verrouillage du téléphone. Le profil lié ne peut pas être changé hors ligne au MVP.
+Le mode offline n’authentifie pas auprès du PC. Il déverrouille seulement la copie déjà liée à l’appareil et compte sur le verrouillage du téléphone. Au démarrage, cette session locale hydrate l’interface sans attendre le hub ; la validation réseau se poursuit avec une échéance de cinq secondes afin qu’une connexion cellulaire sans route vers l’IP privée ne bloque jamais `Ouverture du foyer`. Un marqueur de déconnexion volontaire en attente interdit toutefois cette ouverture locale. Le profil lié ne peut pas être changé hors ligne au MVP.
 
 ### 8.2 Autorisation
 
@@ -575,7 +581,7 @@ Une restauration de test sur un répertoire vide est obligatoire avant de consid
 ### 10.2 Modèle du Chat
 
 - `gemma4-12b-multimodal:128k` : unique modèle du Chat et de son orchestration ;
-- Tavily est l’unique connecteur Web, sans navigateur automatisé ni seconde voie rapide ;
+- Tavily est le connecteur Web principal ; Exa MCP anonyme complète seulement `Web approfondi`, sans navigateur automatisé ;
 - `ministral-3:8b` reste réservé au classement facultatif des courses ;
 - un modèle ne remplace Gemma qu’après comparaison sur un jeu d’évaluation documenté.
 
@@ -595,9 +601,9 @@ Chaque appel structuré :
 
 Chaîne d’action : `texte → intention structurée → validation → aperçu → confirmation → commande déterministe → audit`.
 
-État d’exécution au 11 août 2026 : la destination `Chat` privée par profil conserve conversations, cache/outbox chiffrés, file SQLite persistante, pause/reprise, journal opérationnel et rendu Markdown sans HTML brut. Les modes `Local`, `Web léger` et `Web approfondi` utilisent Gemma 4 ; Tavily est appelé seulement après décision locale, avec budgets, checkpoints, consentement et vérification des sources. Les durées excluent la file, le consentement et les pauses. La migration SQLite 14 conserve la compatibilité historique. L’état produit est dans `docs/13-etat-assistant-local.md`, le checkpoint consolidé dans `docs/15-checkpoint-chat-tavily.md` et le runtime dans `docs/runbooks/assistant-gemma.md`.
+État d’exécution au 18 août 2026 : la destination `Chat` privée par profil conserve conversations, cache/outbox chiffrés, file SQLite persistante, pause/reprise, journal opérationnel et rendu Markdown sans HTML brut. Les modes `Local`, `Web léger` et `Web approfondi` utilisent Qwen 3.5 9B Q4 par défaut ou Gemma 4 en remplacement depuis les réglages. Tavily alimente les modes Web et Exa MCP anonyme complète `Web approfondi`, avec budgets, checkpoints, diagnostics, consentement et vérification des sources. Le modèle est persisté par run. Qwen ajoute automatiquement un plan interne non-thinking de 256 tokens au plus pour les demandes locales complexes ; les modes Web utilisent déjà leur plan et leur vérification. Gemma active son thinking natif seulement pour les demandes complexes et les passes Web pertinentes. La case de forçage par message est retirée. Les contextes sont optimisés par étape à 8K/16K/32K, les sorties à 2K/4K et les extraits Web à 60000 caractères. Les durées excluent la file, le consentement et les pauses. Les migrations SQLite 14, 15 et 19 conservent la compatibilité historique. L’état produit est dans `docs/13-etat-assistant-local.md`, le checkpoint consolidé dans `docs/15-checkpoint-chat-tavily.md` et le runtime dans `docs/runbooks/assistant-gemma.md`.
 
-### 10.4 Veille RSS-first
+### 10.4 Veille orchestrée RSS-first
 
 1. télécharger RSS/Atom avec ETag et `Last-Modified` ;
 2. normaliser URL, titre, date, source et extrait ;
@@ -609,6 +615,8 @@ Chaîne d’action : `texte → intention structurée → validation → aperçu
 8. synchroniser métadonnées, résumés et états de lecture, pas les pages complètes.
 
 Le contenu d’un article est une entrée hostile : les instructions qu’il contient ne sont jamais suivies. Tout résumé conserve un lien source et indique l’échec éventuel du modèle.
+
+État d’exécution au 18 août 2026 : la Veille orchestrée est candidate avec dossiers privés, sources vérifiées, collecte HTTP conditionnelle, découverte multi-sources, référence initiale, cadence quotidienne/hebdomadaire, rattrapage unique, analyse Qwen structurée sans outil, FTS5, concepts à trois états, sujets fusionnés, synthèse sourcée, cache/outbox Dexie chiffrés et signalement dans `Aujourd’hui`. RSS/Atom reste prioritaire ; un complément Tavily borné intervient lorsqu’une veille possède trop peu de flux. Les migrations SQLite 16 à 18 et Dexie 6 à 7 portent le stockage ; voir `docs/17-etat-veille-orchestree.md` et `docs/runbooks/veille-rss.md`.
 
 ### 10.5 Critère avant embeddings
 
@@ -627,7 +635,7 @@ Un spike embeddings n’est autorisé que si, sur un corpus réel d’au moins 3
 - **Agenda** : tâches et rendez-vous en vues Liste, Semaine et Mois ;
 - **Courses** : liste partagée, quantité facultative, état acheté et présentation unique regroupée par rayon ;
 - **Budget** : réalisé, prévisionnel, enveloppes, provisions, réserve et épargne partagés ;
-- **Chat** : conversations privées par profil, Gemma 4 local avec recherche Tavily optionnelle ;
+- **Chat** : conversations privées par profil, Gemma 4 ou Qwen 3.5 local avec Tavily et Exa MCP optionnels selon le mode Web ;
 - **Veille** : digest, articles et thèmes du profil ;
 - bouton `+` persistant hors Assistant : Tâche, Course, Dépense/Revenu, Capture.
 
@@ -849,7 +857,7 @@ Travaux :
 
 Sortie : deux profils obtiennent des digests différents ; toute proposition doit être confirmée ; une panne Ollama ne bloque ni collecte ni application Maison.
 
-État d’exécution au 11 août 2026 : le Chat propose trois profondeurs, avec Gemma 4 local et Tavily optionnel, borné et sourcé. La veille RSS, les digests et le briefing restent à construire. Une panne Ollama reste hors du chemin critique Maison.
+État d’exécution au 18 août 2026 : le Chat propose trois profondeurs, avec Gemma 4 ou Qwen 3.5 local, Tavily et Exa MCP optionnels, bornés et sourcés. La Veille orchestrée et ses synthèses sont candidates automatisées ; leur recette physique reste ouverte. Le briefing déterministe reste à construire. Une panne Ollama reste hors du chemin critique Maison.
 
 ### Lot 3 — sauvegarde et durcissement (1 à 3 heures)
 

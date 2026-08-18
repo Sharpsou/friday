@@ -18,7 +18,7 @@ Friday sera une **Progressive Web App offline-first** :
 5. Google Drive reçoit uniquement des sauvegardes chiffrées ;
 6. Google Calendar « Maison » reste la source de vérité de l'agenda.
 
-La mise au point et la recette MVP utilisent le PC et le Samsung Galaxy A17. La compatibilité iPhone sera testée plus tard avec la même PWA ; elle ne bloque plus le MVP et ne nécessite aucun build Apple.
+La mise au point et la recette MVP utilisent le PC et le Samsung Galaxy A17. La même PWA fonctionne sur l’iPhone sans build Apple : la réception d’une mise à jour et la suppression de l’auto-zoom des champs ont été confirmées physiquement, tandis que l’appairage et le parcours offline complet restent à valider.
 
 ## MVP retenu
 
@@ -28,8 +28,8 @@ La mise au point et la recette MVP utilisent le PC et le Samsung Galaxy A17. La 
 - courses partagées, avec classement facultatif par rayon en arrière-plan ;
 - budget partagé : frais fixes, courses, santé, loisirs, extras, revenus réguliers/extra et épargne mensuelle ;
 - calendrier Google Maison en lecture et cache offline ;
-- veille RSS/Atom configurable par profil ;
-- assistant privé par profil via Ollama, avec modes classique et Web consentis ;
+- veille orchestrée configurable par profil, alimentée en priorité par RSS/Atom ;
+- assistant privé par profil via Ollama, avec modes `Local`, `Web léger` et `Web approfondi` consentis via Tavily et Exa MCP ;
 - cache local chiffré, outbox et synchronisation LAN ;
 - sauvegarde et restauration chiffrées.
 
@@ -37,6 +37,7 @@ La construction est pilotée en temps agentique : environ **8 à 16 heures cumul
 
 ## Documentation
 
+- [Guide complet fonctionnel et technique](docs/guides/guide-complet-fonctionnel-et-technique-friday.md) — **prise en main pour lecteur Python/R/SQL découvrant TypeScript**
 - [Point de reprise pour un nouveau chat](docs/00-reprise-nouveau-chat.md) — **commencer ici**
 - [Recette du socle offline Galaxy A17](docs/recipes/galaxy-a17-p0.md) — porte Lot 0B validée
 - [Feuille de route technique et d’implémentation](docs/10-feuille-de-route-technique-implementation.md) — **support d’exécution actuel**
@@ -46,6 +47,8 @@ La construction est pilotée en temps agentique : environ **8 à 16 heures cumul
 - [Runbook sauvegarde/restauration](docs/runbooks/sauvegarde-restauration.md) — **procédure cible**
 - [État du budget partagé](docs/12-etat-budget-partage.md) — **checkpoint automatisé du 10 août 2026**
 - [État de l’Assistant local](docs/13-etat-assistant-local.md) — **checkpoint automatisé du 10 août 2026**
+- [Checkpoint Chat Tavily et Exa](docs/15-checkpoint-chat-tavily.md) — **orchestration Web active**
+- [État de la Veille orchestrée](docs/17-etat-veille-orchestree.md) — **checkpoint actif de la Veille**
 - [ADR-013 — accès extérieur privé par Tailscale `/32`](docs/adr/013-acces-exterieur-tailscale-route-privee.md) — **accepté, mise en œuvre en pause**
 - [Audit documentaire du 10 août 2026](docs/15-audit-documentation-2026-08-10.md)
 - [ADR-012 — budget partagé et enveloppes](docs/adr/012-budget-partage-enveloppes.md) — **règles et formules**
@@ -58,7 +61,7 @@ La construction est pilotée en temps agentique : environ **8 à 16 heures cumul
 - [Recette A17 du classement des courses](docs/recipes/galaxy-a17-lot-1a-grocery-classification.md)
 - [Recette A17 de l’authentification et de l’appairage](docs/recipes/galaxy-a17-lot-1a-auth.md) — **checkpoint physique**
 - [Recette A17 des courses partagées](docs/recipes/galaxy-a17-lot-1a-groceries.md) — **checkpoint physique**
-- [Recette iPhone de mise à jour PWA](docs/recipes/iphone-pwa-update.md) — **mise à jour reçue, auth/offline encore ouverts**
+- [Recette iPhone de mise à jour PWA](docs/recipes/iphone-pwa-update.md) — **mise à jour et correctif d’auto-zoom reçus, auth/offline encore ouverts**
 - [Étude PWA offline](docs/08-option-pwa-offline.md) — étude ayant conduit à la décision
 - [Décisions précédentes](docs/07-decisions-apres-reponses.md) — historique avant bascule PWA
 - [Questions, réponses et points ouverts](docs/06-questions.md)
@@ -96,9 +99,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-Fr
 
 L'installateur place également sur le Bureau `Friday - Lancer ou redemarrer`, qui exécute cette commande sans navigateur ni terminal visible et confirme son résultat, ainsi que `Friday - Arreter le service`, qui coupe uniquement le hub Friday pour la recette hors ligne.
 
-La porte go/no-go offline/synchronisation du Lot 0B est validée sur le Galaxy A17. Le candidat couvre les tâches, les courses, l’authentification fermée et le classement facultatif déjà documentés, ainsi que les destinations `Budget` et `Assistant`. Le budget partagé sépare réalisé, prévisionnel, enveloppes, provisions et épargne réelle. L’Assistant conserve des conversations privées par profil, une outbox chiffrée et une file persistante pour ses modes classique et Web. Les données financières réelles ne sont pas chargées tant que BitLocker, les ACL de `D:\FridayData` et la sauvegarde préalable ne passent pas la porte du runbook. Les recettes physiques A17 et iPhone restent distinctes des preuves automatisées.
+La porte go/no-go offline/synchronisation du Lot 0B est validée sur le Galaxy A17. Le candidat couvre Agenda, Courses, authentification fermée, classement facultatif, `En course`, Budget, Chat et Veille orchestrée. Le budget partagé sépare réalisé, prévisionnel, enveloppes, provisions et épargne réelle. Le Chat conserve conversations privées, outbox chiffrée et file persistante pour ses trois modes, avec Tavily et Exa MCP en Web approfondi. La Veille conserve dossiers, sources, concepts, sujets, synthèses et runs privés par profil. Les données financières réelles ne sont pas chargées tant que BitLocker, les ACL de `D:\FridayData` et la sauvegarde préalable ne passent pas la porte du runbook. Les recettes physiques A17 et iPhone restent distinctes des preuves automatisées.
 
-Dernière validation automatisée du candidat : `pnpm verify` réussi le 10 août 2026 avec 142 tests unitaires/intégration, le build PWA/hub et 22 scénarios Google Chrome mobile. Une sauvegarde SQLite pré-migration a été créée hors dépôt ; le runtime HTTPS a ensuite été reconstruit et redémarré sans navigateur avec les migrations Assistant 10 et 11 et un healthcheck réussi.
+Dernière validation automatisée du candidat : `pnpm verify` réussi le 18 août 2026 avec 192 tests unitaires/intégration, les builds PWA/hub et 23 scénarios Google Chrome mobile. SQLite est à la migration 19 et Dexie à la version 7. Le runtime HTTPS a ensuite été reconstruit et redémarré sans navigateur avec un healthcheck réussi. Sur iPhone, l’utilisateur a confirmé le même jour que les champs Tâche et Course ne déclenchent plus l’auto-zoom, tandis que le zoom manuel reste disponible.
 
 L’accès extérieur retenu pour une étude ultérieure est une route Tailscale privée limitée à `192.168.1.14/32`, sans ouverture de box et sans changement d’origine PWA. Cette mise en œuvre est en pause. Lorsqu’elle reprendra, tout nouveau compte ou appareil devra être enrôlé depuis le Wi-Fi Maison ; seuls les appareils déjà approuvés pourront utiliser Friday en 5G.
 

@@ -1,4 +1,5 @@
 import { fridayDb } from './db/friday-db.js';
+import type { AssistantModel } from '@friday/contracts';
 
 export const APP_PREFERENCES_KEY = 'app-preferences-v1';
 
@@ -12,6 +13,7 @@ export const THEME_OPTIONS = [
 export type AppTheme = (typeof THEME_OPTIONS)[number]['value'];
 
 export interface AppPreferences {
+  assistantModel: AssistantModel;
   currentResponsibleName: string;
   homeTaskLimit: number;
   otherResponsibleName: string;
@@ -20,6 +22,7 @@ export interface AppPreferences {
 }
 
 export const DEFAULT_APP_PREFERENCES: AppPreferences = {
+  assistantModel: 'qwen3.5',
   currentResponsibleName: 'Moi',
   homeTaskLimit: 20,
   otherResponsibleName: 'Autre adulte',
@@ -45,6 +48,8 @@ export function normalizeAppPreferences(value: unknown): AppPreferences {
   if (!value || typeof value !== 'object') return DEFAULT_APP_PREFERENCES;
   const candidate = value as Partial<AppPreferences>;
   return {
+    assistantModel:
+      candidate.assistantModel === 'gemma4' ? 'gemma4' : 'qwen3.5',
     currentResponsibleName: cleanName(
       candidate.currentResponsibleName,
       DEFAULT_APP_PREFERENCES.currentResponsibleName,

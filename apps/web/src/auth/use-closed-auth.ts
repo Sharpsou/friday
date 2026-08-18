@@ -11,6 +11,7 @@ import type {
 import {
   bootstrapHousehold,
   getDeviceApprovalStatus,
+  loadLocalAuthState,
   loadAuthState,
   login as loginWithFriday,
   logout,
@@ -36,9 +37,18 @@ export function useClosedAuth() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const nextState = await loadAuthState();
-    setState(nextState);
-    setLoading(false);
+    try {
+      const localState = await loadLocalAuthState();
+      if (localState.session) {
+        setState(localState);
+        setLoading(false);
+      }
+      setState(await loadAuthState());
+    } catch {
+      setState(INITIAL_STATE);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {

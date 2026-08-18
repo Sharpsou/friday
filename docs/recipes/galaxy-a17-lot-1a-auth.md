@@ -20,7 +20,8 @@ Observation du 9 août 2026 : le propriétaire a initialisé le foyer. Le RG405M
 2. Saisir le nom, un identifiant Friday simple comme `adulte1`, la phrase secrète et le nom `Galaxy A17`. Aucune adresse e-mail n'est demandée.
 3. Vérifier que l'application s'ouvre, que les tâches déjà présentes sont toujours visibles et que les nouvelles synchronisations reviennent à `Connecté`.
 4. Arrêter le hub, fermer puis rouvrir Friday : l'A17 doit afficher le cache local et permettre une écriture hors ligne avec le profil déjà lié.
-5. Relancer le hub : l'attente doit revenir à zéro sans doublon.
+5. Réactiver les données mobiles tout en laissant le Wi-Fi et le VPN coupés, puis rouvrir Friday : le cache doit s’afficher sans rester sur `Ouverture du foyer`, même si Android considère le téléphone connecté à Internet.
+6. Relancer le hub : l'attente doit revenir à zéro sans doublon.
 
 ## Appairage du second adulte
 

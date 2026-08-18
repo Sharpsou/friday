@@ -20,8 +20,10 @@ import {
   AssistantConversationSchema,
   AssistantConversationsResponseSchema,
   AssistantCreateConversationRequestSchema,
+  AssistantExaUsageSchema,
   AssistantMessagesResponseSchema,
   AssistantQueueSummarySchema,
+  AssistantResearchDiagnosticsResponseSchema,
   AssistantRunEventsResponseSchema,
   AssistantRunSchema,
   AssistantSearchConsentRequestSchema,
@@ -34,10 +36,24 @@ import {
   GroceryClassificationJobSchema,
   GroceryClassificationPullResponseSchema,
   HealthResponseSchema,
+  InferenceStatusSchema,
   PairingCodeResponseSchema,
   PullResponseSchema,
   PushRequestSchema,
   PushResponseSchema,
+  WatchArticleSchema,
+  WatchArticleStateRequestSchema,
+  WatchAddDiscoveredSourcesRequestSchema,
+  WatchAddDiscoveredSourcesResponseSchema,
+  WatchConceptSchema,
+  WatchConceptStateRequestSchema,
+  WatchCreateRequestSchema,
+  WatchDiscoveryRequestSchema,
+  WatchDiscoverySchema,
+  WatchOverviewSchema,
+  WatchSchema,
+  WatchSourceValidateRequestSchema,
+  WatchUpdateRequestSchema,
 } from '@friday/contracts';
 
 import {
@@ -50,6 +66,7 @@ import {
   AssistantService,
 } from './assistant/assistant-service.js';
 import { TavilySearchClient } from './assistant/tavily-search.js';
+import { ExaMcpSearchClient } from './assistant/exa-mcp-search.js';
 import { ClosedAuthError, ClosedAuthService } from './auth/auth-service.js';
 import { loadOrCreateAuthSecret } from './auth/auth-secret.js';
 import { openDatabase } from './db/database.js';
@@ -62,6 +79,7 @@ import {
   type GroceryClassificationEngine,
 } from './groceries/ollama-classification-engine.js';
 import { SyncService } from './sync/sync-service.js';
+import { WatchNotFoundError, WatchService } from './watch/watch-service.js';
 
 export interface BuildHubOptions {
   authAttemptLimit?: number;
@@ -75,6 +93,7 @@ export interface BuildHubOptions {
   classificationEngine?: GroceryClassificationEngine;
   assistantEngine?: AssistantEngine;
   tavilySearchClient?: TavilySearchClient;
+  exaMcpSearchClient?: ExaMcpSearchClient;
   ollamaBaseUrl?: string;
   ollamaModel?: string;
   ollamaTimeoutMs?: number;
@@ -101,6 +120,16 @@ const AssistantConversationParamsSchema = z
 const AssistantRunParamsSchema = z.object({ id: z.string().uuid() }).strict();
 const AssistantEventsQuerySchema = z
   .object({ after: z.coerce.number().int().nonnegative().default(0) })
+  .strict();
+const WatchParamsSchema = z.object({ id: z.string().uuid() }).strict();
+const WatchArticleParamsSchema = z
+  .object({ articleId: z.string().uuid(), id: z.string().uuid() })
+  .strict();
+const WatchConceptParamsSchema = z
+  .object({ conceptId: z.string().uuid(), id: z.string().uuid() })
+  .strict();
+const WatchSuggestionRequestSchema = z
+  .object({ query: z.string().trim().min(3).max(500) })
   .strict();
 const HOUSEHOLD_ID = '1030b4f6-1e0f-48fa-adab-865750ce597d';
 
@@ -146,25 +175,31 @@ export async function buildHub(options: BuildHubOptions) {
           : {}),
       }),
   );
+  const assistantEngine =
+    options.assistantEngine ??
+    new OllamaAssistantEngine({
+      ...(options.ollamaBaseUrl ? { baseUrl: options.ollamaBaseUrl } : {}),
+      model: process.env.FRIDAY_ASSISTANT_MODEL ?? 'gemma4-12b-multimodal:128k',
+      qwenModel: process.env.FRIDAY_ASSISTANT_QWEN_MODEL ?? 'qwen3.5:9b-q4_K_M',
+      ...(process.env.FRIDAY_ASSISTANT_TIMEOUT_MS
+        ? {
+            timeoutMs: Number.parseInt(
+              process.env.FRIDAY_ASSISTANT_TIMEOUT_MS,
+              10,
+            ),
+          }
+        : {}),
+    });
+  const tavily =
+    options.tavilySearchClient ??
+    new TavilySearchClient(process.env.FRIDAY_TAVILY_API_KEY);
   const assistant = new AssistantService(
     database,
-    options.assistantEngine ??
-      new OllamaAssistantEngine({
-        ...(options.ollamaBaseUrl ? { baseUrl: options.ollamaBaseUrl } : {}),
-        model:
-          process.env.FRIDAY_ASSISTANT_MODEL ?? 'gemma4-12b-multimodal:128k',
-        ...(process.env.FRIDAY_ASSISTANT_TIMEOUT_MS
-          ? {
-              timeoutMs: Number.parseInt(
-                process.env.FRIDAY_ASSISTANT_TIMEOUT_MS,
-                10,
-              ),
-            }
-          : {}),
-      }),
-    options.tavilySearchClient ??
-      new TavilySearchClient(process.env.FRIDAY_TAVILY_API_KEY),
+    assistantEngine,
+    tavily,
+    options.exaMcpSearchClient ?? new ExaMcpSearchClient(),
   );
+  const watch = new WatchService(database, assistantEngine, undefined, tavily);
   const publicOrigin = options.publicOrigin ?? 'http://localhost';
   const closedAuth = new ClosedAuthService({
     ...(options.authAttemptLimit
@@ -775,6 +810,41 @@ export async function buildHub(options: BuildHubOptions) {
     }
   });
 
+  app.get('/api/assistant/web/exa-usage', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return AssistantExaUsageSchema.parse(assistant.exaUsage());
+    } catch (error) {
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.get(
+    '/api/assistant/conversations/:id/research-diagnostics',
+    async (request, reply) => {
+      const params = AssistantConversationParamsSchema.safeParse(
+        request.params,
+      );
+      if (!params.success)
+        return reply
+          .code(400)
+          .send({ error: 'invalid_assistant_conversation' });
+      try {
+        const session = await closedAuth.requireSession(request.headers);
+        return AssistantResearchDiagnosticsResponseSchema.parse(
+          assistant.researchDiagnostics(
+            session.member.profileId,
+            params.data.id,
+          ),
+        );
+      } catch (error) {
+        if (error instanceof AssistantNotFoundError)
+          return reply.code(404).send({ error: 'assistant_not_found' });
+        return sendClosedAuthError(error, reply);
+      }
+    },
+  );
+
   app.post('/api/assistant/runs/:id/search-consent', async (request, reply) => {
     if (!acceptsTrustedMutationOrigin(request.headers))
       return reply.code(403).send({ error: 'untrusted_origin' });
@@ -862,6 +932,280 @@ export async function buildHub(options: BuildHubOptions) {
     }
   });
 
+  app.get('/api/inference/status', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return InferenceStatusSchema.parse(
+        assistantEngine.getInferenceStatus?.() ?? {
+          active: null,
+          queued: { assistant: 0, watch: 0 },
+        },
+      );
+    } catch (error) {
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.get('/api/watch/overview', async (request, reply) => {
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return WatchOverviewSchema.parse(
+        watch.overview(session.member.profileId),
+      );
+    } catch (error) {
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.post('/api/watch/sources/validate', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = WatchSourceValidateRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_watch_source' });
+    try {
+      await closedAuth.requireSession(request.headers);
+      return await watch.validateSource(
+        body.data.url,
+        new AbortController().signal,
+      );
+    } catch (error) {
+      if (error instanceof ClosedAuthError)
+        return sendClosedAuthError(error, reply);
+      if (error instanceof Error)
+        return reply
+          .code(422)
+          .send({ error: 'watch_source_unavailable', message: error.message });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.post('/api/watch/source-suggestions', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = WatchSuggestionRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_watch_suggestion' });
+    try {
+      await closedAuth.requireSession(request.headers);
+      return {
+        sources: await watch.suggestSources(
+          body.data.query,
+          new AbortController().signal,
+        ),
+      };
+    } catch (error) {
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.post('/api/watch/discover', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = WatchDiscoveryRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_watch_discovery' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return WatchDiscoverySchema.parse(
+        await watch.discoverSources(
+          session.member.profileId,
+          body.data,
+          new AbortController().signal,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof ClosedAuthError)
+        return sendClosedAuthError(error, reply);
+      return reply.code(422).send({
+        error: 'watch_discovery_unavailable',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post('/api/watch/watches', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = WatchCreateRequestSchema.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: 'invalid_watch' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return WatchSchema.parse(
+        await watch.create(
+          session.member.profileId,
+          body.data,
+          new AbortController().signal,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof ClosedAuthError)
+        return sendClosedAuthError(error, reply);
+      if (error instanceof Error)
+        return reply
+          .code(422)
+          .send({ error: 'watch_unavailable', message: error.message });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.patch('/api/watch/watches/:id', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = WatchParamsSchema.safeParse(request.params);
+    const body = WatchUpdateRequestSchema.safeParse(request.body);
+    if (!params.success || !body.success)
+      return reply.code(400).send({ error: 'invalid_watch' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      return WatchSchema.parse(
+        await watch.update(
+          session.member.profileId,
+          params.data.id,
+          body.data,
+          new AbortController().signal,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof WatchNotFoundError)
+        return reply.code(404).send({ error: 'watch_not_found' });
+      if (error instanceof ClosedAuthError)
+        return sendClosedAuthError(error, reply);
+      if (error instanceof Error)
+        return reply
+          .code(422)
+          .send({ error: 'watch_unavailable', message: error.message });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.post(
+    '/api/watch/watches/:id/sources/discovered',
+    async (request, reply) => {
+      if (!acceptsTrustedMutationOrigin(request.headers))
+        return reply.code(403).send({ error: 'untrusted_origin' });
+      const params = WatchParamsSchema.safeParse(request.params);
+      const body = WatchAddDiscoveredSourcesRequestSchema.safeParse(
+        request.body,
+      );
+      if (!params.success || !body.success)
+        return reply.code(400).send({ error: 'invalid_watch_sources' });
+      try {
+        const session = await closedAuth.requireSession(request.headers);
+        return WatchAddDiscoveredSourcesResponseSchema.parse(
+          watch.addDiscoveredSources(
+            session.member.profileId,
+            params.data.id,
+            body.data.discoveryId,
+            body.data.candidateIds,
+          ),
+        );
+      } catch (error) {
+        if (error instanceof WatchNotFoundError)
+          return reply.code(404).send({ error: 'watch_not_found' });
+        if (error instanceof ClosedAuthError)
+          return sendClosedAuthError(error, reply);
+        if (error instanceof Error)
+          return reply.code(422).send({
+            error: 'watch_sources_unavailable',
+            message: error.message,
+          });
+        return sendClosedAuthError(error, reply);
+      }
+    },
+  );
+
+  app.delete('/api/watch/watches/:id', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = WatchParamsSchema.safeParse(request.params);
+    if (!params.success)
+      return reply.code(400).send({ error: 'invalid_watch' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      watch.delete(session.member.profileId, params.data.id);
+      return { deleted: true };
+    } catch (error) {
+      if (error instanceof WatchNotFoundError)
+        return reply.code(404).send({ error: 'watch_not_found' });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.post('/api/watch/watches/:id/run', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = WatchParamsSchema.safeParse(request.params);
+    if (!params.success)
+      return reply.code(400).send({ error: 'invalid_watch' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      watch.runNow(session.member.profileId, params.data.id);
+      return reply.code(202).send({ queued: true });
+    } catch (error) {
+      if (error instanceof WatchNotFoundError)
+        return reply.code(404).send({ error: 'watch_not_found' });
+      return sendClosedAuthError(error, reply);
+    }
+  });
+
+  app.put(
+    '/api/watch/watches/:id/articles/:articleId/state',
+    async (request, reply) => {
+      if (!acceptsTrustedMutationOrigin(request.headers))
+        return reply.code(403).send({ error: 'untrusted_origin' });
+      const params = WatchArticleParamsSchema.safeParse(request.params);
+      const body = WatchArticleStateRequestSchema.safeParse(request.body);
+      if (!params.success || !body.success)
+        return reply.code(400).send({ error: 'invalid_watch_state' });
+      try {
+        const session = await closedAuth.requireSession(request.headers);
+        return WatchArticleSchema.parse(
+          watch.setArticleState(
+            session.member.profileId,
+            params.data.id,
+            params.data.articleId,
+            body.data.operationId,
+            body.data.state,
+            body.data.exclusionKeyword,
+          ),
+        );
+      } catch (error) {
+        if (error instanceof WatchNotFoundError)
+          return reply.code(404).send({ error: 'watch_not_found' });
+        return sendClosedAuthError(error, reply);
+      }
+    },
+  );
+
+  app.put(
+    '/api/watch/watches/:id/concepts/:conceptId/state',
+    async (request, reply) => {
+      if (!acceptsTrustedMutationOrigin(request.headers))
+        return reply.code(403).send({ error: 'untrusted_origin' });
+      const params = WatchConceptParamsSchema.safeParse(request.params);
+      const body = WatchConceptStateRequestSchema.safeParse(request.body);
+      if (!params.success || !body.success)
+        return reply.code(400).send({ error: 'invalid_watch_concept_state' });
+      try {
+        const session = await closedAuth.requireSession(request.headers);
+        return WatchConceptSchema.parse(
+          watch.setConceptState(
+            session.member.profileId,
+            params.data.id,
+            params.data.conceptId,
+            body.data.operationId,
+            body.data.state,
+          ),
+        );
+      } catch (error) {
+        if (error instanceof WatchNotFoundError)
+          return reply.code(404).send({ error: 'watch_concept_not_found' });
+        return sendClosedAuthError(error, reply);
+      }
+    },
+  );
+
   app.route({
     method: ['GET', 'POST'],
     url: '/api/auth/*',
@@ -909,6 +1253,7 @@ export async function buildHub(options: BuildHubOptions) {
   }
 
   app.addHook('onClose', async () => {
+    await watch.stop();
     await assistant.stop();
     await groceryClassification.stop();
     database.close();

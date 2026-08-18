@@ -109,9 +109,30 @@ describe('Assistant API profile isolation', () => {
       url: `/api/assistant/runs/${runId}`,
       headers: { cookie: adultCookie },
     });
+    const ownerExaUsage = await app.inject({
+      method: 'GET',
+      url: '/api/assistant/web/exa-usage',
+      headers: { cookie: ownerCookie },
+    });
+    const ownerDiagnostics = await app.inject({
+      method: 'GET',
+      url: `/api/assistant/conversations/${conversationId}/research-diagnostics`,
+      headers: { cookie: ownerCookie },
+    });
+    const adultDiagnostics = await app.inject({
+      method: 'GET',
+      url: `/api/assistant/conversations/${conversationId}/research-diagnostics`,
+      headers: { cookie: adultCookie },
+    });
 
     expect(adultList.json()).toEqual({ conversations: [] });
     expect(adultConversation.statusCode).toBe(404);
     expect(adultRun.statusCode).toBe(404);
+    expect(ownerExaUsage.json()).toMatchObject({
+      calls: 0,
+      status: 'untested',
+    });
+    expect(ownerDiagnostics.json()).toEqual({ diagnostics: [] });
+    expect(adultDiagnostics.statusCode).toBe(404);
   });
 });

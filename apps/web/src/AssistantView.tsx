@@ -4,17 +4,21 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from 'react';
 
 import type {
   AssistantConversation,
+  AssistantExaUsage,
   AssistantMessage,
+  AssistantModel,
   AssistantMode,
   AssistantRun,
   AssistantRunEvent,
   AssistantWebUsage,
+  ResearchDiagnostic,
 } from '@friday/contracts';
 
 import {
@@ -23,6 +27,8 @@ import {
   deleteAssistantConversation,
   flushAssistantOutbox,
   getAssistantMessages,
+  getAssistantExaUsage,
+  getAssistantResearchDiagnostics,
   getAssistantRun,
   getAssistantRunEvents,
   getAssistantWebUsage,
@@ -47,6 +53,19 @@ function modeLabel(mode: AssistantMode): string {
   if (mode === 'web_light') return 'Web léger';
   if (mode === 'web_deep') return 'Web approfondi';
   return 'local';
+}
+
+function modelLabel(model: AssistantModel): string {
+  return model === 'qwen3.5' ? 'Qwen 3.5 9B Q4' : 'Gemma 4 12B';
+}
+
+function diagnosticStatusLabel(status: ResearchDiagnostic['status']): string {
+  if (status === 'success') return 'sources trouvées';
+  if (status === 'empty') return 'aucun résultat';
+  if (status === 'rate_limited') return 'limite atteinte';
+  if (status === 'unavailable') return 'indisponible';
+  if (status === 'skipped') return 'ignoré';
+  return 'échec';
 }
 
 function formatProgressOffset(durationMs: number) {
@@ -99,7 +118,13 @@ function AssistantProgress({
   );
 }
 
-export default function AssistantView() {
+export default function AssistantView({
+  assistantModel,
+  createRequest,
+}: {
+  assistantModel: AssistantModel;
+  createRequest: number;
+}) {
   const [conversations, setConversations] = useState<AssistantConversation[]>(
     [],
   );
@@ -113,26 +138,37 @@ export default function AssistantView() {
   const [offlinePending, setOfflinePending] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [busy, setBusy] = useState(false);
-  const [forceThinking, setForceThinking] = useState(false);
   const [webUsage, setWebUsage] = useState<AssistantWebUsage | null>(null);
+  const [exaUsage, setExaUsage] = useState<AssistantExaUsage | null>(null);
+  const [researchDiagnostics, setResearchDiagnostics] = useState<
+    ResearchDiagnostic[]
+  >([]);
   const [error, setError] = useState<string | null>(null);
+  const handledCreateRequest = useRef(createRequest);
 
   const reloadConversations = useCallback(async () => {
-    const [next, usage] = await Promise.all([
+    const [next, usage, nextExaUsage] = await Promise.all([
       listAssistantConversations(),
       navigator.onLine ? getAssistantWebUsage().catch(() => null) : null,
+      navigator.onLine ? getAssistantExaUsage().catch(() => null) : null,
     ]);
     setConversations(next);
     setWebUsage(usage);
+    setExaUsage(nextExaUsage);
     setSelectedId(
       (current) => current ?? next.find((item) => !item.archivedAt)?.id ?? null,
     );
   }, []);
 
   const reloadMessages = useCallback(async (conversationId: string) => {
-    const [result, pending] = await Promise.all([
+    const [result, pending, diagnostics] = await Promise.all([
       getAssistantMessages(conversationId),
       hasQueuedAssistantMessages(),
+      navigator.onLine
+        ? getAssistantResearchDiagnostics(conversationId).catch(() => ({
+            diagnostics: [],
+          }))
+        : Promise.resolve({ diagnostics: [] }),
     ]);
     const progressEvents = result.activeRun
       ? await getAssistantRunEvents(result.activeRun.id).catch(() => [])
@@ -141,6 +177,7 @@ export default function AssistantView() {
     setActiveRun(result.activeRun);
     setActiveRunEvents(progressEvents);
     setOfflinePending(pending);
+    setResearchDiagnostics(diagnostics.diagnostics);
   }, []);
 
   useEffect(() => {
@@ -203,7 +240,7 @@ export default function AssistantView() {
     return () => window.removeEventListener('online', flush);
   }, [reloadMessages, selectedId]);
 
-  async function createConversation() {
+  const createConversation = useCallback(async () => {
     if (!navigator.onLine) {
       setError('La création d’une conversation nécessite le hub.');
       return;
@@ -221,7 +258,13 @@ export default function AssistantView() {
     } finally {
       setBusy(false);
     }
-  }
+  }, [reloadConversations]);
+
+  useEffect(() => {
+    if (createRequest === handledCreateRequest.current) return;
+    handledCreateRequest.current = createRequest;
+    void createConversation();
+  }, [createConversation, createRequest]);
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
@@ -236,12 +279,12 @@ export default function AssistantView() {
       clientRequestId: crypto.randomUUID(),
       content,
       mode,
-      thinkingPolicy: forceThinking ? 'forced' : 'auto',
+      model: assistantModel,
+      thinkingPolicy: 'auto',
     } as const;
     try {
       const result = await sendAssistantMessage(selectedId, input);
       setDraft('');
-      setForceThinking(false);
       if (result) {
         setActiveRun(result.run);
         await reloadMessages(selectedId);
@@ -358,34 +401,45 @@ export default function AssistantView() {
     () => processingDuration(activeRunEvents, clockNow),
     [activeRunEvents, clockNow],
   );
+  const diagnosticsByRun = useMemo(() => {
+    const result = new Map<string, ResearchDiagnostic[]>();
+    for (const diagnostic of researchDiagnostics)
+      result.set(diagnostic.runId, [
+        ...(result.get(diagnostic.runId) ?? []),
+        diagnostic,
+      ]);
+    return result;
+  }, [researchDiagnostics]);
 
   return (
-    <section className="assistant-view" aria-labelledby="assistant-title">
-      <header className="section-heading assistant-heading">
-        <div>
-          <span className="eyebrow">Personnel</span>
-          <h2 id="assistant-title">Chat</h2>
-        </div>
-        <div className="assistant-heading-actions">
-          {webUsage ? (
-            <small
-              className="assistant-remaining-searches"
-              aria-label={`${webUsage.remainingBasicSearches.toString()} recherches Web légères restantes ce mois, quota partagé entre les deux profils`}
-              title="Compteur commun aux deux profils. Une recherche approfondie peut compter double."
-            >
-              Web · {webUsage.remainingBasicSearches} req. restantes
-            </small>
-          ) : null}
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => void createConversation()}
-            disabled={busy}
+    <section className="assistant-view" aria-label="Chat">
+      <div className="assistant-heading-actions">
+        {webUsage ? (
+          <small
+            className="assistant-remaining-searches"
+            aria-label={`${webUsage.remainingBasicSearches.toString()} recherches Web légères restantes ce mois, quota partagé entre les deux profils`}
+            title="Compteur commun aux deux profils. Une recherche approfondie peut compter double."
           >
-            Nouvelle conversation
-          </button>
-        </div>
-      </header>
+            Web · {webUsage.remainingBasicSearches} req. restantes
+          </small>
+        ) : null}
+        {exaUsage ? (
+          <small
+            className="assistant-remaining-searches"
+            aria-label={`${exaUsage.calls.toString()} appels Exa effectués ce mois`}
+            title="Compteur local des appels anonymes. Exa ne communique pas de quota restant."
+          >
+            Exa · {exaUsage.calls} appel{exaUsage.calls > 1 ? 's' : ''}
+            {exaUsage.status === 'untested'
+              ? ' · non testé'
+              : exaUsage.status === 'rate_limited'
+                ? ' · limité'
+                : exaUsage.status === 'unavailable'
+                  ? ' · indisponible'
+                  : ''}
+          </small>
+        ) : null}
+      </div>
 
       <div className="assistant-layout">
         <aside className="assistant-conversations" aria-label="Conversations">
@@ -463,7 +517,7 @@ export default function AssistantView() {
                     )}
                     {message.role === 'assistant' ? (
                       <small>
-                        Gemma 4 · {modeLabel(message.mode)}
+                        {modelLabel(message.model)} · {modeLabel(message.mode)}
                         {message.thinkingUsed ? ' · réflexion active' : ''}
                         {message.creditsUsed > 0
                           ? ` · ${message.creditsUsed.toString()} crédit(s)`
@@ -506,6 +560,26 @@ export default function AssistantView() {
                             </li>
                           ))}
                         </ol>
+                      </details>
+                    ) : null}
+                    {message.role === 'assistant' &&
+                    message.runId &&
+                    (diagnosticsByRun.get(message.runId)?.length ?? 0) > 0 ? (
+                      <details className="assistant-sources assistant-diagnostics">
+                        <summary>Diagnostic de recherche</summary>
+                        <ul>
+                          {diagnosticsByRun.get(message.runId)?.map((item) => (
+                            <li key={`${item.runId}-${item.provider}`}>
+                              <strong>
+                                {item.provider === 'exa' ? 'Exa' : 'Tavily'}
+                              </strong>{' '}
+                              · {diagnosticStatusLabel(item.status)} ·{' '}
+                              {item.results.toString()} résultat(s) ·{' '}
+                              {(item.durationMs / 1_000).toFixed(1)} s
+                              <small>{item.message}</small>
+                            </li>
+                          ))}
+                        </ul>
                       </details>
                     ) : null}
                   </article>
@@ -649,14 +723,6 @@ export default function AssistantView() {
                     </button>
                   ))}
                 </div>
-                <label className="assistant-thinking">
-                  <input
-                    type="checkbox"
-                    checked={forceThinking}
-                    onChange={(event) => setForceThinking(event.target.checked)}
-                  />
-                  Forcer la réflexion pour ce message
-                </label>
                 <textarea
                   value={draft}
                   maxLength={8_000}

@@ -486,6 +486,316 @@ const MIGRATION_014 = `
   );
 `;
 
+const MIGRATION_015 = `
+  ALTER TABLE assistant_messages ADD COLUMN assistant_model TEXT NOT NULL DEFAULT 'gemma4'
+    CHECK (assistant_model IN ('gemma4', 'qwen3.5'));
+  ALTER TABLE assistant_runs ADD COLUMN assistant_model TEXT NOT NULL DEFAULT 'gemma4'
+    CHECK (assistant_model IN ('gemma4', 'qwen3.5'));
+`;
+
+const MIGRATION_016 = `
+  CREATE TABLE watch_feeds (
+    id TEXT PRIMARY KEY,
+    feed_url TEXT NOT NULL UNIQUE,
+    site_url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    etag TEXT,
+    last_modified TEXT,
+    last_fetched_at TEXT,
+    next_fetch_at TEXT NOT NULL,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX watch_feeds_due_idx ON watch_feeds(next_fetch_at);
+
+  CREATE TABLE watches (
+    id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    question TEXT NOT NULL,
+    include_keywords_json TEXT NOT NULL,
+    exclude_keywords_json TEXT NOT NULL,
+    cadence TEXT NOT NULL CHECK (cadence IN ('daily', 'weekly')),
+    local_time TEXT NOT NULL,
+    weekday INTEGER CHECK (weekday IS NULL OR weekday BETWEEN 1 AND 7),
+    time_zone TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'paused')),
+    baseline_completed_at TEXT,
+    next_digest_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX watches_profile_idx ON watches(profile_id, status, updated_at);
+  CREATE INDEX watches_due_idx ON watches(status, next_digest_at);
+
+  CREATE TABLE watch_sources (
+    watch_id TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
+    feed_id TEXT NOT NULL REFERENCES watch_feeds(id) ON DELETE CASCADE,
+    PRIMARY KEY(watch_id, feed_id)
+  );
+
+  CREATE TABLE watch_articles (
+    id TEXT PRIMARY KEY,
+    feed_id TEXT NOT NULL REFERENCES watch_feeds(id) ON DELETE CASCADE,
+    external_id TEXT,
+    canonical_url TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    title TEXT NOT NULL,
+    published_at TEXT,
+    collected_at TEXT NOT NULL,
+    excerpt TEXT NOT NULL,
+    UNIQUE(feed_id, canonical_url),
+    UNIQUE(feed_id, fingerprint)
+  );
+  CREATE INDEX watch_articles_feed_date_idx
+    ON watch_articles(feed_id, published_at, collected_at);
+  CREATE VIRTUAL TABLE watch_articles_fts USING fts5(
+    article_id UNINDEXED, title, excerpt, tokenize='unicode61 remove_diacritics 2'
+  );
+
+  CREATE TABLE watch_matches (
+    watch_id TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
+    article_id TEXT NOT NULL REFERENCES watch_articles(id) ON DELETE CASCADE,
+    relevant INTEGER NOT NULL CHECK (relevant IN (0, 1)),
+    baseline INTEGER NOT NULL CHECK (baseline IN (0, 1)),
+    novelty TEXT CHECK (novelty IN ('new', 'evolution', 'confirmation')),
+    summary TEXT,
+    relevance_reason TEXT,
+    model_id TEXT,
+    prompt_version TEXT,
+    analyzed_at TEXT,
+    PRIMARY KEY(watch_id, article_id)
+  );
+
+  CREATE TABLE watch_article_states (
+    profile_id TEXT NOT NULL,
+    watch_id TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
+    article_id TEXT NOT NULL REFERENCES watch_articles(id) ON DELETE CASCADE,
+    state TEXT NOT NULL CHECK (state IN ('unread', 'read', 'useful', 'follow_up', 'hidden')),
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(profile_id, watch_id, article_id)
+  );
+  CREATE TABLE watch_state_operations (
+    operation_id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    applied_at TEXT NOT NULL
+  );
+
+  CREATE TABLE watch_digests (
+    id TEXT PRIMARY KEY,
+    watch_id TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
+    profile_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    new_count INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX watch_digests_profile_idx ON watch_digests(profile_id, created_at);
+  CREATE TABLE watch_digest_articles (
+    digest_id TEXT NOT NULL REFERENCES watch_digests(id) ON DELETE CASCADE,
+    article_id TEXT NOT NULL REFERENCES watch_articles(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL,
+    PRIMARY KEY(digest_id, article_id)
+  );
+
+  CREATE TABLE watch_runs (
+    id TEXT PRIMARY KEY,
+    watch_id TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
+    profile_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('queued', 'collecting', 'analyzing', 'completed', 'failed')),
+    manual INTEGER NOT NULL CHECK (manual IN (0, 1)),
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX watch_runs_queue_idx ON watch_runs(status, created_at);
+`;
+
+const MIGRATION_017 = `
+  ALTER TABLE watches ADD COLUMN languages_json TEXT NOT NULL DEFAULT '["fr","en"]';
+  ALTER TABLE watches ADD COLUMN last_web_search_at TEXT;
+  ALTER TABLE watch_feeds ADD COLUMN source_mode TEXT NOT NULL DEFAULT 'rss'
+    CHECK (source_mode IN ('rss', 'web'));
+  ALTER TABLE watch_runs ADD COLUMN stage TEXT NOT NULL DEFAULT 'queued';
+  ALTER TABLE watch_runs ADD COLUMN progress_current INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE watch_runs ADD COLUMN progress_total INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE watch_runs ADD COLUMN checkpoint_json TEXT;
+
+  CREATE TABLE watch_discovery_runs (
+    id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    question TEXT NOT NULL,
+    concepts_json TEXT NOT NULL,
+    queries_json TEXT NOT NULL,
+    examined_count INTEGER NOT NULL DEFAULT 0,
+    validated_count INTEGER NOT NULL DEFAULT 0,
+    credits_used INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX watch_discovery_profile_idx
+    ON watch_discovery_runs(profile_id, created_at);
+
+  CREATE TABLE watch_source_candidates (
+    id TEXT PRIMARY KEY,
+    discovery_id TEXT NOT NULL REFERENCES watch_discovery_runs(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    site_url TEXT NOT NULL,
+    feed_url TEXT,
+    source_kind TEXT NOT NULL CHECK (source_kind IN (
+      'official', 'research', 'specialized_press', 'general_press', 'community'
+    )),
+    language TEXT NOT NULL,
+    score REAL NOT NULL CHECK (score >= 0 AND score <= 1),
+    status TEXT NOT NULL CHECK (status IN ('validated', 'rejected')),
+    reason TEXT NOT NULL,
+    UNIQUE(discovery_id, site_url, feed_url)
+  );
+
+  CREATE TABLE watch_concepts (
+    id TEXT PRIMARY KEY,
+    watch_id TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
+    profile_id TEXT NOT NULL,
+    normalized_label TEXT NOT NULL,
+    label TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('tracked', 'secondary', 'muted')),
+    origin TEXT NOT NULL CHECK (origin IN ('user', 'assistant')),
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    UNIQUE(watch_id, normalized_label)
+  );
+  CREATE INDEX watch_concepts_profile_idx
+    ON watch_concepts(profile_id, watch_id, state);
+
+  CREATE TABLE watch_topics (
+    id TEXT PRIMARY KEY,
+    watch_id TEXT NOT NULL REFERENCES watches(id) ON DELETE CASCADE,
+    profile_id TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    event_kind TEXT NOT NULL CHECK (event_kind IN (
+      'new_topic', 'major_update', 'additional_detail', 'confirmation',
+      'contradiction', 'duplicate', 'noise'
+    )),
+    importance REAL NOT NULL CHECK (importance >= 0 AND importance <= 1),
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL
+  );
+  CREATE INDEX watch_topics_profile_idx
+    ON watch_topics(profile_id, watch_id, last_seen_at);
+  CREATE VIRTUAL TABLE watch_topics_fts USING fts5(
+    topic_id UNINDEXED, title, summary, tokenize='unicode61 remove_diacritics 2'
+  );
+
+  CREATE TABLE watch_topic_articles (
+    topic_id TEXT NOT NULL REFERENCES watch_topics(id) ON DELETE CASCADE,
+    article_id TEXT NOT NULL REFERENCES watch_articles(id) ON DELETE CASCADE,
+    contribution TEXT NOT NULL CHECK (contribution IN (
+      'new_topic', 'major_update', 'additional_detail', 'confirmation',
+      'contradiction', 'duplicate', 'noise'
+    )),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(topic_id, article_id)
+  );
+  CREATE TABLE watch_topic_concepts (
+    topic_id TEXT NOT NULL REFERENCES watch_topics(id) ON DELETE CASCADE,
+    concept_id TEXT NOT NULL REFERENCES watch_concepts(id) ON DELETE CASCADE,
+    PRIMARY KEY(topic_id, concept_id)
+  );
+  CREATE TABLE watch_topic_events (
+    id TEXT PRIMARY KEY,
+    topic_id TEXT NOT NULL REFERENCES watch_topics(id) ON DELETE CASCADE,
+    article_id TEXT NOT NULL REFERENCES watch_articles(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN (
+      'new_topic', 'major_update', 'additional_detail', 'confirmation',
+      'contradiction', 'duplicate', 'noise'
+    )),
+    summary TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(topic_id, article_id)
+  );
+  CREATE TABLE watch_concept_state_operations (
+    operation_id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    applied_at TEXT NOT NULL
+  );
+  CREATE TABLE watch_web_usage (
+    profile_id TEXT NOT NULL,
+    month TEXT NOT NULL,
+    credits_used INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(profile_id, month)
+  );
+`;
+
+const MIGRATION_018 = `
+  ALTER TABLE watches ADD COLUMN memory_initialized_at TEXT;
+  ALTER TABLE watch_runs ADD COLUMN trigger TEXT NOT NULL DEFAULT 'scheduled'
+    CHECK (trigger IN ('initialization', 'scheduled', 'catch_up', 'manual', 'resume'));
+  UPDATE watch_runs
+     SET trigger = CASE WHEN manual = 1 THEN 'manual' ELSE 'scheduled' END;
+`;
+
+const MIGRATION_019 = `
+  CREATE TABLE assistant_exa_usage (
+    month TEXT PRIMARY KEY,
+    calls INTEGER NOT NULL DEFAULT 0 CHECK (calls >= 0),
+    successes INTEGER NOT NULL DEFAULT 0 CHECK (successes >= 0),
+    empty_results INTEGER NOT NULL DEFAULT 0 CHECK (empty_results >= 0),
+    rate_limits INTEGER NOT NULL DEFAULT 0 CHECK (rate_limits >= 0),
+    failures INTEGER NOT NULL DEFAULT 0 CHECK (failures >= 0),
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE assistant_exa_health (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    status TEXT NOT NULL CHECK (status IN ('untested', 'available', 'rate_limited', 'unavailable')),
+    last_attempt_at TEXT,
+    last_message TEXT,
+    cooldown_until TEXT
+  );
+  INSERT INTO assistant_exa_health(id, status) VALUES (1, 'untested');
+
+  UPDATE assistant_sources SET provider = 'tavily' WHERE provider = 'legacy';
+`;
+
+const MIGRATION_019_COLUMNS = [
+  {
+    table: 'assistant_research_attempts',
+    column: 'provider',
+    definition:
+      "provider TEXT NOT NULL DEFAULT 'tavily' CHECK (provider IN ('tavily', 'exa'))",
+  },
+  {
+    table: 'assistant_research_attempts',
+    column: 'diagnostic_status',
+    definition:
+      "diagnostic_status TEXT CHECK (diagnostic_status IN ('success', 'empty', 'rate_limited', 'unavailable', 'failed', 'skipped'))",
+  },
+  {
+    table: 'assistant_research_attempts',
+    column: 'result_count',
+    definition:
+      'result_count INTEGER NOT NULL DEFAULT 0 CHECK (result_count >= 0)',
+  },
+  {
+    table: 'assistant_research_attempts',
+    column: 'duration_ms',
+    definition:
+      'duration_ms INTEGER CHECK (duration_ms IS NULL OR duration_ms >= 0)',
+  },
+  {
+    table: 'assistant_sources',
+    column: 'provider',
+    definition:
+      "provider TEXT NOT NULL DEFAULT 'tavily' CHECK (provider IN ('tavily', 'exa'))",
+  },
+] as const;
+
 const MIGRATIONS = [
   { sql: MIGRATION_001, version: 1 },
   { sql: MIGRATION_002, version: 2 },
@@ -501,6 +811,11 @@ const MIGRATIONS = [
   { sql: REMOVE_WEB_RESEARCH_TABLES, version: 12 },
   { sql: REMOVE_WEB_RESEARCH_TABLES, version: 13 },
   { sql: MIGRATION_014, version: 14 },
+  { sql: MIGRATION_015, version: 15 },
+  { sql: MIGRATION_016, version: 16 },
+  { sql: MIGRATION_017, version: 17 },
+  { sql: MIGRATION_018, version: 18 },
+  { sql: MIGRATION_019, version: 19 },
 ] as const;
 
 export function migrateDatabase(
@@ -522,6 +837,18 @@ export function migrateDatabase(
     if (applied) continue;
 
     database.transaction(() => {
+      if (migration.version === 19) {
+        for (const column of MIGRATION_019_COLUMNS) {
+          const exists = database
+            .prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`)
+            .get(column.table, column.column);
+          if (!exists) {
+            database.exec(
+              `ALTER TABLE ${column.table} ADD COLUMN ${column.definition}`,
+            );
+          }
+        }
+      }
       database.exec(migration.sql);
       database
         .prepare(

@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   AuthBootstrapRequestSchema,
   AuthPairRequestSchema,
+  AssistantExaUsageSchema,
+  AssistantResearchDiagnosticsResponseSchema,
   AssistantRunSchema,
   AssistantSendMessageRequestSchema,
   BudgetEntryRecordSchema,
@@ -14,15 +16,75 @@ import {
   GroceryItemRecordSchema,
   PushRequestSchema,
   TaskRecordSchema,
+  WatchUpdateRequestSchema,
 } from './index.js';
 
+describe('Watch contracts', () => {
+  it('keeps a schedule update partial and requires a weekday for weekly runs', () => {
+    expect(
+      WatchUpdateRequestSchema.parse({
+        cadence: 'weekly',
+        localTime: '08:15',
+        weekday: 3,
+      }),
+    ).toEqual({ cadence: 'weekly', localTime: '08:15', weekday: 3 });
+    expect(
+      WatchUpdateRequestSchema.safeParse({ cadence: 'weekly' }).success,
+    ).toBe(false);
+    expect(WatchUpdateRequestSchema.parse({ localTime: '09:00' })).toEqual({
+      localTime: '09:00',
+    });
+  });
+});
+
 describe('Assistant contracts', () => {
+  it('exposes separate local Exa usage and private research diagnostics', () => {
+    expect(
+      AssistantExaUsageSchema.parse({
+        month: '2026-08',
+        calls: 3,
+        successes: 2,
+        emptyResults: 0,
+        rateLimits: 1,
+        failures: 0,
+        status: 'rate_limited',
+        lastAttemptAt: '2026-08-13T00:00:00.000Z',
+        message: 'Limite gratuite Exa atteinte.',
+        cooldownUntil: '2026-08-13T01:00:00.000Z',
+      }).calls,
+    ).toBe(3);
+    expect(
+      AssistantResearchDiagnosticsResponseSchema.safeParse({
+        diagnostics: [
+          {
+            runId: '41bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+            provider: 'exa',
+            status: 'success',
+            calls: 1,
+            results: 4,
+            durationMs: 812,
+            message: 'Exa a fourni des sources.',
+            sourceIds: ['S1', 'S2'],
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
   it('bounds offline submissions and exposes a persistent queue state', () => {
+    expect(
+      AssistantSendMessageRequestSchema.parse({
+        clientRequestId: '41bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        content: 'Utilise le modèle par défaut',
+        mode: 'local',
+      }).model,
+    ).toBe('qwen3.5');
     expect(
       AssistantSendMessageRequestSchema.safeParse({
         clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
         content: 'Réponds localement',
         mode: 'local',
+        model: 'qwen3.5',
       }).success,
     ).toBe(true);
     expect(
@@ -48,6 +110,14 @@ describe('Assistant contracts', () => {
         clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
         content: 'Recherche en ligne',
         mode: 'classic',
+      }).success,
+    ).toBe(false);
+    expect(
+      AssistantSendMessageRequestSchema.safeParse({
+        clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        content: 'Modèle arbitraire',
+        mode: 'local',
+        model: 'modele-non-autorise',
       }).success,
     ).toBe(false);
   });

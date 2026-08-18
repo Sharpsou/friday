@@ -28,6 +28,7 @@ describe('app preferences', () => {
         theme: 'neon',
       }),
     ).toEqual({
+      assistantModel: 'qwen3.5',
       currentResponsibleName: 'Moi',
       homeTaskLimit: 20,
       otherResponsibleName: 'Alex Martin',
@@ -38,6 +39,7 @@ describe('app preferences', () => {
 
   it('persists responsible names and palette on this device', async () => {
     await saveAppPreferences({
+      assistantModel: 'qwen3.5',
       currentResponsibleName: 'Alice',
       homeTaskLimit: 30,
       otherResponsibleName: 'Bob',
@@ -46,6 +48,7 @@ describe('app preferences', () => {
     });
 
     await expect(loadAppPreferences()).resolves.toEqual({
+      assistantModel: 'qwen3.5',
       currentResponsibleName: 'Alice',
       homeTaskLimit: 30,
       otherResponsibleName: 'Bob',

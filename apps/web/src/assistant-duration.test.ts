@@ -36,6 +36,7 @@ function message(
     requestedMode: role === 'user' ? 'auto' : null,
     effectiveMode: role === 'assistant' ? 'web' : null,
     mode: role === 'assistant' ? 'web_light' : 'local',
+    model: 'gemma4',
     thinkingPolicy: 'auto',
     thinkingUsed: false,
     researchOutcome: role === 'assistant' ? 'completed' : 'not_needed',

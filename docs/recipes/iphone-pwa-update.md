@@ -1,8 +1,8 @@
 # Recette iPhone — mise à jour de la PWA
 
-Date : 9 août 2026
+Date : 18 août 2026
 
-Statut : validation partielle ; l'utilisateur confirme le 9 août 2026 que l'iPhone a bien reçu une mise à jour. Le déclencheur exact et la conservation détaillée des données n'ont pas été consignés ; les scénarios ci-dessous restent à rejouer pour fermer la recette.
+Statut : validation partielle ; l'utilisateur confirme le 9 août 2026 que l'iPhone a bien reçu une mise à jour, puis le 18 août que Chrome iOS ne zoome plus automatiquement au focus des champs Tâche et Course après application du correctif WebKit à 16 px minimum. Le zoom manuel reste disponible. Le déclencheur exact de la première mise à jour, la conservation détaillée des données, l’appairage et le parcours offline restent à rejouer pour fermer la recette.
 
 ## Préconditions
 
@@ -40,3 +40,9 @@ La version iPhone antérieure ne possède pas encore les nouveaux déclencheurs.
 | retour au premier plan               | à renseigner    | à renseigner          | à renseigner       | à renseigner |
 | clic sur l'état de connexion         | à renseigner    | à renseigner          | à renseigner       | à renseigner |
 | fermeture complète puis ouverture    | à renseigner    | à renseigner          | à renseigner       | à renseigner |
+
+## Auto-zoom des formulaires
+
+Le candidat du 18 août applique uniquement sur WebKit iOS une taille calculée minimale de 16 px aux champs textuels, listes et zones de texte. Il ne modifie pas le viewport, ne bloque pas le pincement manuel et ne change pas les tailles Android.
+
+Résultat physique communiqué par l’utilisateur : dans Chrome sur l’iPhone, les champs Tâche et Course ne déclenchent plus l’agrandissement automatique. Ce résultat valide ce défaut UX précis, pas l’authentification, la persistance offline ni la convergence à deux appareils.

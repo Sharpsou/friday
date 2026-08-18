@@ -33,7 +33,7 @@ trap {
   }
   else {
     Write-Host ''
-    Write-Host 'Friday n’a pas pu démarrer.' -ForegroundColor Red
+    Write-Host "Friday n’a pas pu démarrer." -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-Host "Lanceur : $PSCommandPath"
     if (-not $ExitAfterHealthCheck) {
@@ -270,17 +270,17 @@ try {
     Write-Host 'Exécutez le raccourci Friday - Configurer accès A17.' -ForegroundColor Yellow
   }
   else {
-    Write-Host 'Mode local uniquement : le certificat LAN n’est pas encore configuré.' -ForegroundColor Yellow
+    Write-Host "Mode local uniquement : le certificat LAN n’est pas encore configuré." -ForegroundColor Yellow
   }
   Write-Host "Recette détaillée : $recipePath"
   Write-Host 'Mini-recette : créer une tâche, recharger hors ligne, puis rétablir le réseau et vérifier la synchronisation.'
 
   if ($ShowStatusPopup) {
     $availableMessage = if ($phoneUrl) {
-      "Friday est disponible sur ton mobile.`n$phoneUrl"
+      'Friday est disponible sur ton mobile.{0}{1}' -f [Environment]::NewLine, $phoneUrl
     }
     else {
-      "Friday est disponible sur ce PC.`n$localUrl"
+      'Friday est disponible sur ce PC.{0}{1}' -f [Environment]::NewLine, $localUrl
     }
     Show-FridayMessage -Message $availableMessage
   }
@@ -294,7 +294,7 @@ try {
   }
 
   if ($alreadyRunning) {
-    Write-Host 'Une instance existait déjà ; le raccourci ne l’arrêtera pas.'
+    Write-Host "Une instance existait déjà ; le raccourci ne l’arrêtera pas."
     Read-Host 'Appuyez sur Entrée pour fermer cette fenêtre' | Out-Null
   }
   else {

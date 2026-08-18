@@ -45,7 +45,7 @@ if (
   authAttemptLimit !== undefined &&
   (!Number.isInteger(authAttemptLimit) || authAttemptLimit <= 0)
 ) {
-  throw new Error('FRIDAY_AUTH_ATTEMPT_LIMIT doit Ãªtre un entier positif.');
+  throw new Error('FRIDAY_AUTH_ATTEMPT_LIMIT doit être un entier positif.');
 }
 
 if (host !== '127.0.0.1' && host !== 'localhost' && !tlsConfigured) {
