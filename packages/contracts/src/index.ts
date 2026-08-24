@@ -6,6 +6,134 @@ export const UtcInstantSchema = z.string().datetime({ offset: true });
 export const LocalDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
 export const LocalTimeSchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u);
 
+export const RobotDirectionSchema = z.enum([
+  'forward',
+  'backward',
+  'left',
+  'right',
+]);
+export const RobotCapabilitySchema = z.enum([
+  'teleop',
+  'camera_look',
+  'camera_stream',
+  'line_follow',
+  'vision_objects',
+  'vision_people',
+  'vision_identity',
+  'vision_markers',
+  'signal_buzzer',
+  'signal_lights',
+]);
+export const RobotOperatingModeSchema = z.enum([
+  'manual',
+  'calibration',
+  'line',
+  'visual_tracking',
+  'markers',
+  'companion',
+]);
+export const RobotDetectionKindSchema = z.enum([
+  'object',
+  'person',
+  'identity',
+  'marker',
+  'safety',
+]);
+export const RobotDetectionSchema = z
+  .object({
+    id: z.string().trim().min(1).max(80),
+    kind: RobotDetectionKindSchema,
+    label: z.string().trim().min(1).max(80),
+    confidence: z.number().min(0).max(1).nullable(),
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    width: z.number().positive().max(1),
+    height: z.number().positive().max(1),
+    trackId: z.string().trim().min(1).max(80).nullable(),
+  })
+  .strict()
+  .refine(
+    (detection) =>
+      detection.x + detection.width <= 1.000_001 &&
+      detection.y + detection.height <= 1.000_001,
+    'La détection dépasse les limites de l’image.',
+  );
+export const RobotVisionFrameSchema = z
+  .object({
+    frameId: z.number().int().nonnegative(),
+    observedAt: UtcInstantSchema,
+    expiresAt: UtcInstantSchema,
+    imageWidth: z.number().int().positive().max(8_192),
+    imageHeight: z.number().int().positive().max(8_192),
+    processingMs: z.number().nonnegative().max(60_000),
+    detections: z.array(RobotDetectionSchema).max(100),
+  })
+  .strict();
+export const RobotTelemetrySchema = z
+  .object({
+    temperatureC: z.number().min(-20).max(120).nullable(),
+    throttledCode: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]+$/u)
+      .nullable(),
+    underVoltageActive: z.boolean(),
+    underVoltageOccurred: z.boolean(),
+    irLeftClear: z.boolean().nullable(),
+    irRightClear: z.boolean().nullable(),
+    lineSensors: z.array(z.number().int().min(0).max(1_023)).length(5),
+    cameraFps: z.number().nonnegative().max(120).nullable(),
+    commandLatencyMs: z.number().nonnegative().max(60_000).nullable(),
+  })
+  .strict();
+export const RobotStateSchema = z
+  .object({
+    available: z.boolean(),
+    connected: z.boolean(),
+    armed: z.boolean(),
+    mode: z.enum(['disabled', 'simulated', 'alphabot2']),
+    cameraAvailable: z.boolean(),
+    moving: z.boolean(),
+    lastSeenAt: UtcInstantSchema.nullable(),
+    warning: z.string().trim().min(1).max(300).nullable(),
+    capabilities: z.array(RobotCapabilitySchema).max(20),
+    operatingMode: RobotOperatingModeSchema,
+    controlExpiresAt: UtcInstantSchema.nullable(),
+    cameraPose: z
+      .object({
+        pan: z.number().min(-1).max(1),
+        tilt: z.number().min(-1).max(1),
+      })
+      .strict(),
+    telemetry: RobotTelemetrySchema,
+    vision: RobotVisionFrameSchema.nullable(),
+  })
+  .strict();
+const ExpiringRobotCommandSchema = z
+  .object({
+    commandId: UuidSchema,
+    issuedAt: UtcInstantSchema,
+    expiresAt: UtcInstantSchema,
+  })
+  .strict();
+export const RobotArmRequestSchema = z
+  .object({ durationMs: z.number().int().min(1_000).max(60_000) })
+  .strict();
+export const RobotDriveRequestSchema = ExpiringRobotCommandSchema.extend({
+  direction: RobotDirectionSchema,
+  intensity: z.number().min(0.1).max(0.35),
+  maxDurationMs: z.number().int().min(100).max(500),
+}).strict();
+export const RobotCameraLookRequestSchema = ExpiringRobotCommandSchema.extend({
+  pan: z.number().min(-1).max(1),
+  tilt: z.number().min(-1).max(1),
+}).strict();
+export const RobotOperatingModeRequestSchema = z
+  .object({ mode: RobotOperatingModeSchema })
+  .strict();
+export const RobotCommandResponseSchema = z
+  .object({ accepted: z.literal(true), state: RobotStateSchema })
+  .strict();
+
 export const AuthRoleSchema = z.enum(['owner', 'adult']);
 export const AuthIdentifierSchema = z
   .string()
@@ -820,6 +948,64 @@ export const GroceryClassificationPullResponseSchema = z
   })
   .strict();
 
+export const GroceryPhotoMediaTypeSchema = z.enum([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
+export const GroceryPhotoTranscriptionItemSchema = z
+  .object({
+    box: z
+      .object({
+        x: z.number().int().min(0).max(1000),
+        y: z.number().int().min(0).max(1000),
+        width: z.number().int().min(1).max(1000),
+        height: z.number().int().min(1).max(1000),
+      })
+      .strict(),
+    label: z.string().trim().min(1).max(200),
+    quantityText: z.string().trim().min(1).max(80).nullable(),
+    sourceText: z.string().trim().min(1).max(240),
+  })
+  .strict();
+export const GroceryPhotoTranscriptionRequestSchema = z
+  .object({
+    imageBase64: z.string().min(16).max(420_000),
+    mediaType: GroceryPhotoMediaTypeSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(input.imageBase64)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Image encodée invalide.',
+        path: ['imageBase64'],
+      });
+      return;
+    }
+    const padding = input.imageBase64.endsWith('==')
+      ? 2
+      : input.imageBase64.endsWith('=')
+        ? 1
+        : 0;
+    const byteLength = Math.floor((input.imageBase64.length * 3) / 4) - padding;
+    if (byteLength > 300_000) {
+      context.addIssue({
+        code: 'too_big',
+        origin: 'string',
+        maximum: 300_000,
+        inclusive: true,
+        message: 'La photo redimensionnée dépasse 300 Ko.',
+        path: ['imageBase64'],
+      });
+    }
+  });
+export const GroceryPhotoTranscriptionResponseSchema = z
+  .object({
+    items: z.array(GroceryPhotoTranscriptionItemSchema).max(60),
+  })
+  .strict();
+
 export const AssistantModeSchema = z.enum(['local', 'web_light', 'web_deep']);
 export const AssistantModelSchema = z.enum(['gemma4', 'qwen3.5']);
 export const AssistantThinkingPolicySchema = z.enum(['auto', 'forced']);
@@ -1523,6 +1709,16 @@ export type GroceryClassificationApplyResponse = z.infer<
 export type GroceryClassificationPullResponse = z.infer<
   typeof GroceryClassificationPullResponseSchema
 >;
+export type GroceryPhotoMediaType = z.infer<typeof GroceryPhotoMediaTypeSchema>;
+export type GroceryPhotoTranscriptionItem = z.infer<
+  typeof GroceryPhotoTranscriptionItemSchema
+>;
+export type GroceryPhotoTranscriptionRequest = z.infer<
+  typeof GroceryPhotoTranscriptionRequestSchema
+>;
+export type GroceryPhotoTranscriptionResponse = z.infer<
+  typeof GroceryPhotoTranscriptionResponseSchema
+>;
 export type AssistantMode = z.infer<typeof AssistantModeSchema>;
 export type AssistantModel = z.infer<typeof AssistantModelSchema>;
 export type AssistantThinkingPolicy = z.infer<
@@ -1604,3 +1800,20 @@ export type AuthDeviceApprovalStatus = z.infer<
   typeof AuthDeviceApprovalStatusSchema
 >;
 export type AuthLoginResponse = z.infer<typeof AuthLoginResponseSchema>;
+export type RobotDirection = z.infer<typeof RobotDirectionSchema>;
+export type RobotCapability = z.infer<typeof RobotCapabilitySchema>;
+export type RobotOperatingMode = z.infer<typeof RobotOperatingModeSchema>;
+export type RobotDetectionKind = z.infer<typeof RobotDetectionKindSchema>;
+export type RobotDetection = z.infer<typeof RobotDetectionSchema>;
+export type RobotVisionFrame = z.infer<typeof RobotVisionFrameSchema>;
+export type RobotTelemetry = z.infer<typeof RobotTelemetrySchema>;
+export type RobotState = z.infer<typeof RobotStateSchema>;
+export type RobotArmRequest = z.infer<typeof RobotArmRequestSchema>;
+export type RobotDriveRequest = z.infer<typeof RobotDriveRequestSchema>;
+export type RobotCameraLookRequest = z.infer<
+  typeof RobotCameraLookRequestSchema
+>;
+export type RobotOperatingModeRequest = z.infer<
+  typeof RobotOperatingModeRequestSchema
+>;
+export type RobotCommandResponse = z.infer<typeof RobotCommandResponseSchema>;

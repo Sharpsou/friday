@@ -40,68 +40,90 @@ function normalizeOptional(value: string | null | undefined): string | null {
 export async function createLocalGroceryItem(
   input: CreateLocalGroceryItemInput,
 ): Promise<GroceryItemRecord> {
-  const label = normalizeRequired(input.label);
-  if (!label) throw new Error('Le produit est obligatoire.');
+  const [item] = await createLocalGroceryItems([input]);
+  if (!item) throw new Error('Le produit est obligatoire.');
+  return item;
+}
 
+export async function createLocalGroceryItems(
+  inputs: readonly CreateLocalGroceryItemInput[],
+): Promise<GroceryItemRecord[]> {
+  if (inputs.length === 0 || inputs.length > 60) {
+    throw new Error('Ajoutez entre 1 et 60 produits à la fois.');
+  }
+  const normalizedInputs = inputs.map((input) => {
+    const label = normalizeRequired(input.label);
+    if (!label) throw new Error('Le produit est obligatoire.');
+    return { label, quantityText: normalizeOptional(input.quantityText) };
+  });
   const { deviceId, key, profileId } = await getDeviceContext();
   const now = new Date().toISOString();
-  const item = GroceryItemRecordSchema.parse({
-    id: crypto.randomUUID(),
-    householdId: HOUSEHOLD_ID,
-    revision: 0,
-    label,
-    quantityText: normalizeOptional(input.quantityText),
-    manualStoreFamilyId: null,
-    manualAisleId: null,
-    checkedAt: null,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-    createdByProfileId: profileId,
-    updatedByProfileId: profileId,
-    deviceId,
-    schemaVersion: 1,
-  });
-  const operation = GroceryItemOperationSchema.parse({
-    protocolVersion: 1,
-    operationId: crypto.randomUUID(),
-    deviceId,
-    profileId,
-    entityType: 'grocery_item',
-    entityId: item.id,
-    operation: 'upsert',
-    baseRevision: 0,
-    clientCreatedAt: now,
-    payload: item,
-  });
-  const [encryptedItem, encryptedOperation] = await Promise.all([
-    encryptJson(key, item, groceryItemAad(item.id, deviceId)),
-    encryptJson(key, operation, outboxAad(operation.operationId, deviceId)),
-  ]);
+  const entries = await Promise.all(
+    normalizedInputs.map(async (input) => {
+      const item = GroceryItemRecordSchema.parse({
+        id: crypto.randomUUID(),
+        householdId: HOUSEHOLD_ID,
+        revision: 0,
+        label: input.label,
+        quantityText: input.quantityText,
+        manualStoreFamilyId: null,
+        manualAisleId: null,
+        checkedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        createdByProfileId: profileId,
+        updatedByProfileId: profileId,
+        deviceId,
+        schemaVersion: 1,
+      });
+      const operation = GroceryItemOperationSchema.parse({
+        protocolVersion: 1,
+        operationId: crypto.randomUUID(),
+        deviceId,
+        profileId,
+        entityType: 'grocery_item',
+        entityId: item.id,
+        operation: 'upsert',
+        baseRevision: 0,
+        clientCreatedAt: now,
+        payload: item,
+      });
+      const [encryptedItem, encryptedOperation] = await Promise.all([
+        encryptJson(key, item, groceryItemAad(item.id, deviceId)),
+        encryptJson(key, operation, outboxAad(operation.operationId, deviceId)),
+      ]);
+      return { encryptedItem, encryptedOperation, item, operation };
+    }),
+  );
 
   await fridayDb.transaction(
     'rw',
     fridayDb.groceryItems,
     fridayDb.outbox,
     async () => {
-      await fridayDb.groceryItems.put({
-        encrypted: encryptedItem,
-        id: item.id,
-        revision: 0,
-        syncState: 'pending',
-        updatedAt: now,
-      });
-      await fridayDb.outbox.put({
-        createdAt: now,
-        encryptedPayload: encryptedOperation,
-        entityId: item.id,
-        operationId: operation.operationId,
-        state: 'pending',
-      });
+      await fridayDb.groceryItems.bulkPut(
+        entries.map(({ encryptedItem, item }) => ({
+          encrypted: encryptedItem,
+          id: item.id,
+          revision: 0,
+          syncState: 'pending' as const,
+          updatedAt: now,
+        })),
+      );
+      await fridayDb.outbox.bulkPut(
+        entries.map(({ encryptedOperation, item, operation }) => ({
+          createdAt: now,
+          encryptedPayload: encryptedOperation,
+          entityId: item.id,
+          operationId: operation.operationId,
+          state: 'pending' as const,
+        })),
+      );
     },
   );
 
-  return item;
+  return entries.map(({ item }) => item);
 }
 
 async function queueLocalGroceryItemUpdate(

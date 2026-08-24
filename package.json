@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "preview": "pnpm --filter @friday/hub start",
-    "test": "pnpm -r --if-present --workspace-concurrency=1 test",
+    "test": "pnpm test:robot && pnpm -r --if-present --workspace-concurrency=1 test",
+    "test:robot": "python -m unittest discover -s robot/tests -p \"test_*.py\"",
     "test:e2e": "playwright test",
     "typecheck": "pnpm -r typecheck",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e"

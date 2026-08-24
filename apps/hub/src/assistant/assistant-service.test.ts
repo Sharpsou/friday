@@ -106,6 +106,7 @@ describe('AssistantService', () => {
 
   it('uses the light Web budget, persists sources and verifies the answer', async () => {
     let verifyCalls = 0;
+    let verifiedQuestion = '';
     const fetcher = async (input: Parameters<typeof fetch>[0]) =>
       new Response(
         String(input).endsWith('/usage')
@@ -134,8 +135,9 @@ describe('AssistantService', () => {
           content: `Brouillon ${options?.evidence?.length.toString()}`,
           thinkingUsed: true,
         }),
-        verifyAnswer: async () => {
+        verifyAnswer: async (question) => {
           verifyCalls += 1;
+          verifiedQuestion = question;
           return { content: 'Réponse vérifiée [S1]', thinkingUsed: true };
         },
       }),
@@ -163,7 +165,7 @@ describe('AssistantService', () => {
       effectiveMode: 'web',
       mode: 'web_light',
       thinkingUsed: true,
-      researchOutcome: 'completed',
+      researchOutcome: 'partial',
       creditsUsed: 2,
     });
     expect(state.messages.at(-1)?.sources).toHaveLength(1);
@@ -185,6 +187,7 @@ describe('AssistantService', () => {
     expect((await service.webUsage()).creditsUsed).toBe(2);
     expect((await service.webUsage()).remainingBasicSearches).toBe(948);
     expect(verifyCalls).toBe(1);
+    expect(verifiedQuestion).toBe('Quel est le fait récent ?');
   });
 
   it('forces deep Web and starts Tavily and anonymous Exa MCP in parallel', async () => {

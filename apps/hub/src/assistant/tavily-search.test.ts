@@ -1,8 +1,47 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { TavilySearchClient, TavilyUnavailableError } from './tavily-search.js';
+import {
+  normalizeResearchEvidence,
+  TavilySearchClient,
+  TavilyUnavailableError,
+} from './tavily-search.js';
 
 describe('TavilySearchClient', () => {
+  it('rejects video metadata without a readable transcript', () => {
+    expect(
+      normalizeResearchEvidence({
+        title: 'Une vidéo',
+        url: 'https://www.youtube.com/watch?v=abc',
+        content:
+          'Une vidéo\nChaîne exemple\nDescription\nUne simple description.\nTranscript:',
+        publishedAt: null,
+      }),
+    ).toBeNull();
+  });
+
+  it('keeps a substantial video transcript with its declared origin and warnings', () => {
+    const transcript = Array.from(
+      { length: 100 },
+      (_, index) => `information${index.toString()}`,
+    ).join(' ');
+
+    expect(
+      normalizeResearchEvidence({
+        title: 'Une conférence scientifique',
+        url: 'https://www.youtube.com/watch?v=abc',
+        content: `Une conférence scientifique\nInstitut exemple\n1200 subscribers\nDescription\nRésumé.\nTranscript:\n${transcript}`,
+        publishedAt: '2026-08-01T00:00:00.000Z',
+      }),
+    ).toMatchObject({
+      format: 'video_transcript',
+      origin: 'Institut exemple',
+      title: 'Une conférence scientifique — Institut exemple',
+      content: expect.stringContaining(
+        'PRUDENCE: la transcription peut contenir des erreurs',
+      ),
+    });
+  });
+
   it('keeps the key server-side and reports Tavily credits', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

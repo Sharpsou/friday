@@ -2,7 +2,10 @@ import { isIP } from 'node:net';
 
 import { z } from 'zod';
 
-import type { TavilyEvidence } from './tavily-search.js';
+import {
+  normalizeResearchEvidence,
+  type TavilyEvidence,
+} from './tavily-search.js';
 
 const EXA_MCP_URL = 'https://mcp.exa.ai/mcp';
 const MAX_RESPONSE_BYTES = 1_000_000;
@@ -114,7 +117,7 @@ export function parseExaResults(text: string): TavilyEvidence[] {
   const sanitized = sanitizeExternalText(text);
   const blocks = sanitized.split(/\n\s*---\s*\n/gu);
   const evidence: TavilyEvidence[] = [];
-  for (const block of blocks) {
+  for (const [index, block] of blocks.entries()) {
     const title = field(block, 'Title');
     const urlValue = field(block, 'URL');
     if (!urlValue) continue;
@@ -133,12 +136,14 @@ export function parseExaResults(text: string): TavilyEvidence[] {
       0,
       MAX_EXCERPT_CHARACTERS,
     );
-    evidence.push({
+    const normalized = normalizeResearchEvidence({
       title: (title || url.hostname).slice(0, 500),
       url: url.toString(),
       publishedAt: normalizePublishedAt(field(block, 'Published')),
       content,
+      relevanceScore: Math.max(0.3, 1 - index * 0.08),
     });
+    if (normalized) evidence.push(normalized);
   }
   return evidence.slice(0, 8);
 }

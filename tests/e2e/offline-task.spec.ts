@@ -423,7 +423,7 @@ test('the private Assistant keeps an encrypted message queued offline', async ({
   await context.setOffline(false);
 });
 
-test('the six destinations fit at 360px and budget data can persist or be removed', async ({
+test('the seven destinations fit at 360px and budget data can persist or be removed', async ({
   context,
   page,
 }) => {
@@ -442,7 +442,12 @@ test('the six destinations fit at 360px and budget data can persist or be remove
     'Budget',
     'Chat',
     'Veille',
+    'Robot',
   ]);
+  await navigation.getByRole('button', { name: 'Robot' }).click();
+  await expect(page.getByRole('heading', { name: 'Robot' })).toBeVisible();
+  await expect(page.getByText('Caméra indisponible')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ARRÊT' })).toBeDisabled();
   await navigation.getByRole('button', { name: 'Budget' }).click();
   await expect(page.getByRole('heading', { name: 'Budget' })).toBeVisible();
   await expect(
@@ -599,6 +604,63 @@ test('the six destinations fit at 360px and budget data can persist or be remove
       fullPage: true,
     });
   }
+});
+
+test('the real camera stays visible while motor outputs remain simulated', async ({
+  page,
+}) => {
+  await page.route('**/api/robot/state', async (route) =>
+    route.fulfill({
+      json: {
+        available: true,
+        connected: true,
+        armed: false,
+        mode: 'simulated',
+        cameraAvailable: true,
+        moving: false,
+        lastSeenAt: '2026-08-24T00:00:00.000Z',
+        warning: 'Simulation : aucune sortie GPIO.',
+        capabilities: ['teleop', 'camera_stream'],
+        operatingMode: 'manual',
+        controlExpiresAt: null,
+        cameraPose: { pan: 0, tilt: 0 },
+        telemetry: {
+          temperatureC: 47,
+          throttledCode: '0x0',
+          underVoltageActive: false,
+          underVoltageOccurred: false,
+          irLeftClear: true,
+          irRightClear: true,
+          lineSensors: [700, 720, 900, 850, 910],
+          cameraFps: 10,
+          commandLatencyMs: null,
+        },
+        vision: null,
+      },
+    }),
+  );
+  await page.route('**/api/robot/camera/stream', async (route) =>
+    route.fulfill({
+      contentType: 'image/gif',
+      body: Buffer.from(
+        'R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==',
+        'base64',
+      ),
+    }),
+  );
+
+  await page.goto('/');
+  await page
+    .getByRole('navigation', { name: 'Navigation principale' })
+    .getByRole('button', { name: 'Robot' })
+    .click();
+
+  const camera = page.getByRole('img', { name: 'Vue en direct du robot' });
+  await expect(camera).toBeVisible();
+  await expect(page.getByText('SIMULATION', { exact: true })).toBeVisible();
+  expect(
+    await camera.evaluate((image) => getComputedStyle(image).opacity),
+  ).toBe('1');
 });
 
 test('a new offline task stays pending while an older task remains shared', async ({
@@ -1169,7 +1231,7 @@ test('local settings persist names, palette and the optional Gemma model', async
   await expect(dialog.getByLabel('Modèle local')).toHaveValue('qwen3.5');
   await expect(
     dialog.getByLabel('Modèle local').locator('option[value="gemma4"]'),
-  ).toHaveText('Gemma 4 12B · thinking approfondi');
+  ).toHaveText('Gemma 4 E4B QAT · thinking approfondi');
   await dialog.getByLabel('Modèle local').selectOption('gemma4');
   await dialog.getByLabel('Premier responsable').fill('Alice');
   await dialog.getByLabel('Deuxième responsable').fill('Bob');
@@ -1249,7 +1311,7 @@ test('shared groceries persist through an offline purchase cycle', async ({
   const navigation = page.getByRole('navigation', {
     name: 'Navigation principale',
   });
-  await expect(navigation.getByRole('button')).toHaveCount(6);
+  await expect(navigation.getByRole('button')).toHaveCount(7);
   await expect(
     navigation.getByRole('button', { name: 'Agenda', exact: true }),
   ).toBeVisible();
@@ -1397,6 +1459,173 @@ test('shopping mode keeps only the grouped checklist and works offline', async (
   await page.getByRole('button', { name: /Connecté|Hors ligne/u }).click();
   await page.getByRole('button', { name: `Supprimer ${label}` }).click();
   await expect(page.getByText(label)).toHaveCount(0);
+});
+
+test('a photographed list is reviewed once, corrected and imported without classification', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  let classificationRequests = 0;
+  let photoRequests = 0;
+  const photoRequestReleases: Array<() => void> = [];
+  await page.route('**/api/groceries/photo-transcription', async (route) => {
+    const requestIndex = photoRequests;
+    photoRequests += 1;
+    await new Promise<void>((resolve) => {
+      photoRequestReleases[requestIndex] = resolve;
+    });
+    await route
+      .fulfill({
+        json: {
+          items: [
+            {
+              box: { x: 80, y: 100, width: 300, height: 45 },
+              sourceText: 'oeufs',
+              label: 'oeufs',
+              quantityText: null,
+            },
+            {
+              box: { x: 560, y: 30, width: 310, height: 50 },
+              sourceText: 'fleur de sel x2',
+              label: 'fleur de sel',
+              quantityText: 'x2',
+            },
+          ],
+        },
+      })
+      .catch(() => undefined);
+  });
+  await page.route(
+    '**/api/groceries/classification-proposals',
+    async (route) => {
+      classificationRequests += 1;
+      await route.abort();
+    },
+  );
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Courses', exact: true }).click();
+  const initialGroceryCount = Number(
+    await page.locator('.topbar-context-actions .count-badge').textContent(),
+  );
+  expect(initialGroceryCount).toBeGreaterThanOrEqual(0);
+  await expect(
+    page.locator('.grocery-classification-toolbar .page-actions'),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Photo', exact: true }),
+  ).toBeEnabled();
+  const cameraInput = page.getByLabel('Photo prise avec l’appareil photo');
+  const galleryInput = page.getByLabel('Photo choisie dans la galerie');
+  await expect(cameraInput).toHaveAttribute('capture', 'environment');
+  await expect(galleryInput).not.toHaveAttribute('capture');
+  const actionBoxes = await Promise.all(
+    ['En course', 'Photo', 'Classer par rayon'].map((name) =>
+      page.getByRole('button', { name, exact: true }).boundingBox(),
+    ),
+  );
+  expect(actionBoxes.every((box) => box !== null)).toBe(true);
+  expect(
+    Math.max(...actionBoxes.map((box) => box?.y ?? 0)) -
+      Math.min(...actionBoxes.map((box) => box?.y ?? 0)),
+  ).toBeLessThan(2);
+  await page.getByRole('button', { name: 'Photo', exact: true }).click();
+  await expect(
+    page.getByRole('menuitem', { name: 'Prendre une photo' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('menuitem', { name: 'Choisir dans la galerie' }),
+  ).toBeVisible();
+  const testPhoto = {
+    name: 'liste.svg',
+    mimeType: 'image/svg+xml',
+    buffer: Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="100%" height="100%" fill="white"/><text x="40" y="80" fill="black">oeufs</text></svg>',
+    ),
+  };
+  await galleryInput.setInputFiles(testPhoto);
+
+  await expect.poll(() => photoRequests).toBe(1);
+  await expect(
+    page.getByRole('button', { name: 'Analyse…', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Agenda' })).toBeVisible();
+  await page.getByRole('button', { name: 'Courses', exact: true }).click();
+  await page.getByRole('button', { name: 'Analyse…', exact: true }).click();
+  let dialog = page.getByRole('dialog', { name: 'Analyse en cours' });
+  await expect(dialog).toContainText('Friday lit la liste sur le PC');
+  await dialog.getByRole('button', { name: 'Annuler l’analyse' }).click();
+  photoRequestReleases[0]?.();
+  await expect(
+    page.getByRole('button', { name: 'Photo', exact: true }),
+  ).toBeVisible();
+
+  await page.getByRole('button', { name: 'Photo', exact: true }).click();
+  await galleryInput.setInputFiles(testPhoto);
+  await expect.poll(() => photoRequests).toBe(2);
+  await expect(
+    page.getByRole('button', { name: 'Analyse…', exact: true }),
+  ).toBeVisible();
+  photoRequestReleases[1]?.();
+  await expect(
+    page.getByRole('button', { name: 'Photo prête', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Photo prête', exact: true }).click();
+
+  dialog = page.getByRole('dialog', { name: 'Vérifier la photo' });
+  await expect(
+    dialog.getByAltText('Liste de courses photographiée'),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole('button', { name: 'Modifier oeufs' }),
+  ).toBeVisible();
+  await dialog.getByLabel('Produit 1').fill('Œufs plein air');
+  await dialog.getByRole('button', { name: 'Ajouter les produits' }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'À classer', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: 'Œufs plein air' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('listitem').filter({ hasText: 'fleur de sel' }),
+  ).toContainText('x2');
+  await expect(
+    page.locator('.topbar').getByRole('button', { name: 'Modifier' }),
+  ).toBeVisible();
+  await expect
+    .poll(async () => {
+      const count = await page
+        .locator('.topbar-context-actions .count-badge')
+        .textContent();
+      return Number(count ?? '0');
+    })
+    .toBeGreaterThanOrEqual(initialGroceryCount + 2);
+  const topbarBoxes = await Promise.all([
+    page.locator('.topbar h1').boundingBox(),
+    page.locator('.topbar-context-actions .count-badge').boundingBox(),
+    page
+      .locator('.topbar')
+      .getByRole('button', { name: 'Modifier' })
+      .boundingBox(),
+    page.locator('.topbar .status-pill').boundingBox(),
+    page.locator('.topbar .settings-button').boundingBox(),
+  ]);
+  expect(topbarBoxes.every((box) => box !== null)).toBe(true);
+  for (let index = 1; index < topbarBoxes.length; index += 1) {
+    const previous = topbarBoxes[index - 1];
+    const current = topbarBoxes[index];
+    expect((previous?.x ?? 0) + (previous?.width ?? 0)).toBeLessThanOrEqual(
+      (current?.x ?? 0) + 1,
+    );
+  }
+  expect(
+    (topbarBoxes.at(-1)?.x ?? 0) + (topbarBoxes.at(-1)?.width ?? 0),
+  ).toBeLessThanOrEqual(360);
+  expect(classificationRequests).toBe(0);
 });
 
 test('grocery classification stays visible in background and can be stopped', async ({

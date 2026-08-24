@@ -77,6 +77,7 @@ Chemin : `D:\prog\friday`
 - le cache chiffré d'un appareil déjà lié s'ouvre immédiatement hors ligne, y compris lorsque le réseau mobile fait croire au navigateur qu'Internet est disponible alors que l'IP privée du hub est inaccessible ; la vérification du hub est bornée à cinq secondes et se poursuit après l'hydratation locale ; une déconnexion volontaire en attente reste bloquante, et une révocation empêche les échanges serveur mais ne peut pas effacer à distance les données déjà téléchargées ;
 - navigation corrigée selon le retour utilisateur : `Maison` devient `Agenda` et `Courses` est une quatrième destination principale, sans sous-onglet intermédiaire ;
 - courses partagées candidates : la destination `Courses` permet d'ajouter un produit avec quantité facultative, le marquer acheté ou à reprendre et le supprimer ; `Aujourd'hui` résume les produits restants ; chaque action passe par le cache chiffré et la même outbox en ligne et hors ligne ;
+- import photo candidat : `Photo` ouvre l'appareil photo ou le sélecteur, redimensionne l'image sur le téléphone puis la fait transcrire uniquement par `qwen3.5:9b-q4_K_M` sur Ollama local ; l'unique écran de validation conserve la photo avec les détections en surimpression, le texte brut lu et les libellés/quantités éditables avant un ajout atomique par l'outbox chiffrée ; la photo n'est pas persistée et les produits arrivent volontairement sans rayon ; l'évaluation et la recette A17 sont dans `docs/18-etat-import-photo-courses.md` ;
 - les contrats partagés, la migration SQLite 5, la migration Dexie 2, le push/pull et les tombstones de courses sont couverts ; un correctif recopie aussi l'identité d'appareil de la session authentifiée avant synchronisation pour empêcher un rejet d'identité après appairage ;
 - l'édition au toucher est candidate dans le mode `Modifier` : tâche (titre, date, heure, durée, responsable et note, avec portée occurrence/série) et course (libellé, quantité et rayon manuel) passent par le cache chiffré et l'outbox, y compris hors ligne ; le bouton `Supprimer` reste directement visible ;
 - un rayon corrigé manuellement est porté par la course partagée et prioritaire sur le classement automatique ; la migration SQLite 7 ajoute les deux colonnes de surcharge manuelle ;
@@ -96,7 +97,7 @@ Chemin : `D:\prog\friday`
 - le candidat avec les destinations distinctes `Agenda` et `Courses` a été redémarré sur `https://192.168.1.14:8443` le 9 août 2026 ; le healthcheck réussit et `/api/auth/state` confirme un foyer initialisé (`bootstrapRequired: false`) sans ouvrir de session à un client non authentifié ;
 - l’accès extérieur retenu pour une reprise ultérieure est une route Tailscale privée limitée à `192.168.1.14/32`, sans ouverture de box ni changement d’origine ; sa mise en œuvre et l’enrôlement local uniquement sont documentés mais en pause ;
 - une sauvegarde pré-migration 12 intègre a été créée hors dépôt le 10 août 2026 ; la migration de retrait 13 conserve ce filet de restauration tout en supprimant les tables Web devenues inutiles ;
-- dernier contrôle complet du candidat du 18 août 2026 : `pnpm verify` réussi avec 192 tests unitaires/intégration, les builds PWA/hub et 23 scénarios Chrome mobile ;
+- dernier contrôle complet du candidat du 23 août 2026 : `pnpm verify` réussi avec 209 tests unitaires/intégration, les builds PWA/hub et 24 scénarios Chrome mobile ;
 - terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026 ; la recette physique responsable/filtre reste à confirmer ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
@@ -110,8 +111,9 @@ Chemin : `D:\prog\friday`
 | `D:\prog\jarvis` | Git, branche `master`, propre | modèles Ollama, sorties structurées, garde-fous | lecture seule ; réimplémenter les concepts en TypeScript |
 | `D:\prog\budget` | pas de Git, classeurs et données de travail | règles budget et fixtures métier | lecture seule |
 | `D:\prog\modulo` | pas de Git, document fondateur | principes local-first, calme et Action Firewall | lecture seule |
+| Agent physique Friday | conception interne fondée sur des composants et logiciels ouverts | compagnon à roues, LiDAR, intelligence Pi autonome et persona continu | prototype zéro AlphaBot2-Pi réinstallé et intégré en mode sûr sans LiDAR ni pince ; cible complète post-MVP à 490–650 €, plafond livré 700 € ; voir le [journal du 24 août](21-journal-implementation-alphabot2-2026-08-24.md), le [document fondateur](19-document-fondateur-agent-physique-friday.md), le [plan](20-plan-implementation-robot-friday-alphabot2.md) et l’[ADR-014](adr/014-agent-physique-otto-diy-oeil-friday.md) |
 
-Aucun fichier de ces quatre projets ne doit être copié ou modifié sans une décision de réutilisation explicite. Friday réutilise d’abord des concepts, des règles et des scénarios de test.
+Aucun fichier des quatre projets locaux ne doit être copié ou modifié sans une décision de réutilisation explicite. Friday réutilise d’abord des concepts, des règles et des scénarios de test. Mini Pi et Otto DIY restent des inspirations externes : aucun firmware, fichier matériel ou runtime robotique n'est intégré au monorepo à ce stade.
 
 ### Environnement local constaté
 
@@ -130,7 +132,9 @@ Modèles Ollama utiles déjà installés :
 - `granite4:3b` — 2,1 Go ;
 - `ministral-3:8b` — 6,0 Go ;
 - `gemma4-12b-builder:64k` — 7,6 Go ;
-- `gemma4-12b-multimodal:128k` — 7,6 Go.
+- `gemma4:e4b-it-qat` — 6,1 Go, option Chat Gemma active ;
+- `gemma4:e2b-it-qat` — 4,3 Go, conservé uniquement pour benchmark ;
+- `gemma4-12b-multimodal:128k` — 7,6 Go, ancien modèle Chat conservé pour comparaison et retour arrière.
 
 Les autres modèles lourds ne font pas partie du service quotidien.
 
@@ -188,10 +192,11 @@ Les autres modèles lourds ne font pas partie du service quotidien.
 ### Veille et IA
 
 - RSS/Atom d’abord, sources et thèmes choisis par profil ;
-- Qwen 3.5 9B Q4 par défaut avec délibération courte automatique, ou Gemma 4 12B avec thinking natif automatique en remplacement local par appareil ; modèle persisté par run ; contextes 8K/16K/32K selon l’étape ;
+- Qwen 3.5 9B Q4 par défaut avec délibération courte automatique, ou Gemma 4 E4B QAT avec thinking natif automatique en remplacement du seul modèle Chat par appareil ; le classement Courses reste sur Ministral 3 8B et l’import photo sur Qwen 3.5 9B ; modèle persisté par run ; contextes 8K/16K/32K selon l’étape ;
 - Ollama n’est jamais dans le chemin critique des tâches, courses, budget ou synchronisation ;
 - toute action IA devient une proposition structurée à confirmer ;
 - SQL/FTS5 avant embeddings ; aucun RAG au MVP.
+- L’agent physique post-MVP est un compagnon joueur et espiègle à roues différentielles asservies, cible 45 cm et maximum 50 cm, avec vrai LiDAR, Raspberry Pi autonome, contrôleur vital indépendant et persona continu même sans PC. Le noyau vise 500–600 €, l’estimation prudente couvre 490–650 € et le plafond livré reste 700 € ; reconnaissance consentie, pince, accélérateur et politique neuronale sont des lots facultatifs. Cette dernière ne peut proposer qu’une trajectoire courte derrière Nav2, le gateway et le microcontrôleur. Le [document fondateur](19-document-fondateur-agent-physique-friday.md) est la source détaillée ; l’[ADR-014](adr/014-agent-physique-otto-diy-oeil-friday.md) enregistre la décision.
 
 ### Sauvegarde
 
@@ -317,7 +322,7 @@ sans navigateur et documente la preuve.
 - [x] décisions utilisateur consolidées ;
 - [x] architecture PWA active séparée des documents Flutter historiques ;
 - [x] périmètre métier et exclusions définis ;
-- [x] état des quatre projets sources consigné ;
+- [x] état des quatre projets sources locaux et de l’orientation de l’agent physique consigné ;
 - [x] environnement et modèles Ollama consignés ;
 - [x] stack, données, sync, sécurité et tests documentés ;
 - [x] roadmap convertie en temps agentique + checkpoints ;
@@ -337,7 +342,8 @@ Contrôles automatiques actualisés sur le candidat complet du 18 août 2026 :
 - aucune signature évidente de clé privée, token OpenAI ou clé Google dans les documents ;
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
 - présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
-- `pnpm verify` réussi avec 192 tests unitaires/intégration, les builds PWA/hub et 23 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi le 23 août 2026 avec 209 tests unitaires/intégration, les builds PWA/hub et 24 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi le 24 août 2026 sur le candidat consolidé avec 237 tests Python/unitaires/intégration, les builds PWA/hub et 25 scénarios E2E Google Chrome mobile ;
 - health checks local et LAN réussis après redémarrage sans navigateur.
 
 Ce que cet audit ne prétend pas avoir validé :
@@ -357,3 +363,16 @@ Ce que cet audit ne prétend pas avoir validé :
 - usage continu de l’iPhone sur plusieurs jours ; mise à jour PWA, appairage/auth, redémarrage offline, convergence et suppression de l’auto-zoom des champs Tâche/Course sont confirmés physiquement.
 
 Ces limites sont des tâches de Lot 0/P1, pas des informations perdues.
+
+## 13. Socle Robot Friday
+
+Le plan complet de l’AlphaBot2-Pi réemployé est dans
+`docs/20-plan-implementation-robot-friday-alphabot2.md`. Le socle logiciel est
+présent et déployé : contrats partagés, passerelle authentifiée du hub,
+simulateur, onglet PWA, flux CSI réel, capteurs passifs, servos de caméra et
+service Python à watchdog local. Le Pi 3B utilise maintenant Raspberry Pi OS
+Trixie 32 bits et SSH par clé sur le port 22. Les roues restent neutralisées ;
+le servo pan tremble par intermittence et le dernier lissage doit être confirmé
+au prochain allumage. Le checkpoint complet est dans
+`docs/21-journal-implementation-alphabot2-2026-08-24.md` et la reprise sûre
+dans `docs/runbooks/robot-alphabot2.md`.

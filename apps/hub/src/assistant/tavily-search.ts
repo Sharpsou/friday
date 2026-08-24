@@ -33,9 +33,79 @@ export type TavilySearchDepth = 'basic' | 'advanced';
 
 export interface TavilyEvidence {
   content: string;
+  format?: 'web_page' | 'video_transcript';
+  origin?: string | null;
+  provider?: 'tavily' | 'exa';
   publishedAt: string | null;
+  relevanceScore?: number;
   title: string;
   url: string;
+}
+
+const VIDEO_DOMAINS = [
+  'youtube.com',
+  'youtu.be',
+  'youtube-nocookie.com',
+  'vimeo.com',
+  'dailymotion.com',
+  'dai.ly',
+] as const;
+
+export function normalizeResearchEvidence(
+  evidence: TavilyEvidence,
+): TavilyEvidence | null {
+  if (evidence.format === 'video_transcript') return evidence;
+  const url = new URL(evidence.url);
+  const hostname = url.hostname.toLowerCase().replace(/^www\./u, '');
+  const videoDomain = VIDEO_DOMAINS.find(
+    (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+  );
+  if (!videoDomain) return { ...evidence, format: 'web_page' };
+
+  const marker = /(?:^|\n)Transcript:\s*/iu.exec(evidence.content);
+  if (!marker) return null;
+  const transcript = evidence.content
+    .slice(marker.index + marker[0].length)
+    .replace(/\s+/gu, ' ')
+    .trim();
+  const words = transcript.match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
+  if (transcript.length < 500 || words < 80) return null;
+
+  const metadata = evidence.content.slice(0, marker.index);
+  const lines = metadata
+    .split(/\r?\n/gu)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const titleIndex = lines.findIndex(
+    (line) => line.toLocaleLowerCase() === evidence.title.toLocaleLowerCase(),
+  );
+  const origin = lines[titleIndex >= 0 ? titleIndex + 1 : 1] ?? null;
+  if (!origin || isVideoMetadataLine(origin)) return null;
+
+  const platform = videoDomain.includes('youtu')
+    ? 'YouTube'
+    : videoDomain.includes('vimeo')
+      ? 'Vimeo'
+      : 'Dailymotion';
+  return {
+    ...evidence,
+    title: `${evidence.title} — ${origin}`.slice(0, 500),
+    content: [
+      'FORMAT: transcription de vidéo externe, source secondaire.',
+      `PLATEFORME: ${platform}.`,
+      `ORIGINE DÉCLARÉE PAR LA PAGE: ${origin}.`,
+      'PRUDENCE: la transcription peut contenir des erreurs et ne constitue pas seule une preuve factuelle.',
+      `TRANSCRIPTION: ${transcript}`,
+    ].join('\n'),
+    format: 'video_transcript',
+    origin,
+  };
+}
+
+function isVideoMetadataLine(input: string): boolean {
+  return /^(?:description|transcript|\d[\d ,.]*\s+(?:subscribers?|likes?|views?|comments?)|posted:|premiered:)/iu.test(
+    input,
+  );
 }
 
 export interface TavilySearchResult {
@@ -116,6 +186,9 @@ export class TavilySearchClient {
             url: result.url,
             content: (result.raw_content ?? result.content).slice(0, 20_000),
             publishedAt: normalizePublishedAt(result.published_date),
+            ...(result.score === undefined
+              ? {}
+              : { relevanceScore: result.score }),
           })),
         };
       } catch (error) {

@@ -35,12 +35,20 @@ import {
   GroceryClassificationApplyResponseSchema,
   GroceryClassificationJobSchema,
   GroceryClassificationPullResponseSchema,
+  GroceryPhotoTranscriptionRequestSchema,
+  GroceryPhotoTranscriptionResponseSchema,
   HealthResponseSchema,
   InferenceStatusSchema,
   PairingCodeResponseSchema,
   PullResponseSchema,
   PushRequestSchema,
   PushResponseSchema,
+  RobotArmRequestSchema,
+  RobotCameraLookRequestSchema,
+  RobotCommandResponseSchema,
+  RobotDriveRequestSchema,
+  RobotOperatingModeRequestSchema,
+  RobotStateSchema,
   WatchArticleSchema,
   WatchArticleStateRequestSchema,
   WatchAddDiscoveredSourcesRequestSchema,
@@ -78,8 +86,19 @@ import {
   OllamaClassificationEngine,
   type GroceryClassificationEngine,
 } from './groceries/ollama-classification-engine.js';
+import {
+  OllamaPhotoTranscriptionEngine,
+  type GroceryPhotoTranscriptionEngine,
+} from './groceries/ollama-photo-transcription-engine.js';
 import { SyncService } from './sync/sync-service.js';
 import { WatchNotFoundError, WatchService } from './watch/watch-service.js';
+import {
+  DisabledRobotController,
+  RobotCommandRejectedError,
+  type RobotController,
+  RobotUnavailableError,
+  validateRobotCommandTiming,
+} from './robot/robot-controller.js';
 
 export interface BuildHubOptions {
   authAttemptLimit?: number;
@@ -91,15 +110,19 @@ export interface BuildHubOptions {
   };
   logger?: boolean;
   classificationEngine?: GroceryClassificationEngine;
+  photoTranscriptionEngine?: GroceryPhotoTranscriptionEngine;
   assistantEngine?: AssistantEngine;
   tavilySearchClient?: TavilySearchClient;
   exaMcpSearchClient?: ExaMcpSearchClient;
   ollamaBaseUrl?: string;
   ollamaModel?: string;
   ollamaTimeoutMs?: number;
+  photoTranscriptionModel?: string;
+  photoTranscriptionTimeoutMs?: number;
   publicOrigin?: string;
   authSecret?: string;
   webRoot?: string;
+  robotController?: RobotController;
 }
 
 const PullQuerySchema = z.object({
@@ -175,11 +198,23 @@ export async function buildHub(options: BuildHubOptions) {
           : {}),
       }),
   );
+  const groceryPhotoTranscription =
+    options.photoTranscriptionEngine ??
+    new OllamaPhotoTranscriptionEngine({
+      ...(options.ollamaBaseUrl ? { baseUrl: options.ollamaBaseUrl } : {}),
+      ...(options.photoTranscriptionModel
+        ? { model: options.photoTranscriptionModel }
+        : {}),
+      ...(options.photoTranscriptionTimeoutMs
+        ? { timeoutMs: options.photoTranscriptionTimeoutMs }
+        : {}),
+    });
+  let photoTranscriptionActive = false;
   const assistantEngine =
     options.assistantEngine ??
     new OllamaAssistantEngine({
       ...(options.ollamaBaseUrl ? { baseUrl: options.ollamaBaseUrl } : {}),
-      model: process.env.FRIDAY_ASSISTANT_MODEL ?? 'gemma4-12b-multimodal:128k',
+      model: process.env.FRIDAY_ASSISTANT_MODEL ?? 'gemma4:e4b-it-qat',
       qwenModel: process.env.FRIDAY_ASSISTANT_QWEN_MODEL ?? 'qwen3.5:9b-q4_K_M',
       ...(process.env.FRIDAY_ASSISTANT_TIMEOUT_MS
         ? {
@@ -200,6 +235,7 @@ export async function buildHub(options: BuildHubOptions) {
     options.exaMcpSearchClient ?? new ExaMcpSearchClient(),
   );
   const watch = new WatchService(database, assistantEngine, undefined, tavily);
+  const robot = options.robotController ?? new DisabledRobotController();
   const publicOrigin = options.publicOrigin ?? 'http://localhost';
   const closedAuth = new ClosedAuthService({
     ...(options.authAttemptLimit
@@ -232,6 +268,38 @@ export async function buildHub(options: BuildHubOptions) {
       trustedAuthOrigins.has(headers.origin.replace(/\/$/, ''))
     );
   };
+  const robotCommandWindows = new Map<string, number[]>();
+  const acceptsRobotCommandRate = (deviceId: string, limit: number) => {
+    const now = Date.now();
+    const recent = (robotCommandWindows.get(deviceId) ?? []).filter(
+      (timestamp) => timestamp > now - 1_000,
+    );
+    if (recent.length >= limit) {
+      robotCommandWindows.set(deviceId, recent);
+      return false;
+    }
+    recent.push(now);
+    robotCommandWindows.set(deviceId, recent);
+    return true;
+  };
+  const sendRobotError = (
+    error: unknown,
+    reply: { code(status: number): unknown },
+  ) => {
+    if (error instanceof RobotUnavailableError) {
+      return (reply.code(503) as { send(payload: unknown): unknown }).send({
+        error: 'robot_unavailable',
+        message: error.message,
+      });
+    }
+    if (error instanceof RobotCommandRejectedError) {
+      return (reply.code(409) as { send(payload: unknown): unknown }).send({
+        error: 'robot_command_rejected',
+        message: error.message,
+      });
+    }
+    return sendClosedAuthError(error, reply);
+  };
 
   await app.register(helmet, {
     contentSecurityPolicy: {
@@ -242,7 +310,7 @@ export async function buildHub(options: BuildHubOptions) {
         fontSrc: ["'self'"],
         formAction: ["'self'"],
         frameAncestors: ["'none'"],
-        imgSrc: ["'self'", 'data:'],
+        imgSrc: ["'self'", 'data:', 'blob:'],
         manifestSrc: ["'self'"],
         objectSrc: ["'none'"],
         scriptSrc: ["'self'"],
@@ -273,6 +341,127 @@ export async function buildHub(options: BuildHubOptions) {
       version: '0.0.0-p0',
     }),
   );
+
+  app.get('/api/robot/state', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return RobotStateSchema.parse(await robot.state());
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/arm', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotArmRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_robot_arm' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (!acceptsRobotCommandRate(session.deviceId, 5))
+        return reply.code(429).send({ error: 'robot_rate_limited' });
+      return RobotCommandResponseSchema.parse({
+        accepted: true,
+        state: await robot.arm(body.data.durationMs),
+      });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/drive', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotDriveRequestSchema.safeParse(request.body);
+    if (!body.success || !validateRobotCommandTiming(body.data))
+      return reply.code(400).send({ error: 'invalid_robot_drive' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (!acceptsRobotCommandRate(session.deviceId, 10))
+        return reply.code(429).send({ error: 'robot_rate_limited' });
+      return RobotCommandResponseSchema.parse({
+        accepted: true,
+        state: await robot.drive(body.data),
+      });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/camera/look', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotCameraLookRequestSchema.safeParse(request.body);
+    if (!body.success || !validateRobotCommandTiming(body.data))
+      return reply.code(400).send({ error: 'invalid_robot_camera_look' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (!acceptsRobotCommandRate(session.deviceId, 10))
+        return reply.code(429).send({ error: 'robot_rate_limited' });
+      return RobotCommandResponseSchema.parse({
+        accepted: true,
+        state: await robot.look(body.data),
+      });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/mode', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotOperatingModeRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_robot_mode' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      return RobotCommandResponseSchema.parse({
+        accepted: true,
+        state: await robot.setMode(body.data.mode),
+      });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/stop', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    try {
+      await closedAuth.requireSession(request.headers);
+      return RobotCommandResponseSchema.parse({
+        accepted: true,
+        state: await robot.stop(),
+      });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/camera/stream', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      request.raw.once('close', abort);
+      const stream = await robot.openCameraStream(controller.signal);
+      stream.body.once('close', () =>
+        request.raw.removeListener('close', abort),
+      );
+      return reply.type(stream.contentType).send(stream.body);
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
 
   app.get('/api/auth/state', async (request) =>
     AuthStateResponseSchema.parse({
@@ -537,6 +726,58 @@ export async function buildHub(options: BuildHubOptions) {
     }
     return PullResponseSchema.parse(sync.pull(parsed.data.after));
   });
+
+  app.post(
+    '/api/groceries/photo-transcription',
+    { bodyLimit: 512 * 1024 },
+    async (request, reply) => {
+      if (!acceptsTrustedMutationOrigin(request.headers)) {
+        return reply.code(403).send({ error: 'untrusted_origin' });
+      }
+      try {
+        await closedAuth.requireSession(request.headers);
+      } catch (error) {
+        return sendClosedAuthError(error, reply);
+      }
+      const parsed = GroceryPhotoTranscriptionRequestSchema.safeParse(
+        request.body,
+      );
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'invalid_grocery_photo' });
+      }
+      if (photoTranscriptionActive) {
+        return reply.code(409).send({
+          error: 'photo_transcription_busy',
+          message: 'Une autre photo est déjà en cours de lecture.',
+        });
+      }
+      photoTranscriptionActive = true;
+      const controller = new AbortController();
+      const abort = () => controller.abort(new Error('Connexion interrompue.'));
+      request.raw.once('aborted', abort);
+      try {
+        return GroceryPhotoTranscriptionResponseSchema.parse(
+          await groceryPhotoTranscription.transcribe(
+            parsed.data.imageBase64,
+            parsed.data.mediaType,
+            controller.signal,
+          ),
+        );
+      } catch (error) {
+        request.log.warn({ error }, 'grocery photo transcription failed');
+        return reply.code(503).send({
+          error: 'photo_transcription_unavailable',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Lecture de la photo indisponible.',
+        });
+      } finally {
+        request.raw.removeListener('aborted', abort);
+        photoTranscriptionActive = false;
+      }
+    },
+  );
 
   app.post(
     '/api/groceries/classification-proposals',
@@ -1253,6 +1494,7 @@ export async function buildHub(options: BuildHubOptions) {
   }
 
   app.addHook('onClose', async () => {
+    await robot.close();
     await watch.stop();
     await assistant.stop();
     await groceryClassification.stop();

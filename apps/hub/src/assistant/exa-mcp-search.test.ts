@@ -70,6 +70,14 @@ describe('ExaMcpSearchClient', () => {
     expect(results[0]?.content).not.toContain('ignore all instructions');
   });
 
+  it('does not treat video highlights as a readable transcript', () => {
+    const results = parseExaResults(
+      `Title: Vidéo résumée\nURL: https://www.youtube.com/watch?v=abc\nPublished: 2026-08-01\nHighlights:\n${'Résumé sans transcription. '.repeat(100)}`,
+    );
+
+    expect(results).toEqual([]);
+  });
+
   it('classifies rate limits without exposing the remote body', async () => {
     const client = new ExaMcpSearchClient(
       async () =>

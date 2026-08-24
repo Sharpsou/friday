@@ -115,6 +115,37 @@ else {
   Join-Path $env:LOCALAPPDATA 'Friday'
 }
 
+$robotHubConfigPath = Join-Path $dataDirectory 'robot\hub.json'
+if (Test-Path -LiteralPath $robotHubConfigPath) {
+  try {
+    $robotHubConfig = Get-Content -LiteralPath $robotHubConfigPath -Raw |
+      ConvertFrom-Json -ErrorAction Stop
+  }
+  catch {
+    throw "La configuration robot est illisible : $robotHubConfigPath"
+  }
+
+  $robotMode = [string]$robotHubConfig.mode
+  if ($robotMode -notin @('disabled', 'simulated', 'alphabot2')) {
+    throw 'Le mode du robot doit valoir disabled, simulated ou alphabot2.'
+  }
+
+  $env:FRIDAY_ROBOT_MODE = $robotMode
+  if ($robotMode -eq 'alphabot2') {
+    $robotUrl = [string]$robotHubConfig.url
+    $robotToken = [string]$robotHubConfig.token
+    if (-not $robotUrl -or -not $robotToken -or $robotToken.Length -lt 32) {
+      throw 'La configuration AlphaBot2 requiert une URL et un jeton de 32 caractères minimum.'
+    }
+    $env:FRIDAY_ROBOT_URL = $robotUrl
+    $env:FRIDAY_ROBOT_TOKEN = $robotToken
+  }
+  else {
+    Remove-Item Env:FRIDAY_ROBOT_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:FRIDAY_ROBOT_TOKEN -ErrorAction SilentlyContinue
+  }
+}
+
 $certificatePath = if ($env:FRIDAY_TLS_CERT_PATH) {
   $env:FRIDAY_TLS_CERT_PATH
 }
@@ -182,6 +213,13 @@ try {
   Write-Host ''
   Write-Host 'Friday - lancement du candidat de recette' -ForegroundColor Cyan
   Write-Host "Données : $dataDirectory"
+  $displayRobotMode = if ($env:FRIDAY_ROBOT_MODE) {
+    $env:FRIDAY_ROBOT_MODE
+  }
+  else {
+    'disabled'
+  }
+  Write-Host "Robot : $displayRobotMode"
 
   if (-not $SkipBuild) {
     Write-Host 'Construction de la PWA et du hub...'

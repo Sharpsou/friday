@@ -51,6 +51,7 @@ import {
 } from './db/task-repository.js';
 import {
   createLocalGroceryItem,
+  createLocalGroceryItems,
   deleteLocalGroceryItem,
   listGroceryItems,
   setLocalGroceryItemChecked,
@@ -97,13 +98,15 @@ import { TaskCalendar } from './TaskCalendar.js';
 import { formatTaskRecurrence } from './task-recurrence.js';
 import { useGroceryClassification } from './use-grocery-classification.js';
 import { ShoppingMode } from './ShoppingMode.js';
+import { GroceryPhotoImport } from './GroceryPhotoImport.js';
 import { GroceryEditorDialog, TaskEditorDialog } from './ItemEditorDialogs.js';
 
 const AssistantView = lazy(() => import('./AssistantView.js'));
 const WatchView = lazy(() => import('./WatchView.js'));
+const RobotView = lazy(() => import('./RobotView.js'));
 
 type Destination =
-  'today' | 'agenda' | 'groceries' | 'budget' | 'assistant' | 'watch';
+  'today' | 'agenda' | 'groceries' | 'budget' | 'assistant' | 'watch' | 'robot';
 type TaskView = 'list' | 'week' | 'month';
 type RecurrenceChoice =
   'none' | 'daily' | 'weekly' | 'custom-days' | 'monthly' | 'yearly';
@@ -664,6 +667,19 @@ export function App() {
     }
   }
 
+  async function importGroceryPhotoItems(
+    items: Array<{ label: string; quantityText: string | null }>,
+  ) {
+    await cancelActiveSync();
+    setSyncing(false);
+    await createLocalGroceryItems(items);
+    setMessage(
+      `${items.length.toString()} produit${items.length > 1 ? 's ajoutés' : ' ajouté'} sans classement.`,
+    );
+    await reloadLocalState();
+    void synchronize();
+  }
+
   async function saveTaskEdit(
     input: UpdateLocalTaskInput,
     scope: 'occurrence' | 'series',
@@ -992,6 +1008,21 @@ export function App() {
       <header className="topbar">
         <h1>Friday</h1>
         <div className="topbar-actions">
+          {destination === 'groceries' ? (
+            <div className="page-actions topbar-context-actions">
+              <span className="count-badge">{groceryItems.length}</span>
+              {groceryItems.length > 0 ? (
+                <button
+                  className="edit-toggle"
+                  type="button"
+                  aria-pressed={editingGroceries}
+                  onClick={() => setEditingGroceries((current) => !current)}
+                >
+                  {editingGroceries ? 'Terminer' : 'Modifier'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <button
             className={`status-pill ${connectionTone}`}
             type="button"
@@ -1526,22 +1557,13 @@ export function App() {
           </section>
         )}
 
-        {destination === 'groceries' && (
-          <section className="screen" aria-label="Courses">
-            <div className="grocery-classification-toolbar">
-              <div className="page-actions">
-                <span className="count-badge">{groceryItems.length}</span>
-                {groceryItems.length > 0 ? (
-                  <button
-                    className="edit-toggle"
-                    type="button"
-                    aria-pressed={editingGroceries}
-                    onClick={() => setEditingGroceries((current) => !current)}
-                  >
-                    {editingGroceries ? 'Terminer' : 'Modifier'}
-                  </button>
-                ) : null}
-              </div>
+        <section
+          className="screen"
+          aria-label="Courses"
+          hidden={destination !== 'groceries'}
+        >
+          <div className="grocery-classification-toolbar">
+            <div className="grocery-action-row">
               <button
                 className="shopping-mode-button"
                 type="button"
@@ -1552,6 +1574,10 @@ export function App() {
               >
                 En course
               </button>
+              <GroceryPhotoImport
+                available={online && hubReachable === true}
+                onImport={importGroceryPhotoItems}
+              />
               <button
                 className="classify-groceries-button"
                 type="button"
@@ -1580,26 +1606,26 @@ export function App() {
                   : 'Classer par rayon'}
               </button>
             </div>
+          </div>
 
-            <GroceryView
-              aisleGroups={groceryAisleGroups}
-              changingItemId={changingGroceryItemId}
-              editing={editingGroceries}
-              inputRef={groceryInputRef}
-              label={groceryLabel}
-              purchasedItems={purchasedGroceryItems}
-              quantity={groceryQuantity}
-              onCheckedChange={(itemId, checked) =>
-                void changeGroceryItemState(itemId, checked)
-              }
-              onDelete={(itemId) => void deleteGroceryItem(itemId)}
-              onEdit={setGroceryPendingEdit}
-              onLabelChange={setGroceryLabel}
-              onQuantityChange={setGroceryQuantity}
-              onSubmit={(event) => void submitGroceryItem(event)}
-            />
-          </section>
-        )}
+          <GroceryView
+            aisleGroups={groceryAisleGroups}
+            changingItemId={changingGroceryItemId}
+            editing={editingGroceries}
+            inputRef={groceryInputRef}
+            label={groceryLabel}
+            purchasedItems={purchasedGroceryItems}
+            quantity={groceryQuantity}
+            onCheckedChange={(itemId, checked) =>
+              void changeGroceryItemState(itemId, checked)
+            }
+            onDelete={(itemId) => void deleteGroceryItem(itemId)}
+            onEdit={setGroceryPendingEdit}
+            onLabelChange={setGroceryLabel}
+            onQuantityChange={setGroceryQuantity}
+            onSubmit={(event) => void submitGroceryItem(event)}
+          />
+        </section>
 
         {destination === 'budget' && authSession ? (
           <BudgetView
@@ -1647,6 +1673,18 @@ export function App() {
               creatorOpen={watchCreatorOpen}
               onCreatorOpenChange={setWatchCreatorOpen}
             />
+          </Suspense>
+        ) : null}
+
+        {destination === 'robot' ? (
+          <Suspense
+            fallback={
+              <section className="panel">
+                <p>Chargement du Robot…</p>
+              </section>
+            }
+          >
+            <RobotView isOwner={authSession?.member.role === 'owner'} />
           </Suspense>
         ) : null}
       </main>
@@ -2015,7 +2053,7 @@ export function App() {
                   >
                     <option value="qwen3.5">Qwen 3.5 9B Q4 · recommandé</option>
                     <option value="gemma4">
-                      Gemma 4 12B · thinking approfondi
+                      Gemma 4 E4B QAT · thinking approfondi
                     </option>
                   </select>
                 </label>
@@ -2074,30 +2112,32 @@ export function App() {
         </div>
       ) : null}
 
-      <button
-        className="fab"
-        type="button"
-        onClick={
-          destination === 'assistant'
-            ? () => setAssistantCreateRequest((current) => current + 1)
-            : destination === 'groceries'
-              ? openGroceryQuickAdd
-              : destination === 'budget'
-                ? () => setBudgetQuickAddOpen(true)
-                : destination === 'watch'
-                  ? () => setWatchCreatorOpen(true)
-                  : openQuickAdd
-        }
-        aria-label={
-          destination === 'assistant'
-            ? 'Nouvelle conversation'
-            : destination === 'watch'
-              ? 'Créer une veille'
-              : 'Ajouter rapidement'
-        }
-      >
-        +
-      </button>
+      {destination !== 'robot' ? (
+        <button
+          className="fab"
+          type="button"
+          onClick={
+            destination === 'assistant'
+              ? () => setAssistantCreateRequest((current) => current + 1)
+              : destination === 'groceries'
+                ? openGroceryQuickAdd
+                : destination === 'budget'
+                  ? () => setBudgetQuickAddOpen(true)
+                  : destination === 'watch'
+                    ? () => setWatchCreatorOpen(true)
+                    : openQuickAdd
+          }
+          aria-label={
+            destination === 'assistant'
+              ? 'Nouvelle conversation'
+              : destination === 'watch'
+                ? 'Créer une veille'
+                : 'Ajouter rapidement'
+          }
+        >
+          +
+        </button>
+      ) : null}
 
       <nav className="bottom-nav" aria-label="Navigation principale">
         <NavButton
@@ -2129,6 +2169,11 @@ export function App() {
           active={destination === 'watch'}
           label="Veille"
           onClick={() => setDestination('watch')}
+        />
+        <NavButton
+          active={destination === 'robot'}
+          label="Robot"
+          onClick={() => setDestination('robot')}
         />
       </nav>
     </div>

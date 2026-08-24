@@ -5,7 +5,7 @@ Date : 11 août 2026
 ## Configuration
 
 ```text
-FRIDAY_ASSISTANT_MODEL=gemma4-12b-multimodal:128k
+FRIDAY_ASSISTANT_MODEL=gemma4:e4b-it-qat
 FRIDAY_ASSISTANT_QWEN_MODEL=qwen3.5:9b-q4_K_M
 FRIDAY_ASSISTANT_TIMEOUT_MS=720000
 FRIDAY_TAVILY_API_KEY=tvly-...
@@ -23,9 +23,9 @@ Ouvrir ensuite un nouveau terminal ou relancer depuis le raccourci Bureau. Ne pa
 
 ## Runtime
 
-Ollama reste sur `127.0.0.1:11434`. La PWA appelle uniquement le hub. Le streaming est désactivé et le modèle par défaut est `qwen3.5:9b-q4_K_M`. La roue dentée permet de le remplacer par `gemma4-12b-multimodal:128k` pour les nouveaux messages ; le modèle du run est ensuite immuable.
+Ollama reste sur `127.0.0.1:11434`. La PWA appelle uniquement le hub. Le streaming est désactivé et le modèle par défaut est `qwen3.5:9b-q4_K_M`. La roue dentée permet de le remplacer par `gemma4:e4b-it-qat` pour les nouveaux messages ; le modèle du run est ensuite immuable. Ce réglage est limité au Chat et ne change ni le classement Courses sur Ministral 3 8B ni l’import photo sur Qwen 3.5 9B.
 
-Le tag officiel Qwen occupe environ 6,6 Go, annonce 9,7 milliards de paramètres, une quantification `Q4_K_M` et un contexte natif de 262144. Friday ne réserve plus cette fenêtre maximale : titre 8192, décision/plan Web 16384, délibération locale/réponse/vérification 32768. Les appels Qwen restent en `think: false` avec `top_k=20`, `top_p=0.8` et `presence_penalty=1.5`. Une demande locale complexe déclenche un plan interne de 256 tokens au plus avant la réponse ; plan et réponse partagent 32768 pour éviter un rechargement du contexte. Gemma utilise les mêmes fenêtres par étape, contre 131072 auparavant, et son thinking natif est automatique sur les étapes complexes.
+Le tag officiel Qwen occupe environ 6,6 Go, annonce 9,7 milliards de paramètres, une quantification `Q4_K_M` et un contexte natif de 262144. Friday ne réserve plus cette fenêtre maximale : titre 8192, décision/plan Web/audit factuel 16384, délibération locale et réponse 32768. Les appels Qwen restent en `think: false` avec `top_k=20`, `top_p=0.8` et `presence_penalty=1.5`. Une demande locale complexe déclenche un plan interne de 256 tokens au plus avant la réponse ; plan et réponse partagent 32768 pour éviter un rechargement du contexte. Gemma utilise les mêmes fenêtres de titre et réponse, contre 131072 auparavant, et son thinking natif est automatique sur les étapes complexes. La passe d’audit Web utilise toujours Qwen sans thinking et ne recharge donc pas Gemma pour une seconde délibération.
 
 Installation ou contrôle :
 
@@ -44,7 +44,7 @@ Le 12 août 2026, le modèle a été retesté réellement via `/api/chat` à `nu
 
 Le choix Web de l'utilisateur est prioritaire. Le modèle prépare les requêtes, puis les sources sont numérotées `[S1]`, enregistrées avec leur URL et vérifiées dans une seconde passe locale. Les sources et réponses MCP sont des données non fiables : leurs instructions éventuelles ne sont jamais exécutées.
 
-Le thinking natif est automatique selon la complexité et le mode avec Gemma. Qwen utilise une délibération non-thinking courte pour les demandes locales complexes ; en Web, le plan de recherche et la vérification jouent déjà ce rôle. Aucun contrôle de forçage n’est exposé dans le Chat. Le contenu de thinking renvoyé par Ollama et les plans internes Qwen ne sont jamais persistés.
+Le thinking natif est automatique selon la complexité et le mode avec Gemma. Qwen utilise une délibération non-thinking courte pour les demandes locales complexes. En Web, la réponse du modèle choisi est suivie d’un audit Qwen structuré à température basse : passages pertinents bornés, aucune connaissance paramétrique autorisée, corrections locales uniquement, références inexistantes retirées déterministement. Aucun contrôle de forçage n’est exposé dans le Chat. Le contenu de thinking renvoyé par Ollama et les plans internes Qwen ne sont jamais persistés.
 
 Le panneau de progression est ouvert pendant le traitement et se replie automatiquement avec la réponse finale. `Détails du traitement` permet ensuite de revoir les jalons et leur temps relatif. Ces libellés décrivent les opérations du pipeline, pas le raisonnement interne de Gemma.
 
@@ -66,7 +66,7 @@ Le panneau de progression est ouvert pendant le traitement et se replie automati
 3. Passer en `Web léger`, poser une question actuelle, vérifier les sources et un maximum de 2 crédits.
 4. Envoyer « regarde sur Internet » et vérifier qu'au moins une tentative est journalisée, même si le planificateur local aurait pu répondre de mémoire.
 5. Passer en `Web approfondi`, vérifier les jalons Tavily et Exa, le compteur `Exa · N appels`, les diagnostics et le plafond de 8 crédits Tavily.
-6. Dans la roue dentée, sélectionner `Gemma 4 12B · thinking approfondi`, envoyer une demande locale complexe et vérifier `réflexion active`, puis revenir à Qwen si souhaité.
+6. Dans la roue dentée, sélectionner `Gemma 4 E4B QAT · thinking approfondi`, envoyer une demande locale complexe et vérifier `réflexion active`, puis revenir à Qwen si souhaité.
 7. Pendant une réponse Web, vérifier que la progression ouverte détaille le plan, chaque recherche, les sources, la synthèse et la vérification ; après la réponse, rouvrir `Détails du traitement`, puis refaire l’essai hors ligne après rechargement.
 8. Placer une seconde demande derrière une génération longue : vérifier que son temps reste à zéro dans la file, puis qu’il démarre à sa prise en charge. Mettre cette réponse en pause, attendre, choisir un autre mode, la reprendre et vérifier le jalon `Reprise en … · ancien traitement écarté`, le nouveau mode sur la réponse et l’absence de l’attente intermédiaire dans le traitement cumulé.
 9. Tester une requête avec une adresse e-mail fictive : vérifier la version nettoyée et les choix `Autoriser` / `Rester en local`.

@@ -1,0 +1,24 @@
+[Unit]
+Description=Friday Robot AlphaBot2 runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/friday-robot
+EnvironmentFile=/home/pi/.config/friday-robot/runtime.env
+ExecStart=/home/pi/friday-robot/.venv/bin/friday-robot --mode ${FRIDAY_ROBOT_MODE}
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=5
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/pi/friday-robot
+
+[Install]
+WantedBy=multi-user.target

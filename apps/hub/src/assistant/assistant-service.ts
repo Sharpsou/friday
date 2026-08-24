@@ -34,6 +34,11 @@ import {
   type ExaFailureKind,
 } from './exa-mcp-search.js';
 import {
+  selectResearchEvidence,
+  shouldContinueDeepResearch,
+} from './research-selection.js';
+import {
+  normalizeResearchEvidence,
   TavilySearchClient,
   type TavilyEvidence,
   type TavilySearchDepth,
@@ -801,6 +806,7 @@ export class AssistantService {
           new Date().toISOString(),
         );
         const verified = await this.engine.verifyAnswer(
+          userMessage.content,
           result.content,
           evidence,
           row.conversation_mode,
@@ -940,10 +946,10 @@ export class AssistantService {
       (!exaState.cooldownUntil ||
         new Date(exaState.cooldownUntil).valueOf() <= Date.now());
 
-    const evidence = (
+    const evidence: TavilyEvidence[] = (
       this.database
         .prepare(
-          `SELECT title, url, published_at, excerpt
+          `SELECT title, url, published_at, excerpt, provider
              FROM assistant_sources WHERE run_id = ? ORDER BY source_id`,
         )
         .all(row.id) as Array<{
@@ -951,13 +957,16 @@ export class AssistantService {
         published_at: string | null;
         title: string;
         url: string;
+        provider: 'tavily' | 'exa';
       }>
     ).map((source) => ({
       title: source.title,
       url: source.url,
       publishedAt: source.published_at,
       content: source.excerpt,
+      provider: source.provider,
     }));
+    const question = history.at(-1)?.content ?? '';
     let creditsUsed = (
       this.database
         .prepare(
@@ -1120,6 +1129,21 @@ export class AssistantService {
           `Tavily terminé · ${added.toString()} nouvelle(s) source(s)`,
           new Date().toISOString(),
         );
+        if (
+          row.conversation_mode === 'web_deep' &&
+          index >= 1 &&
+          index + 1 < queries.length &&
+          !shouldContinueDeepResearch(question, queries, evidence)
+        ) {
+          this.setRunState(
+            row.id,
+            row.profile_id,
+            'searching',
+            'Couverture suffisante · recherches supplémentaires évitées',
+            new Date().toISOString(),
+          );
+          break;
+        }
       } catch {
         if (signal.aborted) throw signal.reason;
         if (index === 0) {
@@ -1172,6 +1196,23 @@ export class AssistantService {
       if (exaResult.failed) failures += 1;
       this.persistEvidence(row.id, 'exa', evidence, exaResult.evidence);
     }
+    const selection = selectResearchEvidence(
+      question,
+      queries,
+      evidence,
+      row.conversation_mode as Exclude<AssistantMode, 'local'>,
+    );
+    if (selection.selected.length > 0) {
+      this.replaceEvidence(row.id, selection.selected);
+      evidence.splice(0, evidence.length, ...selection.selected);
+      this.setRunState(
+        row.id,
+        row.profile_id,
+        'searching',
+        `Sélection de ${evidence.length.toString()} source(s) sur ${selection.totalCandidates.toString()} · ${selection.coveredAspects.toString()}/${selection.totalAspects.toString()} aspect(s) couvert(s)`,
+        new Date().toISOString(),
+      );
+    }
     if (evidence.length > 0) {
       this.setRunState(
         row.id,
@@ -1190,7 +1231,7 @@ export class AssistantService {
           ? !tavilyAllowed && usage.creditsUsed >= WEB_HARD_LIMIT
             ? 'quota_exhausted'
             : 'unavailable'
-          : failures > 0
+          : failures > 0 || !selection.complete
             ? 'partial'
             : 'completed',
     };
@@ -1219,7 +1260,9 @@ export class AssistantService {
   ): number {
     let added = 0;
     for (const candidate of candidates) {
-      const url = canonicalUrl(candidate.url);
+      const normalized = normalizeResearchEvidence(candidate);
+      if (!normalized) continue;
+      const url = canonicalUrl(normalized.url);
       if (!url || evidence.some((item) => canonicalUrl(item.url) === url))
         continue;
       const domain = new URL(url).hostname.toLowerCase();
@@ -1229,7 +1272,7 @@ export class AssistantService {
         ).length >= 3
       )
         continue;
-      const source = { ...candidate, url };
+      const source = { ...normalized, provider, url };
       evidence.push(source);
       const sourceId = `S${(
         (
@@ -1260,6 +1303,32 @@ export class AssistantService {
       added += 1;
     }
     return added;
+  }
+
+  private replaceEvidence(runId: string, selected: TavilyEvidence[]): void {
+    const retrievedAt = new Date().toISOString();
+    this.database.transaction(() => {
+      this.database
+        .prepare('DELETE FROM assistant_sources WHERE run_id = ?')
+        .run(runId);
+      const insert = this.database.prepare(
+        `INSERT INTO assistant_sources(
+           run_id, source_id, title, url, domain, published_at, retrieved_at, excerpt, provider
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const [index, source] of selected.entries())
+        insert.run(
+          runId,
+          `S${(index + 1).toString()}`,
+          source.title.slice(0, 500),
+          source.url,
+          new URL(source.url).hostname.toLowerCase(),
+          source.publishedAt,
+          retrievedAt,
+          source.content.slice(0, 20_000),
+          source.provider ?? 'tavily',
+        );
+    })();
   }
 
   private async exaAttempt(

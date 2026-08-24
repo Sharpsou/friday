@@ -64,7 +64,7 @@ Friday n’est pas :
 
 ### 2.3 Fonctions importantes conservées sans gonfler le MVP
 
-Les sources Home Mind, Jarvis, Budget et Modulo font ressortir des fonctions utiles qui ne doivent pas être oubliées. Elles sont réparties ainsi :
+Les sources Home Mind, Jarvis, Budget et Modulo, complétées par les inspirations robotiques externes, font ressortir des fonctions utiles qui ne doivent pas être oubliées. Elles sont réparties ainsi :
 
 | Fonction | MVP | Après observation | Motif |
 |---|---:|---:|---|
@@ -78,6 +78,7 @@ Les sources Home Mind, Jarvis, Budget et Modulo font ressortir des fonctions uti
 | checklists départ/vacances | non | oui | Modèles de tâches ultérieurs. |
 | import CSV bancaire | non | oui | La saisie manuelle valide d’abord le modèle budget. |
 | voix, domotique, capteurs | non | beaucoup plus tard | Hors promesse MVP et coûteux à fiabiliser. |
+| agent physique domestique | non | prototype post-MVP par étapes, noyau visé 500–600 €, estimation prudente 490–650 €, plafond livré 700 € | Compagnon cible 45 cm et maximum 50 cm, à roues différentielles asservies, LiDAR, contrôleur vital, Pi autonome et persona continu ; politique neuronale et pince facultatives après simulation, observateur et preuve de la base sûre. |
 
 ## 3. Exigences traçables du MVP
 
@@ -580,7 +581,8 @@ Une restauration de test sur un répertoire vide est obligatoire avant de consid
 
 ### 10.2 Modèle du Chat
 
-- `gemma4-12b-multimodal:128k` : unique modèle du Chat et de son orchestration ;
+- `qwen3.5:9b-q4_K_M` : modèle par défaut du Chat et de son orchestration ;
+- `gemma4:e4b-it-qat` : option Gemma du Chat, avec thinking natif automatique ;
 - Tavily est le connecteur Web principal ; Exa MCP anonyme complète seulement `Web approfondi`, sans navigateur automatisé ;
 - `ministral-3:8b` reste réservé au classement facultatif des courses ;
 - un modèle ne remplace Gemma qu’après comparaison sur un jeu d’évaluation documenté.
@@ -928,6 +930,7 @@ Ne pas commencer en parallèle le design complet, le RAG, l’import bancaire ou
 | ADR-011 | conflits explicites et tombstones acquittés avant purge | accepté comme filet de sécurité ; implémentation reportée sur signal d'usage |
 | [ADR-012](adr/012-budget-partage-enveloppes.md) | budget partagé, enveloppes, provisions et réserve | accepté ; candidat automatisé, recette physique et données réelles en attente |
 | [ADR-013](adr/013-acces-exterieur-tailscale-route-privee.md) | route Tailscale privée `/32`, origine conservée et enrôlement local | accepté ; mise en œuvre en pause |
+| [ADR-014](adr/014-agent-physique-otto-diy-oeil-friday.md) | compagnon à roues, LiDAR, Pi autonome, persona continu, politique neuronale bornée, gateway et Action Firewall | orientation révisée ; noyau visé 500–600 €, estimation prudente 490–650 €, plafond livré 700 €, expérimentation post-MVP uniquement |
 
 Une ADR contient : contexte, options réelles, décision, conséquences, preuve, retour arrière et date de révision.
 

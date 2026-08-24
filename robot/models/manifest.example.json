@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "name": "object-detector",
+      "task": "object_detection",
+      "file": "object-detector.onnx",
+      "sha256": "REMPLACER_PAR_64_CARACTERES_HEXADECIMAUX",
+      "license": "VERIFIER_LA_LICENCE_AMONT",
+      "source": "URL_OFFICIELLE_DU_MODELE"
+    }
+  ]
+}

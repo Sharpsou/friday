@@ -12,6 +12,7 @@ import type {
 } from '@friday/contracts';
 
 import { buildHub } from './app.js';
+import { SimulatedRobotController } from './robot/robot-controller.js';
 
 const apps: Awaited<ReturnType<typeof buildHub>>[] = [];
 const temporaryDirectories: string[] = [];
@@ -173,6 +174,157 @@ describe('Friday hub', () => {
       'camera=(), geolocation=(), microphone=()',
     );
     expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('keeps robot control authenticated, armed, expiring and stoppable', async () => {
+    const app = await buildHub({
+      databasePath: ':memory:',
+      robotController: new SimulatedRobotController(),
+    });
+    apps.push(app);
+    const unauthenticated = await app.inject({
+      method: 'GET',
+      url: '/api/robot/state',
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const cookie = await bootstrap(app);
+    const initial = await app.inject({
+      method: 'GET',
+      url: '/api/robot/state',
+      headers: { cookie },
+    });
+    expect(initial.statusCode, initial.body).toBe(200);
+    expect(initial.json()).toMatchObject({
+      available: true,
+      armed: false,
+      mode: 'simulated',
+    });
+
+    const armed = await app.inject({
+      method: 'POST',
+      url: '/api/robot/arm',
+      headers: { cookie },
+      payload: { durationMs: 2_000 },
+    });
+    expect(armed.statusCode, armed.body).toBe(200);
+    expect(armed.json().state.armed).toBe(true);
+
+    const now = Date.now();
+    const drive = await app.inject({
+      method: 'POST',
+      url: '/api/robot/drive',
+      headers: { cookie },
+      payload: {
+        commandId: crypto.randomUUID(),
+        issuedAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + 300).toISOString(),
+        direction: 'forward',
+        intensity: 0.2,
+        maxDurationMs: 300,
+      },
+    });
+    expect(drive.statusCode, drive.body).toBe(200);
+    expect(drive.json().state.moving).toBe(true);
+
+    const stopped = await app.inject({
+      method: 'POST',
+      url: '/api/robot/stop',
+      headers: { cookie },
+    });
+    expect(stopped.statusCode, stopped.body).toBe(200);
+    expect(stopped.json().state).toMatchObject({
+      armed: false,
+      moving: false,
+    });
+  });
+
+  it('rejects stale robot commands and cross-site mutation attempts', async () => {
+    const app = await buildHub({
+      databasePath: ':memory:',
+      publicOrigin: 'https://friday.test',
+      robotController: new SimulatedRobotController(),
+    });
+    apps.push(app);
+    const cookie = await bootstrap(app);
+    const stale = await app.inject({
+      method: 'POST',
+      url: '/api/robot/drive',
+      headers: { cookie },
+      payload: {
+        commandId: crypto.randomUUID(),
+        issuedAt: '2026-08-23T00:00:00.000Z',
+        expiresAt: '2026-08-23T00:00:00.300Z',
+        direction: 'forward',
+        intensity: 0.2,
+        maxDurationMs: 300,
+      },
+    });
+    expect(stale.statusCode).toBe(400);
+
+    const crossSite = await app.inject({
+      method: 'POST',
+      url: '/api/robot/stop',
+      headers: {
+        cookie,
+        origin: 'https://hostile.example',
+        'sec-fetch-site': 'cross-site',
+      },
+    });
+    expect(crossSite.statusCode).toBe(403);
+  });
+
+  it('transcribes an authenticated grocery photo without storing or classifying it', async () => {
+    const transcribe = vi.fn().mockResolvedValue({
+      items: [
+        {
+          box: { x: 580, y: 30, width: 250, height: 40 },
+          label: 'Fleur de sel',
+          quantityText: 'x2',
+          sourceText: 'fleur de sel x2',
+        },
+      ],
+    });
+    const app = await buildHub({
+      databasePath: ':memory:',
+      photoTranscriptionEngine: { transcribe },
+    });
+    apps.push(app);
+    const payload = {
+      imageBase64: 'YWJjZGVmZ2hpamtsbW5vcA==',
+      mediaType: 'image/jpeg',
+    };
+
+    const unauthenticated = await app.inject({
+      method: 'POST',
+      url: '/api/groceries/photo-transcription',
+      payload,
+    });
+    const cookie = await bootstrap(app);
+    const authenticated = await app.inject({
+      method: 'POST',
+      url: '/api/groceries/photo-transcription',
+      headers: { cookie },
+      payload,
+    });
+
+    expect(unauthenticated.statusCode).toBe(401);
+    expect(authenticated.statusCode, authenticated.body).toBe(200);
+    expect(authenticated.json()).toEqual({
+      items: [
+        {
+          box: { x: 580, y: 30, width: 250, height: 40 },
+          label: 'Fleur de sel',
+          quantityText: 'x2',
+          sourceText: 'fleur de sel x2',
+        },
+      ],
+    });
+    expect(transcribe).toHaveBeenCalledWith(
+      payload.imageBase64,
+      payload.mediaType,
+      expect.any(AbortSignal),
+    );
   });
 
   it('keeps public signup closed and requires an authenticated paired device', async () => {

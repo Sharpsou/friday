@@ -56,7 +56,7 @@ function modeLabel(mode: AssistantMode): string {
 }
 
 function modelLabel(model: AssistantModel): string {
-  return model === 'qwen3.5' ? 'Qwen 3.5 9B Q4' : 'Gemma 4 12B';
+  return model === 'qwen3.5' ? 'Qwen 3.5 9B Q4' : 'Gemma 4 E4B QAT';
 }
 
 function diagnosticStatusLabel(status: ResearchDiagnostic['status']): string {

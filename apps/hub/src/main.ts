@@ -3,6 +3,11 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildHub } from './app.js';
+import {
+  DisabledRobotController,
+  HttpRobotController,
+  SimulatedRobotController,
+} from './robot/robot-controller.js';
 
 const host = process.env.FRIDAY_HOST ?? '127.0.0.1';
 const port = Number.parseInt(process.env.FRIDAY_PORT ?? '8443', 10);
@@ -31,6 +36,37 @@ const ollamaTimeoutRaw = process.env.FRIDAY_GROCERY_CLASSIFICATION_TIMEOUT_MS;
 const ollamaTimeoutMs = ollamaTimeoutRaw
   ? Number.parseInt(ollamaTimeoutRaw, 10)
   : undefined;
+const photoTranscriptionTimeoutRaw =
+  process.env.FRIDAY_GROCERY_PHOTO_TIMEOUT_MS;
+const photoTranscriptionTimeoutMs = photoTranscriptionTimeoutRaw
+  ? Number.parseInt(photoTranscriptionTimeoutRaw, 10)
+  : undefined;
+const robotMode = process.env.FRIDAY_ROBOT_MODE ?? 'disabled';
+
+if (!['disabled', 'simulated', 'alphabot2'].includes(robotMode)) {
+  throw new Error(
+    'FRIDAY_ROBOT_MODE doit valoir disabled, simulated ou alphabot2.',
+  );
+}
+
+if (
+  robotMode === 'alphabot2' &&
+  (!process.env.FRIDAY_ROBOT_URL || !process.env.FRIDAY_ROBOT_TOKEN)
+) {
+  throw new Error(
+    'FRIDAY_ROBOT_URL et FRIDAY_ROBOT_TOKEN sont requis en mode alphabot2.',
+  );
+}
+
+const robotController =
+  robotMode === 'simulated'
+    ? new SimulatedRobotController()
+    : robotMode === 'alphabot2'
+      ? new HttpRobotController(
+          process.env.FRIDAY_ROBOT_URL!,
+          process.env.FRIDAY_ROBOT_TOKEN!,
+        )
+      : new DisabledRobotController();
 
 if (
   ollamaTimeoutRaw &&
@@ -38,6 +74,16 @@ if (
 ) {
   throw new Error(
     'FRIDAY_GROCERY_CLASSIFICATION_TIMEOUT_MS doit être un entier supérieur ou égal à 1000.',
+  );
+}
+
+if (
+  photoTranscriptionTimeoutRaw &&
+  (!Number.isSafeInteger(photoTranscriptionTimeoutMs) ||
+    (photoTranscriptionTimeoutMs ?? 0) < 1_000)
+) {
+  throw new Error(
+    'FRIDAY_GROCERY_PHOTO_TIMEOUT_MS doit être un entier supérieur ou égal à 1000.',
   );
 }
 
@@ -77,7 +123,12 @@ const app = await buildHub({
     ? { ollamaModel: process.env.FRIDAY_GROCERY_CLASSIFICATION_MODEL }
     : {}),
   ...(ollamaTimeoutMs ? { ollamaTimeoutMs } : {}),
+  ...(process.env.FRIDAY_GROCERY_PHOTO_MODEL
+    ? { photoTranscriptionModel: process.env.FRIDAY_GROCERY_PHOTO_MODEL }
+    : {}),
+  ...(photoTranscriptionTimeoutMs ? { photoTranscriptionTimeoutMs } : {}),
   publicOrigin,
+  robotController,
   webRoot,
 });
 

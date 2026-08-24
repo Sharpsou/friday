@@ -1,6 +1,6 @@
 # Checkpoint consolidé — Chat Ollama, Tavily et Exa MCP
 
-Date : 18 août 2026
+Date : 22 août 2026
 
 Statut : **candidat automatisé construit, déployé et vérifié ; recette physique A17 à confirmer**
 
@@ -8,23 +8,23 @@ Statut : **candidat automatisé construit, déployé et vérifié ; recette phys
 
 Le Chat reste privé par profil et n’a aucun droit de mutation directe sur Agenda, Courses ou Budget. Chaque conversation conserve un mode :
 
-- `Local` : modèle Ollama sélectionné, sans appel Internet ;
-- `Web léger` : 1 à 2 recherches Tavily `basic`, plafond de 2 crédits ;
-- `Web approfondi` : première passe Tavily + Exa MCP anonyme en parallèle, puis recherches ciblées, au plus 6 appels Tavily et 2 appels Exa adaptatifs.
+- `Local` : modèle Ollama sélectionné, sans appel Internet ni étape de sélection de sources ;
+- `Web léger` : 1 à 2 recherches Tavily `basic`, plafond de 2 crédits, puis sélection de 5 sources au maximum sans boucle de recherche supplémentaire ;
+- `Web approfondi` : première passe Tavily + Exa MCP anonyme en parallèle, puis recherches ciblées, au plus 6 appels Tavily et 2 appels Exa adaptatifs. Après deux appels Tavily, les appels restants sont évités si la couverture est déjà suffisante.
 
 Le mode Web choisi est désormais impératif : Ollama prépare les requêtes mais ne peut plus annuler la recherche. Une sortie vide ou `searchNeeded:false` déclenche la requête déterministe de secours au lieu de rétrograder le run en local.
 
-Deux modèles sont autorisés : `qwen3.5:9b-q4_K_M` par défaut et `gemma4-12b-multimodal:128k`, qui le remplace depuis la roue dentée. Le contexte est dimensionné par étape pour les deux : titre 8K, décision/plan Web 16K, délibération locale/réponse/vérification 32K. Le modèle est persisté avec le run et reste identique après pause/reprise/retry. Qwen utilise automatiquement un plan interne non-thinking de 256 tokens au plus pour les demandes locales complexes ; le pipeline Web réutilise sa décision, son plan et sa vérification. Gemma choisit automatiquement son thinking natif selon la complexité et le mode. La case de forçage par message est supprimée et le raisonnement brut n’est jamais persisté ni affiché.
+Deux modèles sont autorisés pour le Chat : `qwen3.5:9b-q4_K_M` par défaut et `gemma4:e4b-it-qat`, qui le remplace depuis la roue dentée pour les nouveaux messages. Ce réglage ne change ni Ministral 3 8B pour le classement Courses ni Qwen 3.5 9B pour l’import photo. Le contexte est dimensionné par étape : titre 8K, décision/plan Web/audit factuel 16K, délibération locale et réponse 32K. Le modèle de rédaction est persisté avec le run et reste identique après pause/reprise/retry ; l’audit Web ciblé utilise toujours Qwen sans thinking. Qwen utilise automatiquement un plan interne non-thinking de 256 tokens au plus pour les demandes locales complexes. Gemma choisit automatiquement son thinking natif selon la complexité et le mode, sans refaire une seconde délibération pendant l’audit. La case de forçage par message est supprimée et le raisonnement brut n’est jamais persisté ni affiché.
 
 ## Pipeline implanté
 
-Le traitement est : historique → plan JSON contraint → nettoyage des requêtes → Tavily/Exa → rapprochement des sources → synthèse locale → vérification factuelle locale → réponse sourcée.
+Le traitement est : historique → plan JSON contraint → nettoyage des requêtes → Tavily/Exa → classement déterministe relatif à la question → mesure de couverture → synthèse locale → vérification factuelle locale tenant compte de la question et, seulement pour une demande temporelle, de la date civile courante → réponse sourcée. Le classement combine pertinence, score fournisseur, densité, diversité de domaines et autorité adaptée à une demande officielle, académique, technique, locale, pratique ou explicative. La fraîcheur n’est valorisée que lorsque la question l’exige. Le dossier retient au plus 5 sources en léger et 8 en approfondi, avec deux sources au maximum par domaine. La couverture est complète à partir de trois sources pertinentes et deux domaines en léger, ou six sources et trois domaines en approfondi, avec 75 % des aspects planifiés couverts. Les pages vidéo sans transcription substantielle et origine déclarée identifiable sont écartées ; une transcription admise reste une source secondaire qui ne peut pas valider seule un fait scientifique ou actuel.
 
 - Le plan de recherche Ollama utilise un schéma JSON strict.
 - Si sa sortie reste invalide, Friday construit une requête de secours à partir des deux derniers messages utilisateur au lieu de faire échouer le run.
 - E-mail, téléphone et adresse postale sont retirés avant Tavily ; une requête nettoyée contenant une donnée détectée exige un consentement explicite.
 - Chaque tentative, source, crédit et étape est persisté. Une recherche réussie n’est pas répétée après redémarrage, pause ou reprise.
-- Les sources sont numérotées `[S1]`, bornées, traitées comme des données hostiles et vérifiées avant publication.
+- Les sources sont numérotées `[S1]`, bornées et traitées comme des données hostiles. Avant publication, Friday découpe le brouillon en segments, sélectionne localement les passages les plus proches de chaque affirmation, puis demande à Qwen un audit JSON limité aux segments partiellement soutenus, contredits ou sans preuve. Le code applique ces corrections par position ; les segments validés ne sont jamais réécrits. Une sortie d’audit invalide conserve le brouillon et retire au minimum les références inexistantes.
 - En approfondi, `web_search_exa` utilise directement `https://mcp.exa.ai/mcp`, sans compte, clé, OAuth ou paiement. Le second appel Exa ne part que si la première passe fournit moins de quatre URL ou moins de deux domaines.
 - Si aucune source n'est lisible, Friday publie un diagnostic déterministe par fournisseur et ne transmet plus au modèle le prompt local « sans accès Internet ».
 
@@ -79,7 +79,7 @@ La migration SQLite 14 ajoute les modes de conversation, le thinking, les résul
 
 ## Preuves et limites
 
-`pnpm verify` réussit sur le candidat du 18 août 2026 avec 192 tests unitaires/intégration, les builds PWA/hub et 23 scénarios Chrome mobile. Le runtime a ensuite été reconstruit et contrôlé sur `https://192.168.1.14:8443`.
+`pnpm verify` réussit sur le candidat du 23 août 2026 avec 209 tests unitaires/intégration, les builds PWA/hub et 24 scénarios Chrome mobile. La vérification V2 est couverte par les cas James Webb, la préservation des segments soutenus, le repli après JSON invalide, la sélection d’un passage éloigné, le contenu hostile, le rejet de citations inventées, le contexte temporel conditionnel, le filtrage strict des vidéos et le classement relatif à la question avec diversité et arrêt de la recherche approfondie sur couverture suffisante. Le runtime doit ensuite être reconstruit et contrôlé sur `https://192.168.1.14:8443`.
 
 Restent à confirmer physiquement sur l’A17 : installation de la dernière PWA, lisibilité du journal, pause/reprise, temps effectif, les trois modes et la qualité/latence de réponses Gemma/Tavily réelles. Ces points ne sont pas déclarés validés par les tests automatisés.
 

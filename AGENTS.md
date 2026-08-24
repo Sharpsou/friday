@@ -25,6 +25,8 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 - Les projets sources sont externes au workspace Friday.
 - `D:\prog\Home_mind` est fortement modifié et ne doit jamais être édité, nettoyé, déplacé ou réinitialisé depuis Friday.
 - `D:\prog\jarvis`, `D:\prog\budget` et `D:\prog\modulo` sont des sources de lecture, pas des cibles d’implémentation.
+- L’agent physique Friday est désormais conçu comme un compagnon à roues avec LiDAR, Raspberry Pi, contrôleur vital indépendant et pince légère ; Mini Pi et Otto DIY restent des inspirations, pas la base matérielle. Aucun dépôt robotique, achat ou contrôle moteur n'entre dans Friday sans reprise explicite de l'ADR-014 et panier complet livré inférieur ou égal à 700 €.
+- Le prototype zéro AlphaBot2-Pi est réinstallé sous Raspberry Pi OS Trixie 32 bits et intégré à l’onglet Robot. Le flux CSI, les capteurs passifs et les servos caméra sont disponibles en gardant les roues simulées. Le servo pan tremble par intermittence, des sous-tensions ont été observées et le dernier lissage reste à confirmer physiquement. Reprendre impérativement `docs/21-journal-implementation-alphabot2-2026-08-24.md` et `docs/runbooks/robot-alphabot2.md` avant tout nouvel essai.
 
 ## Décisions non négociables du MVP
 
@@ -38,6 +40,7 @@ Ne pas repartir des documents historiques 02 à 05 ou 07 pour choisir l’archit
 - Google Drive ne sert qu’aux sauvegardes chiffrées, jamais au runtime ou à la synchronisation mobile.
 - Ollama reste sur `localhost` et n’est jamais requis pour Maison, budget ou synchronisation.
 - FTS5 avant embeddings ; pas de RAG, multi-agent, domotique ou banque connectée au MVP.
+- L’agent physique mobile décrit par `docs/19-document-fondateur-agent-physique-friday.md` est une expérimentation post-MVP : perception locale visible, reconnaissance consentie, jamais surveillance secrète, et aucune dépendance des fonctions Maison au robot.
 - Interface principale : Aujourd’hui, Agenda, Courses, Budget, Assistant, Veille et bouton `+` hors Assistant.
 - Direction visuelle : « futur discret » ; en-tête réduit à `Friday`, textes factuels, état de connexion compact.
 - États de connexion visibles : `Connecté`, `Connexion…`, `Hors ligne`. Une indisponibilité du hub et une absence de réseau partagent volontairement le libellé utilisateur `Hors ligne`.

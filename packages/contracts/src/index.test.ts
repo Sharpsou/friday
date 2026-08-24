@@ -14,6 +14,8 @@ import {
   GroceryClassificationChoiceSchema,
   GroceryClassificationJobSchema,
   GroceryItemRecordSchema,
+  GroceryPhotoTranscriptionRequestSchema,
+  GroceryPhotoTranscriptionResponseSchema,
   PushRequestSchema,
   TaskRecordSchema,
   WatchUpdateRequestSchema,
@@ -464,6 +466,35 @@ describe('grocery classification contracts', () => {
         createdAt: '2026-08-09T12:00:00.000Z',
         updatedAt: '2026-08-09T12:00:01.000Z',
         expiresAt: null,
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe('grocery photo transcription contracts', () => {
+  it('bounds local photos and requires editable, positioned detections', () => {
+    expect(
+      GroceryPhotoTranscriptionRequestSchema.safeParse({
+        imageBase64: 'YWJjZGVmZ2hpamtsbW5vcA==',
+        mediaType: 'image/jpeg',
+      }).success,
+    ).toBe(true);
+    expect(
+      GroceryPhotoTranscriptionRequestSchema.safeParse({
+        imageBase64: 'not base64 data !!!',
+        mediaType: 'image/jpeg',
+      }).success,
+    ).toBe(false);
+    expect(
+      GroceryPhotoTranscriptionResponseSchema.safeParse({
+        items: [
+          {
+            box: { x: 90, y: 100, width: 220, height: 35 },
+            label: 'Œufs',
+            quantityText: null,
+            sourceText: 'oeufs',
+          },
+        ],
       }).success,
     ).toBe(true);
   });

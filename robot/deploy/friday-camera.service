@@ -1,0 +1,25 @@
+[Unit]
+Description=Friday Robot local CSI camera stream
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/friday-robot
+Environment=FRIDAY_CAMERA_WIDTH=640
+Environment=FRIDAY_CAMERA_HEIGHT=360
+Environment=FRIDAY_CAMERA_FPS=10
+Environment=FRIDAY_CAMERA_QUALITY=70
+ExecStart=/home/pi/friday-robot/.venv/bin/python -m friday_robot.camera_streamer
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=5
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

@@ -201,9 +201,27 @@ textarea:focus-visible {
 }
 
 .topbar-actions {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 7px;
+}
+
+.topbar-context-actions {
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.topbar-context-actions .count-badge {
+  min-width: 32px;
+  min-height: 32px;
+  font-size: 0.76rem;
+}
+
+.topbar-context-actions .edit-toggle {
+  min-height: 36px;
+  padding-inline: 8px;
+  font-size: 0.72rem;
 }
 
 .background-job-indicator {
@@ -403,6 +421,10 @@ textarea:focus-visible {
   display: grid;
   gap: 11px;
   animation: arrive 180ms ease-out;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 .hero-card {
@@ -946,12 +968,23 @@ textarea:focus-visible {
 }
 
 .grocery-classification-toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto;
+  justify-content: end;
   align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.grocery-action-row {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  gap: 7px;
+}
+
+.grocery-photo-control {
+  position: relative;
+  min-width: 0;
 }
 
 .classify-groceries-button {
@@ -962,6 +995,73 @@ textarea:focus-visible {
   color: var(--mint);
   background: rgb(var(--accent-rgb) / 8%);
   font-weight: 900;
+}
+
+.photo-groceries-button {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  padding: 0 13px;
+  color: var(--text);
+  background: rgb(var(--surface-rgb) / 78%);
+  font-weight: 900;
+}
+
+.photo-groceries-button.is-analyzing,
+.photo-groceries-button.is-ready {
+  border-color: var(--mint);
+  color: var(--mint);
+  background: rgb(var(--accent-rgb) / 12%);
+}
+
+.photo-groceries-button .background-job-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+}
+
+.grocery-photo-picker {
+  position: absolute;
+  z-index: 35;
+  top: calc(100% + 7px);
+  left: 50%;
+  width: min(230px, calc(100vw - 28px));
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  background: rgb(var(--surface-rgb) / 99%);
+  box-shadow: 0 16px 38px rgb(0 0 0 / 48%);
+  transform: translateX(-50%);
+}
+
+.grocery-photo-picker button {
+  min-height: 48px;
+  border: 0;
+  padding: 0 13px;
+  color: var(--text);
+  background: transparent;
+  font-weight: 850;
+  text-align: left;
+}
+
+.grocery-photo-picker button + button {
+  border-top: 1px solid var(--line);
+}
+
+.grocery-photo-picker button:active {
+  background: rgb(var(--accent-rgb) / 12%);
+}
+
+.photo-groceries-button:disabled,
+.classify-groceries-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
 }
 
 .shopping-mode-button {
@@ -1687,15 +1787,21 @@ textarea:focus-visible {
   width: min(calc(100% - 28px), 620px);
   min-height: 54px;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(64px, 1fr));
   transform: translateX(-50%);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--line-strong);
   border-radius: 17px;
   padding: 5px 60px 5px 5px;
   background: rgb(9 22 19 / 94%);
   box-shadow: 0 14px 36px rgb(0 0 0 / 38%);
   backdrop-filter: blur(15px);
+  scrollbar-width: none;
+}
+
+.bottom-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .assistant-view {
@@ -2798,6 +2904,296 @@ textarea:focus-visible {
   background: rgb(var(--accent-rgb) / 14%);
 }
 
+.robot-view {
+  display: grid;
+  gap: 14px;
+}
+
+.robot-heading {
+  align-items: center;
+}
+
+.robot-state {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: var(--muted);
+  background: rgb(var(--surface-rgb) / 80%);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.robot-state.is-connected,
+.robot-state.is-armed {
+  color: var(--mint);
+}
+
+.robot-state.is-moving {
+  color: #07110f;
+  background: var(--mint);
+}
+
+.robot-warning,
+.robot-error {
+  margin: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+}
+
+.robot-warning {
+  border: 1px solid rgb(var(--accent-rgb) / 28%);
+  color: var(--muted);
+  background: rgb(var(--accent-rgb) / 7%);
+}
+
+.robot-error {
+  border: 1px solid rgb(255 112 112 / 35%);
+  color: #ffb0aa;
+  background: rgb(120 20 20 / 20%);
+}
+
+.robot-camera-panel {
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: #030a08;
+}
+
+.robot-camera {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 45%, rgb(102 245 196 / 14%), transparent 34%),
+    linear-gradient(rgb(102 245 196 / 5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(102 245 196 / 5%) 1px, transparent 1px), #07110f;
+  background-size:
+    auto,
+    28px 28px,
+    28px 28px,
+    auto;
+}
+
+.robot-camera img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.robot-camera-empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.robot-simulation-label {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  border: 1px solid var(--mint);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--mint);
+  background: rgb(7 17 15 / 82%);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.robot-overlays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.robot-box {
+  position: absolute;
+  border: 2px solid var(--mint);
+  border-radius: 5px;
+  box-shadow: 0 0 12px rgb(102 245 196 / 22%);
+}
+
+.robot-box.is-person,
+.robot-box.is-identity {
+  border-color: #7ac9ff;
+}
+
+.robot-box.is-safety {
+  border-color: #ff9b87;
+}
+
+.robot-box.is-marker {
+  border-color: #d8a8ff;
+}
+
+.robot-box small {
+  position: absolute;
+  top: -1.45rem;
+  left: -2px;
+  max-width: 12rem;
+  overflow: hidden;
+  border-radius: 4px 4px 4px 0;
+  padding: 2px 5px;
+  color: #07110f;
+  background: var(--mint);
+  font-size: 0.62rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.robot-box.is-person small,
+.robot-box.is-identity small {
+  background: #7ac9ff;
+}
+
+.robot-overlay-options {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 9px;
+}
+
+.robot-overlay-options label {
+  min-height: 34px;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 9px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.robot-control-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.robot-control-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.section-heading.compact h3 {
+  margin: 2px 0 0;
+}
+
+.robot-direction-pad {
+  width: min(100%, 240px);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(54px, 1fr));
+  grid-template-rows: repeat(3, 54px);
+  gap: 7px;
+  justify-self: center;
+  touch-action: none;
+  user-select: none;
+}
+
+.robot-direction-pad button {
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  color: var(--text);
+  background: rgb(var(--surface-rgb) / 82%);
+  font-size: 1.35rem;
+  font-weight: 850;
+  touch-action: none;
+}
+
+.robot-direction-pad button:active:not(:disabled) {
+  color: #07110f;
+  background: var(--mint);
+  transform: scale(0.96);
+}
+
+.robot-direction-pad .is-haut {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.robot-direction-pad .is-gauche {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.robot-direction-pad .is-center {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.robot-direction-pad .is-droite {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.robot-direction-pad .is-bas {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.robot-stop {
+  min-height: 48px;
+  border: 1px solid #ff8e82;
+  border-radius: 13px;
+  color: #fff;
+  background: #a82d28;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.robot-arm {
+  min-height: 44px;
+}
+
+.robot-telemetry summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.robot-telemetry dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin: 14px 0 0;
+}
+
+.robot-telemetry dl div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px;
+}
+
+.robot-telemetry dt {
+  color: var(--muted);
+  font-size: 0.67rem;
+}
+
+.robot-telemetry dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+@media (max-width: 620px) {
+  .robot-control-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .robot-telemetry dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .watch-creator-actions {
   display: flex;
   gap: 0.65rem;
@@ -3105,6 +3501,183 @@ textarea:focus-visible {
 
 .classification-dialog {
   max-width: 620px;
+}
+
+.visually-hidden {
+  position: fixed !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
+.grocery-photo-backdrop {
+  z-index: 70;
+}
+
+.grocery-photo-dialog {
+  width: min(100%, 820px);
+  max-height: min(94vh, 900px);
+  display: grid;
+  gap: 12px;
+}
+
+.grocery-photo-dialog > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.grocery-photo-dialog > header small,
+.grocery-photo-items small,
+.grocery-photo-loading small {
+  color: var(--muted);
+}
+
+.grocery-photo-dialog > header h2 {
+  margin-top: 2px;
+  font-size: 1.55rem;
+}
+
+.grocery-photo-dialog > header > button {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  background: rgb(var(--page-rgb) / 64%);
+  font-size: 1.6rem;
+}
+
+.grocery-photo-loading {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.grocery-photo-preview {
+  position: relative;
+  width: min(100%, 520px);
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: #0a0d0c;
+}
+
+.grocery-photo-preview > img {
+  width: 100%;
+  max-height: 52vh;
+  display: block;
+  object-fit: contain;
+}
+
+.grocery-photo-detection {
+  position: absolute;
+  min-width: 20px;
+  min-height: 18px;
+  overflow: hidden;
+  border: 1px solid rgb(var(--accent-rgb) / 90%);
+  border-radius: 4px;
+  padding: 0 2px;
+  color: var(--accent-contrast);
+  background: rgb(var(--accent-rgb) / 38%);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 45%);
+  font-size: 0.63rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.grocery-photo-items {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.grocery-photo-items li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 24px minmax(140px, 1fr) minmax(90px, 0.45fr) 38px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 7px;
+  background: rgb(var(--page-rgb) / 45%);
+}
+
+.grocery-photo-items li > span {
+  color: var(--mint);
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-align: center;
+}
+
+.grocery-photo-items li > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.grocery-photo-items small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.66rem;
+}
+
+.grocery-photo-items input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  padding: 0 9px;
+  color: var(--text);
+  background: rgb(var(--surface-rgb) / 80%);
+}
+
+.grocery-photo-items li > button {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--danger);
+  background: rgb(255 157 145 / 8%);
+  font-size: 1.25rem;
+}
+
+.grocery-photo-actions {
+  position: sticky;
+  bottom: -18px;
+  display: grid;
+  grid-template-columns: 0.7fr 1.3fr;
+  gap: 8px;
+  margin: 0 -18px -18px;
+  border-top: 1px solid var(--line);
+  padding: 12px 18px max(18px, env(safe-area-inset-bottom));
+  background: rgb(var(--surface-rgb) / 98%);
+}
+
+.grocery-photo-actions button {
+  min-height: 46px;
+  border-radius: 11px;
+  font-weight: 900;
+}
+
+.grocery-photo-actions button:last-child {
+  border: 0;
+  color: var(--accent-contrast);
+  background: var(--mint);
 }
 
 .classification-dialog > p {
@@ -3507,12 +4080,50 @@ textarea:focus-visible {
   }
 
   .grocery-classification-toolbar {
-    align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .grocery-action-row {
+    grid-template-columns: 1fr 0.72fr 1.35fr;
+  }
+
+  .grocery-action-row > button {
+    min-width: 0;
+    padding-inline: 7px;
+    font-size: 0.76rem;
   }
 
   .classification-preview-list li {
     grid-template-columns: 1fr;
+  }
+
+  .grocery-photo-dialog {
+    max-height: 96vh;
+    padding: 14px;
+  }
+
+  .grocery-photo-preview > img {
+    max-height: 44vh;
+  }
+
+  .grocery-photo-items li {
+    grid-template-columns: 22px minmax(0, 1fr) 38px;
+  }
+
+  .grocery-photo-items li > input {
+    grid-column: 2 / 3;
+  }
+
+  .grocery-photo-items li > button {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+
+  .grocery-photo-actions {
+    bottom: -14px;
+    margin: 0 -14px -14px;
+    padding-inline: 14px;
   }
 
   .schedule-grid {

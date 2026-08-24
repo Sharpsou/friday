@@ -44,7 +44,7 @@ Cette règle reste vraie même lorsque le PC est disponible. Il n’existe donc 
 
 ### 2.2 Niveau de preuve
 
-Le candidat du 18 août 2026 passe `pnpm verify` avec 192 tests unitaires/intégration et 23 scénarios Chrome mobile. Cela valide le code automatisé, pas tous les comportements physiques.
+Le candidat du 23 août 2026 passe `pnpm verify` avec 204 tests unitaires/intégration et 24 scénarios Chrome mobile. Cela valide le code automatisé, pas tous les comportements physiques.
 
 La persistance et la convergence offline des tâches ont été confirmées sur le Galaxy A17. Les recettes physiques complètes d’authentification, Courses, classement, `En course`, Budget, Chat et Veille restent ouvertes sur l’A17. Sur l’iPhone, mise à jour PWA, appairage du second adulte, authentification, redémarrage offline, convergence à deux appareils et suppression de l’auto-zoom des champs Tâche/Course sont confirmés ; seule l’observation d’usage prolongée reste ouverte.
 
@@ -390,7 +390,7 @@ flowchart LR
 
 Les e-mails, numéros de téléphone et adresses postales détectés sont retirés des requêtes. Si un nettoyage a été nécessaire, l’utilisateur doit accepter la version affichée avant l’envoi à Tavily.
 
-Le modèle par défaut est `qwen3.5:9b-q4_K_M`. Pour une demande locale complexe, l’orchestrateur lui fait produire automatiquement un plan interne non-thinking de 256 tokens au plus avant la réponse. `gemma4-12b-multimodal:128k` reste sélectionnable dans les réglages et active automatiquement son thinking natif lorsque la complexité ou le mode Web le justifie. Les deux modèles utilisent 8K pour les titres, 16K pour décision/plan Web et 32K pour délibération locale/réponse/vérification. Aucun raisonnement brut ou plan interne n’est affiché, enregistré ou réinjecté dans l’historique ; seuls les jalons opérationnels sont conservés.
+Le modèle par défaut est `qwen3.5:9b-q4_K_M`. Pour une demande locale complexe, l’orchestrateur lui fait produire automatiquement un plan interne non-thinking de 256 tokens au plus avant la réponse. `gemma4:e4b-it-qat` reste sélectionnable dans les réglages et active automatiquement son thinking natif lorsque la complexité ou le mode Web le justifie. Le réglage ne concerne que le Chat ; classement Courses et import photo gardent leurs modèles dédiés. Les titres utilisent 8K, la décision, le plan Web et l’audit factuel ciblé 16K, puis la délibération locale et la réponse 32K. L’audit Web est toujours confié à Qwen sans thinking et ne peut corriger que les segments contestés ; les segments soutenus restent inchangés. Aucun raisonnement brut ou plan interne n’est affiché, enregistré ou réinjecté dans l’historique ; seuls les jalons opérationnels sont conservés.
 
 #### File et reprise
 
@@ -1018,14 +1018,14 @@ L’origine stable est `https://192.168.1.14:8443`. Le script refuse une écoute
 | `FRIDAY_OLLAMA_URL`                        | `http://127.0.0.1:11434`                                            |
 | `FRIDAY_GROCERY_CLASSIFICATION_MODEL`      | `ministral-3:8b`                                                    |
 | `FRIDAY_GROCERY_CLASSIFICATION_TIMEOUT_MS` | délai de classement, défaut 120 s                                   |
-| `FRIDAY_ASSISTANT_MODEL`                   | `gemma4-12b-multimodal:128k`                                        |
+| `FRIDAY_ASSISTANT_MODEL`                   | `gemma4:e4b-it-qat`                                                 |
 | `FRIDAY_ASSISTANT_QWEN_MODEL`              | `qwen3.5:9b-q4_K_M`                                                 |
 | `FRIDAY_ASSISTANT_TIMEOUT_MS`              | délai par appel Ollama, runtime conseillé 720 s                     |
 | `FRIDAY_TAVILY_API_KEY`                    | active les recherches Web ; reste exclusivement côté hub            |
 
 Aucun secret ne doit avoir le préfixe `VITE_`, car les variables `VITE_*` peuvent être intégrées au bundle navigateur.
 
-Le Chat utilise Qwen par défaut et Gemma comme remplacement dans les réglages. Les deux suivent les mêmes enveloppes : 8K pour les titres, 16K pour décision/plan et 32K pour réponse/vérification ; aucune de ces variables de modèle ne fixe directement le contexte.
+Le Chat utilise Qwen par défaut et Gemma comme remplacement dans les réglages. Les enveloppes sont 8K pour les titres, 16K pour décision/plan/audit factuel et 32K pour la réponse ; aucune des variables de modèle ne fixe directement le contexte. L’audit est une passe Qwen structurée distincte du modèle de rédaction.
 
 ## 13. Méthode pratique pour modifier l’application
 

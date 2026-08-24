@@ -9,6 +9,9 @@ playwright-report/
 test-results/
 .playwright-cli/
 output/
+tmp/
+__pycache__/
+*.py[cod]
 
 # Configuration locale et secrets
 .env
@@ -27,3 +30,9 @@ logs/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Les poids de vision restent hors Git ; seul le manifeste d'exemple est suivi.
+robot/models/*.onnx
+robot/models/*.bin
+robot/models/*.tflite
+robot/models/*.pth

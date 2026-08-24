@@ -92,12 +92,40 @@ Friday distingue toujours l'épargne réellement versée du simple reste disponi
 
 - thèmes, mots-clés, sources et fréquence choisis par profil ;
 - collecte RSS/Atom et déduplication sur le PC ;
-- Qwen 3.5 9B Q4 par défaut pour le Chat et Gemma 4 12B avec thinking natif comme option approfondie par appareil ;
+- Qwen 3.5 9B Q4 par défaut pour le Chat et Gemma 4 E4B QAT avec thinking natif comme option approfondie par appareil ;
 - conversations et files Chat séparées par profil ;
 - Tavily alimente les modes Web et Exa MCP anonyme complète uniquement `Web approfondi` ; aucun navigateur automatisé, et le mode `Local` garantit zéro appel externe ;
 - aucune dépendance à Ollama pour les tâches, courses, budget ou données offline ;
 - FTS5 avant tout usage d'embeddings ;
 - éventuels embeddings conservés plus tard sur le PC uniquement.
+
+### Agent physique après le MVP
+
+Cette expérimentation ne change pas le MVP et ne déclenche encore aucun achat,
+firmware ou contrôle moteur. La V1 physique est un compagnon à roues
+différentielles asservies, cible 45 cm et maximum 50 cm, avec LiDAR 2D,
+Raspberry Pi autonome et microcontrôleur vital indépendant. Mini Pi et Otto DIY
+restent des inspirations expressives.
+
+Le noyau privilégie évitement fiable, intelligence locale et continuité du
+persona. Il vise 500 à 600 €, avec une estimation prudente de 490 à 650 € et un
+plafond absolu de 700 € livré. Pince, reconnaissance biométrique embarquée,
+accélérateur et politique neuronale restent des lots optionnels.
+
+Le Pi conserve navigation, docking, voix locale, routines, tools bornés et
+persona réduit lorsque le PC est absent. Le hub reste l’autorité de la mémoire
+durable, des consentements et de l’administration, jamais de l’arrêt, de
+l’évitement ou des moteurs. Toute action physique passe par le gateway, l’Action
+Firewall et le contrôleur vital. Une politique transformer/VLA peut seulement
+proposer une trajectoire courte expirable derrière Nav2 ; l’enregistrement
+continu et la surveillance secrète restent exclus.
+
+Le détail fonctionnel, le caractère joueur, la mémoire vocale, la musique, la
+reconnaissance consentie, les tools, la 3D, le budget et les gates sont
+centralisés dans le
+[document fondateur](19-document-fondateur-agent-physique-friday.md). La
+décision durable est enregistrée par
+l’[ADR-014](adr/014-agent-physique-otto-diy-oeil-friday.md).
 
 ## Architecture
 

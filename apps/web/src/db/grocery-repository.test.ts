@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fridayDb } from './friday-db.js';
 import {
   createLocalGroceryItem,
+  createLocalGroceryItems,
   deleteLocalGroceryItem,
   listGroceryItems,
   setLocalGroceryItemChecked,
@@ -49,6 +50,36 @@ describe('local grocery repository', () => {
       entityId: item.id,
     });
     expect(JSON.stringify(rawItem?.encrypted)).not.toContain('Lait');
+  });
+
+  it('imports a photo transcription as one encrypted local batch without aisles', async () => {
+    const items = await createLocalGroceryItems([
+      { label: '  Fleur de sel ', quantityText: ' x2 ' },
+      { label: 'Bananes vertes', quantityText: null },
+    ]);
+    const [storedItems, operations] = await Promise.all([
+      listGroceryItems(),
+      readPendingOperations(),
+    ]);
+
+    expect(items).toHaveLength(2);
+    expect(storedItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Fleur de sel',
+          quantityText: 'x2',
+          manualAisleId: null,
+          manualStoreFamilyId: null,
+        }),
+        expect.objectContaining({
+          label: 'Bananes vertes',
+          quantityText: null,
+          manualAisleId: null,
+          manualStoreFamilyId: null,
+        }),
+      ]),
+    );
+    expect(operations).toHaveLength(2);
   });
 
   it('checks and reopens an item through ordered outbox operations', async () => {

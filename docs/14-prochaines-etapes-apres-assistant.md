@@ -12,7 +12,7 @@ Le périmètre exact du Chat, ses incidents corrigés et ses limites de recette 
 
 ## Ordre de travail
 
-1. Rejouer sur le Galaxy A17 les recettes d’authentification, courses, classement, `En course`, budget, Chat local et Veille orchestrée/offline, sans bloquer les autres travaux automatisés.
+1. Rejouer sur le Galaxy A17 les recettes d’authentification, courses, import photo manuscrite, classement, `En course`, budget, Chat local et Veille orchestrée/offline, sans bloquer les autres travaux automatisés.
 2. Conserver en observation d’usage à deux la recette iPhone désormais validée pour certificat, mise à jour, appairage/auth, redémarrage hors ligne et convergence.
 3. Valider BitLocker, restreindre les ACL de `D:\FridayData` et prouver la sauvegarde/restauration avant toute donnée financière réelle.
 4. Conserver conflits et tombstones en observation conformément à l’ADR-011 ; ne rien implanter sans signal d’usage réel.
