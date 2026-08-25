@@ -2,8 +2,12 @@
 
 Date : 25 août 2026
 
-Statut : **verticale logicielle livrée ; Carto 2D observatrice ajoutée,
-cartographie volumétrique et autonomie physique toujours verrouillées**
+Statut : **checkpoint historique de la phase shadow ; autonomie, mémoire
+visuelle et relocalisation ont depuis évolué dans les migrations 22–24. Voir le
+[document 27](27-etat-canonique-app-robot-2026-08-25.md).**
+
+Les sections « non livré » et « verrouillé » expriment la cutline de cette
+étape, pas l’état du candidat actuel.
 
 ## Ce qui est implanté
 

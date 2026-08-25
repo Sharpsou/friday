@@ -1,6 +1,11 @@
 # Checkpoint Robot Friday — AlphaBot2-Pi actualisé au 25 août 2026
 
-Statut : **checkpoint matériel et téléopération ; l’autonomie courante est dans le [checkpoint 24](24-checkpoint-autonomie-alphabot2-2026-08-25.md)**
+Statut : **checkpoint matériel/téléopération historique ; état global courant
+dans le [document 27](27-etat-canonique-app-robot-2026-08-25.md)**
+
+Les mentions ci-dessous disant que `Autonome` ou `Va là` sont verrouillés
+décrivent l’état antérieur aux migrations 22–24. Elles sont conservées comme
+preuve de progression et ne doivent pas piloter le candidat actuel.
 
 Ce document décrit le dernier état consolidé. Le
 [journal d’implémentation](21-journal-implementation-alphabot2-2026-08-24.md)
@@ -246,32 +251,15 @@ sur Pi et remplacement du servo.
   `apps/web/src/RobotMapView.tsx` et `apps/web/src/robot-map-layout.ts` ;
 - suite : `docs/20-plan-implementation-robot-friday-alphabot2.md`.
 
-## 9. Reprise exacte dans un nouveau chat
+## 9. Utilisation de ce checkpoint
 
-1. Lire `AGENTS.md`, `docs/00-reprise-nouveau-chat.md`, les documents 09 et 10,
-   puis ce checkpoint et le runbook Robot.
-2. Exécuter `git status -sb` et `git log -5 --oneline` sans réinitialiser les
-   changements locaux.
-3. Lire l’état du Pi et les services sans envoyer de commande d’actionneur.
-4. Ne faire un essai physique qu’après accord utilisateur sur une zone sûre,
-   avec arrêt accessible et puissance minimale.
-5. Pour poursuivre le produit sans mouvement, constituer un corpus consenti et
-   mesurer précision/rappel, p95 prolongée et suivi anonyme. Ne pas activer
-   `Autonome` ; Carto reste un observateur de la téléopération et sa précision
-   doit être mesurée avant toute certification de trajet.
-6. Après toute évolution runtime, exécuter `pnpm verify`, reconstruire et
-   redémarrer avec
-   `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
+Ne pas démarrer une reprise depuis ce document seul. Lire `AGENTS.md`, le
+[handoff 00](00-reprise-nouveau-chat.md), le
+[document 27](27-etat-canonique-app-robot-2026-08-25.md) et le
+[runbook Robot](runbooks/robot-alphabot2.md).
 
-Prompt court utilisable :
-
-```text
-Reprends Robot Friday depuis docs/22-checkpoint-robot-alphabot2-2026-08-24.md
-et docs/runbooks/robot-alphabot2.md après les lectures obligatoires d’AGENTS.md.
-Préserve le worktree existant. Vérifie d’abord Git, l’état du Pi et les services
-sans mouvement. Ne confonds pas code livré, observation physique et capacité
-future. Le prototype réel est téléopéré, sans LiDAR ni pince. YOLO26s assure
-une détection générique sur le PC sans droit d'action ; suivi, identité,
-SLAM métrique, évitement et autonomie ne sont pas implémentés. Carto 2D ne
-fournit qu’une pose approximative pendant la téléopération.
-```
+Ce checkpoint reste utile pour les faits matériels, la téléopération, les
+mesures YOLO/latence et l’état observé le 24 août. Il ne décrit pas les
+capacités ajoutées ensuite : autonomie Dyna-Q, mémoire visuelle, politique
+caméra enrichie, fermeture de boucle et relocalisation après déplacement à la
+main.

@@ -2,6 +2,9 @@
 
 Date : 25 août 2026
 
+Statut : **dernière verticale Robot implantée ; état App + Robot consolidé dans
+le [document 27](27-etat-canonique-app-robot-2026-08-25.md)**
+
 ## État implanté
 
 - SQLite est à la migration 24. Les poses brutes ne sont jamais écrasées ; les

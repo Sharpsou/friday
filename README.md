@@ -2,7 +2,9 @@
 
 > Le quotidien familial, au même endroit — même hors connexion.
 
-Friday est une application privée pour organiser la maison à deux : tâches, courses, budget, conversations avec l’assistant et veille personnelle.
+Friday est une application privée pour organiser la maison à deux : tâches,
+courses, budget, conversations avec l’assistant, veille personnelle et
+expérimentation Robot AlphaBot2.
 
 Elle s’installe comme une application sur Android, iPhone et ordinateur. Les actions restent disponibles lorsque le PC ou le Wi-Fi ne répond plus, puis se synchronisent automatiquement au retour du hub familial.
 
@@ -16,6 +18,7 @@ Elle s’installe comme une application sur Android, iPhone et ordinateur. Les a
 | **Budget**      | Réalisé, prévisionnel, enveloppes, provisions, réserve et épargne réelle                          |
 | **Chat**        | Un assistant local privé, avec recherche Web optionnelle et sourcée                               |
 | **Veille**      | Des dossiers personnels qui suivent des sources, regroupent les sujets et produisent une synthèse |
+| **Robot**       | Téléopération, perception, mémoire d’objets, Carto, autonomie expérimentale et carte tactile      |
 
 L’interface reste volontairement courte et calme : une tâche peut se limiter à un titre, une course à un libellé, et les détails restent facultatifs.
 
@@ -35,7 +38,10 @@ Friday n’est pas un SaaS : les données principales restent dans le foyer et l
 
 La même Progressive Web App fonctionne sur le PC, Android et iPhone. L’appairage ferme l’accès au foyer, lie chaque appareil à un adulte et permet de révoquer une session si nécessaire.
 
-Les parcours d’installation, d’authentification, de redémarrage offline et de convergence à deux appareils sont validés sur les téléphones du foyer.
+La persistance/convergence offline a été validée sur le Galaxy A17. Sur
+l’iPhone, installation, mise à jour, authentification, redémarrage offline et
+convergence à deux appareils ont été confirmés. Les autres recettes A17 restent
+suivies séparément : un test automatisé ne vaut pas une validation téléphone.
 
 ## Architecture en bref
 
@@ -45,13 +51,15 @@ flowchart LR
     H --> D["SQLite\ndonnées canoniques"]
     H --> O["Ollama\nIA locale"]
     H -.-> W["RSS · Tavily · Exa\nWeb optionnel"]
+    H <-->|"passerelle bornée"| R["AlphaBot2-Pi\nwatchdog + actionneurs"]
+    H --> V["Vision et localisation\nYOLO · ORB · carte"]
 ```
 
 Le projet est un monorepo TypeScript : React/Vite pour la PWA, Fastify pour le hub, Dexie/IndexedDB sur les appareils et SQLite sur le PC.
 
 ## Lancer le projet
 
-Prérequis : Node.js 24 et pnpm 11.
+Prérequis : Node.js 24, pnpm 11 et Python 3 pour les tests Robot.
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -69,6 +77,8 @@ Le runtime familial Windows, les certificats HTTPS et les procédures de redéma
 ## Pour aller plus loin
 
 - [Guide fonctionnel et technique](docs/guides/guide-complet-fonctionnel-et-technique-friday.md)
+- [Index de la documentation](docs/README.md)
+- [État canonique App + Robot](docs/27-etat-canonique-app-robot-2026-08-25.md)
 - [Décision produit et architecture](docs/09-decision-finale-pwa-mvp.md)
 - [État de reprise du projet](docs/00-reprise-nouveau-chat.md)
 - [Runbooks d’exploitation](docs/runbooks/)

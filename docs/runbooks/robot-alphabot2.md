@@ -1,14 +1,16 @@
 # Runbook — Robot Friday AlphaBot2-Pi
 
-Lire d’abord le
-[checkpoint autonomie canonique](../24-checkpoint-autonomie-alphabot2-2026-08-25.md),
-puis le [checkpoint matériel](../22-checkpoint-robot-alphabot2-2026-08-24.md). Le
+Lire d’abord
+[l’état canonique App + Robot](../27-etat-canonique-app-robot-2026-08-25.md),
+puis, pour les détails de conception, le
+[checkpoint autonomie](../24-checkpoint-autonomie-alphabot2-2026-08-25.md) et le
+[checkpoint matériel](../22-checkpoint-robot-alphabot2-2026-08-24.md). Le
 [journal du 24 août](../21-journal-implementation-alphabot2-2026-08-24.md)
 conserve des états historiques qui ne doivent pas être pris pour la
 configuration actuelle.
 
-> Les passages plus bas qui décrivent `Autonome`, `Va là` ou l’apprentissage
-> en ligne comme verrouillés sont historiques et remplacés par le checkpoint 24. Ne pas les utiliser pour décider de l’état produit courant.
+> Les mesures historiques restent utiles au diagnostic. En cas de contradiction
+> sur une capacité ou un blocage, le document 27 et le code testé prévalent.
 
 ## État livré
 
@@ -149,9 +151,10 @@ classe de mouvement :
   symétrique et sa rampe lente restent à confirmer physiquement.
 
 Ne pas présenter la détection d'objets monoculaire comme un dispositif
-anticollision. Les capteurs IR n'offrent qu'un arrêt réflexe à courte portée.
-L'autonomie de déplacement demeure interdite sans capteur de distance et essais
-documentés.
+anticollision. Les capteurs IR n'offrent qu'une réaction à courte portée.
+L'autonomie logicielle peut être lancée explicitement à faible vitesse, mais
+elle n'est pas certifiée comme navigation domestique fiable tant que les essais
+physiques documentés ne sont pas passés.
 
 ## Reprise sûre à chaque allumage
 
@@ -172,8 +175,10 @@ documentés.
    centre par les mêmes petits écarts. Le pan matériel avance par pas de 10 µs
    toutes les 20 ms et ne libère le PWM qu’une fois chaque cible atteinte. Ne
    tester qu'un côté par séance et ne pas lancer de balayage répétitif.
-5. Relever immédiatement `vcgencmd get_throttled`. `0x50005`, un tremblement ou
-   un mouvement incohérent impose la coupure des servos et l’arrêt de l’essai.
+5. Relever `vcgencmd get_throttled`. Une sous-tension active pendant un appel de
+   courant moteur/servo est une alerte informative, pas un blocage automatique.
+   Un tremblement soutenu ou un mouvement incohérent justifie en revanche la
+   coupure opérateur et le diagnostic mécanique/alimentation.
 6. Ne pas envoyer de commande de roue tant que la recette sur cales de la
    séance n’est pas explicitement ouverte. Ne pas modifier le mode ou le drapeau
    matériel pour contourner une erreur.
@@ -192,8 +197,8 @@ les deux services sont actifs et une requête maintenant les actionneurs à
 `false` a été acceptée. `vcgencmd get_throttled` et l’API indiquaient toutefois
 `0x50005` immédiatement après déploiement. Une lecture ultérieure a donné
 `0x50000`, soit un événement historique sans sous-tension active à cet instant.
-Toute réapparition du bit actif, tout tremblement soutenu ou tout mouvement
-incohérent impose l’arrêt de l’essai.
+Le bit actif est désormais consultatif et géré par l’utilisateur ; un
+tremblement soutenu ou un mouvement incohérent reste un motif concret d’arrêt.
 
 Le canal 0 est le panoramique et le canal 1 l’inclinaison ; tous deux partagent
 le PCA9685 à l’adresse I²C `0x40`, 50 Hz. L’axe horizontal présente un défaut
@@ -310,12 +315,14 @@ pneu différent ou une sous-tension active.
 ## Tests de capacités cognitives
 
 Une reconnaissance temps réel légère objets/personnes est maintenant active.
-Sa qualité sur un corpus varié reste candidate et elle ne vaut ni identité, ni autonomie. Pour la
+Sa qualité sur un corpus varié reste candidate et elle ne vaut ni identité, ni
+preuve d’évitement fiable. Pour la
 recetter sans mouvement : maintenir les roues et l'armement sur OFF, vérifier
 qu'une scène produit des boîtes expirables, masquer puis représenter un objet,
-et relever les faux positifs ainsi que le temps `Caméra / vision`. Ne pas
-actionner les servos lorsque `underVoltageActive=true` ou que `get_throttled`
-vaut `0x50005`.
+et relever les faux positifs ainsi que le temps `Caméra / vision`. Une
+sous-tension active est affichée comme diagnostic ; elle ne désactive pas les
+servos. L’utilisateur peut interrompre l’essai si l’alimentation faiblit ou si
+le comportement mécanique devient anormal.
 
 Dans la PWA, seule la case `Reco` pilote l'affichage des boîtes. La décocher ne
 coupe pas le moteur d'inférence ; elle masque seulement la dernière observation.
@@ -332,7 +339,8 @@ une téléopération. Seules les images-clés répondant aux critères de la mig
   authentification, suppression immédiate testée.
 - Suivi : vitesse bornée, zone morte, perte de cible => stop.
 - Évitement : maquette au sol d'abord ; obstacle perdu ou télémétrie périmée =>
-  stop. Aucun comportement autonome avec la seule détection d'objets.
+  stop. La seule détection d'objets ne constitue pas une certification
+  anticollision de l'autonomie existante.
 
 Les étapes et critères complets sont dans
 `docs/20-plan-implementation-robot-friday-alphabot2.md`.

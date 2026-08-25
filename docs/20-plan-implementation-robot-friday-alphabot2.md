@@ -2,9 +2,13 @@
 
 Date : 24 août 2026 ; état actualisé le 25 août 2026
 
-Statut : **plan directeur en cours d’exécution ; R0/R1 livrés, R2/R3/R4
-partiellement recettés sur le matériel réel, aucune autonomie domestique
-autorisée**
+Statut : **plan directeur historique ; progression et capacités actuelles dans
+[27-etat-canonique-app-robot-2026-08-25.md](27-etat-canonique-app-robot-2026-08-25.md)**
+
+Les interdictions et capacités ci-dessous décrivent les gates prévues à cette
+étape. Elles ne doivent pas annuler les verticales logicielles implantées dans
+les migrations 22 à 24 ; seule une recette physique peut toutefois valider leur
+comportement réel.
 
 État au 24 août 2026 : le Pi a été sauvegardé puis réinstallé, l’accès SSH par
 clé, le service Python, le watchdog, la passerelle hub, l’onglet PWA, le flux

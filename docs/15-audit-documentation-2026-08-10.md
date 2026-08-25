@@ -1,6 +1,7 @@
 # Audit documentaire du 10 août 2026
 
-Statut : **documents actifs réalignés sur le candidat Assistant publié**
+Statut : **audit historique du 10 août ; remplacé par
+[28-audit-documentation-app-robot-2026-08-25.md](28-audit-documentation-app-robot-2026-08-25.md)**
 
 ## Périmètre contrôlé
 

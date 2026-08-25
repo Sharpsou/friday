@@ -4,6 +4,10 @@ Date : 25 août 2026
 
 Statut : **verticale logicielle implantée ; comportement physique à observer**
 
+État global actuel :
+[27-etat-canonique-app-robot-2026-08-25.md](27-etat-canonique-app-robot-2026-08-25.md).
+La relocalisation ajoutée ensuite est détaillée dans le checkpoint 26.
+
 Ce checkpoint complète le checkpoint 24. Il ne transforme toujours pas
 l’odométrie sans encodeur en SLAM métrique et ne prétend pas reconstruire les
 murs de l’appartement.

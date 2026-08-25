@@ -2,7 +2,9 @@
 
 Date : 18 août 2026
 
-Statut : **plan actif**
+Statut : **plan historique du 18 août ; remplacé pour la reprise par
+[00-reprise-nouveau-chat.md](00-reprise-nouveau-chat.md) et
+[27-etat-canonique-app-robot-2026-08-25.md](27-etat-canonique-app-robot-2026-08-25.md)**
 
 ## Point de départ
 

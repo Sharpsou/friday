@@ -5,6 +5,10 @@ Date : 25 août 2026
 Statut : **verticale logicielle implantée et testée ; recette physique autonome
 encore à effectuer**
 
+Ce checkpoint reste l’autorité sur la conception Dyna-Q de cette étape. L’état
+global, incluant mémoire visuelle et relocalisation ultérieures, est consolidé
+dans le [document 27](27-etat-canonique-app-robot-2026-08-25.md).
+
 Ce document remplace, pour l’état de l’autonomie, les verrous historiques des
 checkpoints 22 et 23. Il ne transforme pas une validation logicielle en preuve
 de comportement réel dans l’appartement.

@@ -1,14 +1,13 @@
 # Friday — feuille de route technique de développement et d’implémentation
 
-> Extension active du 18 août 2026 : la Veille utilise les migrations SQLite
-> 16 à 18 pour son socle RSS, sa découverte multi-sources, sa mémoire
-> concepts/sujets, sa synthèse sourcée et ses déclenchements persistants. Le
-> Chat utilise la migration 19 pour Tavily et Exa MCP. Voir
-> `docs/17-etat-veille-orchestree.md` et `docs/15-checkpoint-chat-tavily.md`.
+> Ce document est une feuille de route cumulative : ses lots, gates et règles
+> d’exécution restent utiles, mais ses encarts datés ne décrivent pas tous
+> l’état live. Pour la reprise et les migrations actuelles, consulter
+> [27-etat-canonique-app-robot-2026-08-25.md](27-etat-canonique-app-robot-2026-08-25.md).
 
 Date : 8 août 2026
 
-Statut : **support d’exécution de référence**
+Statut : **support d’exécution et historique des lots ; pas état live**
 
 Périmètre : MVP sur PC Windows + Samsung Galaxy A17 ; validation iPhone différée.
 

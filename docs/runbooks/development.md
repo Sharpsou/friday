@@ -4,6 +4,7 @@
 
 - Node.js 24 ;
 - pnpm 11.16.x ;
+- Python 3 pour les tests du runtime Robot et le worker OpenCV ;
 - Windows pour le hub cible ;
 - Google Chrome stable installé localement pour les E2E ; Playwright le lance explicitement avec le canal `chrome`.
 
@@ -14,7 +15,9 @@ pnpm install --frozen-lockfile
 pnpm verify
 ```
 
-`pnpm-workspace.yaml` autorise les scripts d'installation de deux dépendances seulement : `better-sqlite3` et `esbuild`. Les versions sont verrouillées par `pnpm-lock.yaml`.
+`pnpm-workspace.yaml` autorise les scripts d'installation de trois dépendances
+seulement : `better-sqlite3`, `esbuild` et `onnxruntime-node`. Les versions sont
+verrouillées par `pnpm-lock.yaml`.
 
 ## Boucle de développement
 
@@ -70,3 +73,10 @@ pnpm test:e2e
 ```
 
 La commande de référence reste `pnpm verify`.
+
+Pour un poste qui exécute le Robot réel, installer aussi le worker de
+relocalisation hors dépôt :
+
+```powershell
+infra\windows\Setup-FridayRobotLocalization.ps1
+```

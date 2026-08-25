@@ -1,10 +1,14 @@
 # Friday — guide complet fonctionnel et technique
 
-Date de référence : 18 août 2026
+Date de référence : 25 août 2026
 
 Public : lecteur à l’aise avec Python, R et SQL, mais débutant en TypeScript/React
 
-État décrit : candidat local vérifié avec migrations SQLite 1–19 et Dexie 1–7
+État décrit : candidat local vérifié avec migrations SQLite 1–24 et Dexie 1–7
+
+Pour une reprise rapide et les limites physiques, consulter d’abord
+[l’état canonique App + Robot](../27-etat-canonique-app-robot-2026-08-25.md).
+Ce guide privilégie l’explication pédagogique et ne remplace pas les runbooks.
 
 ## 1. À quoi sert ce guide
 
@@ -24,27 +28,28 @@ Cette règle reste vraie même lorsque le PC est disponible. Il n’existe donc 
 
 ### 2.1 Ce qui fonctionne aujourd’hui
 
-| Domaine                         | État actuel                                                                                                              |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Authentification fermée         | Implantée : propriétaire, second adulte, appairage par code, appareils, révocation et approbation d’un nouvel appareil   |
-| Aujourd’hui                     | Implanté : tâches en cours, résumé Courses, alerte Budget, état de synchronisation et conflits                           |
-| Agenda                          | Implanté : tâches, date, heure, durée, responsable, note, récurrence, vues Liste/Semaine/Mois, édition et suppression    |
-| Courses                         | Implanté : liste partagée, quantité, achat/réouverture, édition, suppression et rayon manuel                             |
-| Classement par rayon            | Implanté : règles locales, Ministral via Ollama pour les inconnus, aperçu, corrections et application explicite          |
-| En course                       | Implanté : vue plein écran, groupes par rayon, grandes cibles tactiles, progression, fonctionnement offline              |
-| Budget                          | Implanté : réel, prévisionnel, récurrences, enveloppes, provisions, réserve, corrections et suppressions                 |
-| Chat                            | Implanté : conversations privées, cache/outbox chiffrés, file persistante, Qwen/Gemma, Tavily + Exa MCP et pause/reprise |
-| Mise à jour PWA                 | Implantée : détection persistante et activation après confirmation de l’utilisateur                                      |
-| Veille orchestrée               | Implantée : dossiers privés, sources RSS/Web, concepts, sujets, synthèses, cadence et runs persistants                   |
-| Google Calendar Maison          | Non implanté ; la lecture et le cache offline restent le prochain lot naturel                                            |
-| Sauvegarde chiffrée automatisée | Conçue et documentée, mais pas encore implantée de bout en bout                                                          |
-| Résolution avancée des conflits | Reportée jusqu’à un signal d’usage réel ; le conflit est détecté et signalé, sans écran complet de résolution            |
-| Purge des tombstones            | Désactivée ; les suppressions logiques sont conservées                                                                   |
-| Accès extérieur Tailscale       | Décidé mais volontairement en pause                                                                                      |
+| Domaine                         | État actuel                                                                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Authentification fermée         | Implantée : propriétaire, second adulte, appairage par code, appareils, révocation et approbation d’un nouvel appareil |
+| Aujourd’hui                     | Implanté : tâches en cours, résumé Courses, alerte Budget, état de synchronisation et conflits                         |
+| Agenda                          | Implanté : tâches, date, heure, durée, responsable, note, récurrence, vues Liste/Semaine/Mois, édition et suppression  |
+| Courses                         | Implanté : liste partagée, quantité, achat/réouverture, édition, suppression et rayon manuel                           |
+| Classement par rayon            | Implanté : règles locales, Ministral via Ollama pour les inconnus, aperçu, corrections et application explicite        |
+| En course                       | Implanté : vue plein écran, groupes par rayon, grandes cibles tactiles, progression, fonctionnement offline            |
+| Budget                          | Implanté : réel, prévisionnel, récurrences, enveloppes, provisions, réserve, corrections et suppressions               |
+| Chat                            | Implanté : Local, Friday, Web léger/approfondi, cache/outbox chiffrés, Qwen/Gemma, Tavily + Exa et pause/reprise       |
+| Mise à jour PWA                 | Implantée : détection persistante et activation après confirmation de l’utilisateur                                    |
+| Veille orchestrée               | Implantée : dossiers privés, sources RSS/Web, concepts, sujets, synthèses, cadence et runs persistants                 |
+| Robot                           | Implanté : téléopération, YOLO, mémoire, Carto, autonomie Dyna-Q, carte, `Va là` et relocalisation visuelle            |
+| Google Calendar Maison          | Non implanté ; la lecture et le cache offline restent le prochain lot naturel                                          |
+| Sauvegarde chiffrée automatisée | Conçue et documentée, mais pas encore implantée de bout en bout                                                        |
+| Résolution avancée des conflits | Reportée jusqu’à un signal d’usage réel ; le conflit est détecté et signalé, sans écran complet de résolution          |
+| Purge des tombstones            | Désactivée ; les suppressions logiques sont conservées                                                                 |
+| Accès extérieur Tailscale       | Décidé mais volontairement en pause                                                                                    |
 
 ### 2.2 Niveau de preuve
 
-Le candidat du 23 août 2026 passe `pnpm verify` avec 204 tests unitaires/intégration et 24 scénarios Chrome mobile. Cela valide le code automatisé, pas tous les comportements physiques.
+Le candidat du 25 août 2026 passe `pnpm verify` avec 294 tests Python/TypeScript et 25 scénarios Chrome mobile. Cela valide le code automatisé, pas tous les comportements physiques.
 
 La persistance et la convergence offline des tâches ont été confirmées sur le Galaxy A17. Les recettes physiques complètes d’authentification, Courses, classement, `En course`, Budget, Chat et Veille restent ouvertes sur l’A17. Sur l’iPhone, mise à jour PWA, appairage du second adulte, authentification, redémarrage offline, convergence à deux appareils et suppression de l’auto-zoom des champs Tâche/Course sont confirmés ; seule l’observation d’usage prolongée reste ouverte.
 
@@ -366,6 +371,7 @@ Chaque conversation choisit un mode :
 | Mode           | Comportement                                                                                |
 | -------------- | ------------------------------------------------------------------------------------------- |
 | Local          | Qwen par défaut ou Gemma via Ollama ; aucun appel Internet                                  |
+| Friday         | lecture seule des faits autorisés du foyer et du Robot, avec références `[F…]`              |
 | Web léger      | 1 à 2 recherches Tavily `basic`, plafond de 2 crédits                                       |
 | Web approfondi | Tavily et Exa MCP anonyme en parallèle ; au plus 6 appels Tavily et 2 appels Exa adaptatifs |
 
@@ -417,6 +423,26 @@ Le Chat ne dispose d’aucune route permettant de modifier directement Agenda, C
 La Veille est implantée et privée par profil. Chaque dossier conserve ses sources, sa cadence, ses concepts suivis/secondaires/masqués, ses sujets fusionnés, sa synthèse et la progression de son run. RSS/Atom reste prioritaire ; une découverte multi-sources aide à constituer la veille et un complément Tavily quotidien borné peut fournir quelques articles lorsqu’il reste moins de six flux. Les migrations SQLite 16 à 18 et Dexie 6 à 7 portent ce domaine.
 
 Google Calendar reste en revanche non implanté : aucune table Calendar active ni synchronisation Google n’existe encore, et l’écran Aujourd’hui ne montre donc pas encore de rendez-vous Google.
+
+### 5.11 Robot
+
+L’onglet Robot pilote un AlphaBot2 réel par une passerelle authentifiée. La PWA
+affiche la caméra, les détections, les switches d’actionneurs, le joystick, les
+presets de tête, les modes Manuel/Autonome, Carto et une carte tactile. Les
+commandes physiques ne sont jamais placées dans l’outbox et ne sont pas
+rejouées.
+
+Le Pi garde le watchdog, les GPIO et l’arrêt local. Le PC exécute YOLO26s,
+consolide la mémoire des objets, apprend une politique Dyna-Q bornée et calcule
+la localisation visuelle ORB. La carte fusionne une odométrie approximative et
+des fermetures de boucle. Si le robot est déplacé à la main, Friday recherche
+un lieu connu et ouvre un nouveau segment plutôt que de dessiner un trajet
+fictif.
+
+Cette verticale ne transforme pas la caméra monoculaire et les IR en SLAM
+métrique ou en évitement domestique garanti. L’état et les limites sont dans
+[le document 27](../27-etat-canonique-app-robot-2026-08-25.md), l’exploitation
+dans [le runbook AlphaBot2](../runbooks/robot-alphabot2.md).
 
 ## 6. La synchronisation, étape par étape
 
@@ -508,7 +534,7 @@ Les suppressions sont des `upsert` avec `deletedAt` non nul. Elles restent dans 
 
 ### 7.1 IndexedDB/Dexie sur l’appareil
 
-La base navigateur s’appelle `friday` et possède cinq versions Dexie.
+La base navigateur s’appelle `friday` et possède sept versions Dexie.
 
 | Table                    | Contenu                                                        |
 | ------------------------ | -------------------------------------------------------------- |
@@ -549,7 +575,7 @@ PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL; -- sauf base :memory:
 ```
 
-Les migrations sont numérotées 1 à 14 et enregistrées dans `schema_migrations`. Une migration entière est transactionnelle.
+Les migrations sont numérotées 1 à 24 et enregistrées dans `schema_migrations`. Une migration entière est transactionnelle. Les migrations 20 à 24 ajoutent progressivement mémoire Robot/mode Friday, Carto, autonomie, images-clés et relocalisation visuelle.
 
 Principales familles de tables :
 
@@ -836,6 +862,8 @@ Commencer par `packages/domain` si vous voulez lire du TypeScript sans React, HT
 | [`apps/web/src/App.tsx`](../../apps/web/src/App.tsx)                                       | coque principale, navigation, état global local, Agenda, Courses, réglages et orchestration sync |
 | [`apps/web/src/BudgetView.tsx`](../../apps/web/src/BudgetView.tsx)                         | calculs de présentation, formulaires et écran Budget                                             |
 | [`apps/web/src/AssistantView.tsx`](../../apps/web/src/AssistantView.tsx)                   | conversations, polling des runs, consentement, pause/reprise et composition                      |
+| [`apps/web/src/RobotView.tsx`](../../apps/web/src/RobotView.tsx)                           | vidéo, téléopération, modes, autonomie et accès Carto                                            |
+| [`apps/web/src/RobotMapView.tsx`](../../apps/web/src/RobotMapView.tsx)                     | carte tactile, objets, segments et relocalisation                                                |
 | [`apps/web/src/TaskCalendar.tsx`](../../apps/web/src/TaskCalendar.tsx)                     | vues Semaine/Mois                                                                                |
 | [`apps/web/src/ShoppingMode.tsx`](../../apps/web/src/ShoppingMode.tsx)                     | mode plein écran magasin                                                                         |
 | [`apps/web/src/ItemEditorDialogs.tsx`](../../apps/web/src/ItemEditorDialogs.tsx)           | édition tactile tâches/courses                                                                   |
@@ -860,7 +888,7 @@ Commencer par `packages/domain` si vous voulez lire du TypeScript sans React, HT
 | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | [`apps/hub/src/main.ts`](../../apps/hub/src/main.ts)                                                                         | variables d’environnement, TLS, chemin DB et écoute réseau                |
 | [`apps/hub/src/app.ts`](../../apps/hub/src/app.ts)                                                                           | construction Fastify, CSP, routes, validation, auth et fichiers statiques |
-| [`apps/hub/src/db/database.ts`](../../apps/hub/src/db/database.ts)                                                           | ouverture SQLite et migrations 1–19                                       |
+| [`apps/hub/src/db/database.ts`](../../apps/hub/src/db/database.ts)                                                           | ouverture SQLite et migrations 1–24                                       |
 | [`apps/hub/src/sync/sync-service.ts`](../../apps/hub/src/sync/sync-service.ts)                                               | idempotence, révisions, upserts, journal et pull                          |
 | [`apps/hub/src/auth/auth-service.ts`](../../apps/hub/src/auth/auth-service.ts)                                               | Better Auth, foyer fermé, appareils, approbation, révocation et audit     |
 | [`apps/hub/src/groceries/grocery-classification-service.ts`](../../apps/hub/src/groceries/grocery-classification-service.ts) | job persistant et application des rayons                                  |
@@ -872,6 +900,8 @@ Commencer par `packages/domain` si vous voulez lire du TypeScript sans React, HT
 | [`apps/hub/src/assistant/exa-mcp-search.ts`](../../apps/hub/src/assistant/exa-mcp-search.ts)                                 | client Exa MCP anonyme, diagnostic et temporisation                       |
 | [`apps/hub/src/watch/watch-service.ts`](../../apps/hub/src/watch/watch-service.ts)                                           | découvertes, runs, concepts, sujets et synthèses de Veille                |
 | [`apps/hub/src/budget/budget-seed.ts`](../../apps/hub/src/budget/budget-seed.ts)                                             | import idempotent d’un fichier normalisé hors dépôt                       |
+| [`apps/hub/src/robot/robot-mapping.ts`](../../apps/hub/src/robot/robot-mapping.ts)                                           | odométrie, mémoire visuelle, graphe de poses et relocalisation            |
+| [`apps/hub/src/robot/robot-autonomy.ts`](../../apps/hub/src/robot/robot-autonomy.ts)                                         | boucle autonome, Dyna-Q, capteurs, caméra et missions                     |
 
 ### 10.4 Tests
 
@@ -939,6 +969,13 @@ Les routes publiques génériques d’inscription/connexion Better Auth sont mas
 
 Les routes `/api/watch/*` couvrent l’aperçu privé, la validation et la découverte de sources, la création/modification/suppression d’une veille, l’ajout de sources découvertes, le lancement manuel et les états privés des articles et concepts.
 
+### 11.6 Robot
+
+Les routes `/api/robot/*` couvrent état, flux caméra, actionneurs, locomotion,
+presets, modes, Carto, carte, mémoire, autonomie, journal cognitif, missions et
+relocalisation. Elles exigent une session autorisée et ne sont jamais des
+opérations offline rejouables.
+
 Il n’existe volontairement pas de routes CRUD directes pour tâches/courses/budget : leurs mutations passent par `/api/sync/push`.
 
 ## 12. Lancer Friday
@@ -949,8 +986,9 @@ Il n’existe volontairement pas de routes CRUD directes pour tâches/courses/bu
 - pnpm 11.16.x ;
 - Chrome stable pour les E2E ;
 - Windows pour le runtime cible ;
-- Ollama seulement pour le classement et le Chat ;
-- aucune dépendance Docker ou Python en production.
+- Ollama seulement pour le classement, le Chat et les analyses Friday ;
+- Python 3 pour le runtime Pi et le worker OpenCV de localisation Robot ;
+- aucune dépendance Docker en production.
 
 ### 12.2 Installation et contrôle
 

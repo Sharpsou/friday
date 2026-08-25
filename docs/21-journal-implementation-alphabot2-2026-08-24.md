@@ -1,9 +1,9 @@
 # Journal d’implémentation — AlphaBot2-Pi du 24 août 2026
 
-Statut : **journal chronologique clos ; consulter le checkpoint 22 pour l’état
-présent, le robot ayant depuis été rallumé, déployé et téléopéré**.
+Statut : **journal chronologique clos ; consulter le
+[document 27](27-etat-canonique-app-robot-2026-08-25.md) pour l’état présent**.
 
-> Source d’état actuelle :
+> Source d’état de cette séance :
 > [22-checkpoint-robot-alphabot2-2026-08-24.md](22-checkpoint-robot-alphabot2-2026-08-24.md).
 > Les mentions `simulated`, `0x50005`, « robot éteint » ou « roues
 > neutralisées » ci-dessous décrivent un instant historique de la séance, pas le
