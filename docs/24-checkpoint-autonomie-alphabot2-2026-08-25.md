@@ -29,6 +29,9 @@ de comportement réel dans l’appartement.
 - La caméra autonome n’utilise que les positions issues du réglage manuel :
   centre `(0 ; 0,20)`, gauche/droite `±0,5`, haut `0,15`, bas `0,25`. Aucun
   angle exotique ni balayage continu n’est généré.
+- En mode manuel, déplacer la caméra ne met plus Carto en pause : les nouvelles
+  orientations enrichissent les observations. Les roues restent simplement
+  indisponibles tant que la tête n’est pas revenue au preset central.
 
 ## Apprentissage techniquement retenu
 

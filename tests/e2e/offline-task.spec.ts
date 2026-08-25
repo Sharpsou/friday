@@ -823,6 +823,16 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   ).toBeEnabled();
   await page.getByRole('button', { name: 'Caméra centrer' }).click();
   await expect.poll(() => lastCameraTilt).toBe(0.2);
+  await page.getByRole('button', { name: 'Carto', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Carto active' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Caméra gauche' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Carto active' }),
+  ).toBeVisible();
+  expect(mappingStatus).toBe('recording');
+  await page.getByRole('button', { name: 'Caméra centrer' }).click();
   await wheels.click();
   await expect(wheels).toBeChecked();
   await expect(page.getByRole('button', { name: 'Armer 60 s' })).toHaveCount(0);

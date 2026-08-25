@@ -321,8 +321,6 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     if (!state) return;
     setBusy(true);
     try {
-      if (map?.mapping.status === 'recording')
-        setMap(await setRobotMapping('pause'));
       const target = nextCameraPose(state.cameraPose, panDelta, tiltDelta);
       updateState(await lookRobotCamera(target.pan, target.tilt));
     } catch (cause) {

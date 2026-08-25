@@ -99,8 +99,9 @@ L’interface actuelle comporte :
   haut/bas valent `0,05` ;
 - le pan par grands pas normalisés de `0,5`, avec une rampe de 10 µs toutes les
   20 ms, sans balayage automatique ;
-- aucun mouvement de caméra pendant la locomotion ; une commande caméra met
-  Carto en pause et sa reprise exige le preset sûr `pan=0`, `tilt=+0,20`.
+- aucun mouvement de caméra pendant la locomotion ; depuis le checkpoint 24,
+  une commande caméra ne met plus Carto en pause. La locomotion attend toujours
+  le retour au preset sûr `pan=0`, `tilt=+0,20`.
 
 ## 4.1 Cartographie observatrice livrée
 

@@ -220,13 +220,14 @@ L’armement n’a plus de bouton séparé dans la PWA. Le passage du switch `Ro
 à ON appelle d’abord `/actuators`, force si nécessaire le mode `manual`, puis
 `/arm`; l’autorisation de 60 s est renouvelée toutes les 45 s tant que le switch
 reste actif. Elle ne commande jamais les moteurs à elle seule. Les boutons
-`Manuel` et `Autonome` sont maintenant explicites. `Autonome` reste désactivé
-et le hub refuse aussi ce mode. En manuel, `Carto` enregistre une trajectoire
-vectorielle approximative sans aucune image ; déplacer la caméra met la session
-en pause et sa reprise impose le preset central. `Carte` ouvre la vue tactile,
-et `Va là` ne crée qu’un aperçu refusé sans commande moteur. Le switch OFF,
-`ARRÊT`, une fermeture de page, un changement de mode ou un redémarrage du Pi
-arrêtent toujours le mouvement.
+`Manuel` et `Autonome` sont maintenant explicites. Depuis le checkpoint 24,
+`Autonome` démarre l’exploration continue et Carto automatiquement. En manuel, `Carto`
+enregistre une trajectoire vectorielle approximative sans aucune image ;
+déplacer la caméra conserve l’enregistrement, mais les roues attendent le
+retour au preset central. `Carte` ouvre la vue tactile et une destination
+`Va là` admissible démarre ou réoriente l’autonomie. Le switch OFF et `ARRÊT`
+arrêtent toujours le mouvement ; la boucle autonome continue en arrière-plan
+si la PWA se ferme, mais pas après un redémarrage du hub.
 
 Après un redémarrage du hub, toute session Carto qui enregistrait passe en
 pause. Ne jamais interpréter la pose affichée comme une mesure métrique : sans
