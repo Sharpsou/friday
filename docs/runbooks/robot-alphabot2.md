@@ -234,6 +234,23 @@ retour au preset central. `Carte` ouvre la vue tactile et une destination
 arrêtent toujours le mouvement ; la boucle autonome continue en arrière-plan
 si la PWA se ferme, mais pas après un redémarrage du hub.
 
+`Manuel` sans Carto n’est pas un mode d’enregistrement. La reconnaissance et
+les boîtes restent visibles, mais le hub n’ajoute alors ni objet, présence,
+cellule, point de vue, trajectoire ou image-clé. La ligne `Mémoire en pause`
+confirme cet état. Le dernier état technique de pose peut être remplacé pour le
+joystick et une éventuelle séquence `Récup`, sans créer d’historique de carte.
+Quand Carto enregistre, les impulsions utiles à la géométrie restent prises en
+compte ; un objet ou point de vue identique n’est persisté qu’au plus toutes les
+cinq secondes. Un changement de preset ou de cellule peut être retenu
+immédiatement, et la relocalisation continue d’analyser les images en mémoire
+sans transformer chaque frame en donnée durable.
+
+La section `Objets mémorisés` affiche d’abord les objets confirmés, regroupés
+par pièce. Les indices candidats sont masqués jusqu’au bouton `Voir les
+indices`. Utiliser le filtre pour chercher par nom, classe ou pièce et
+`Modifier` pour corriger un libellé ; le renommage n’altère ni la classe YOLO
+ni les observations sources.
+
 Pendant une exploration, `Récup` signifie explicitement « la politique est
 coincée ». Le hub arrête la boucle, passe en manuel et commence une
 démonstration. Dégager le robot avec le joystick, puis appuyer sur `Rendre la

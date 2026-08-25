@@ -11,10 +11,10 @@ describe('RobotMemoryService', () => {
     const database = openDatabase(':memory:');
     const memory = new RobotMemoryService(database, 'household-test');
     const now = Date.now();
-    memory.observe(state(1, now, 0));
-    memory.observe(state(2, now + 10, 0));
+    memory.observe(state(1, now, 0), null, true);
+    memory.observe(state(2, now + 5_000, 0), null, true);
     expect(memory.summary().entities[0]?.status).toBe('candidate');
-    memory.observe(state(3, now + 20, 0.7));
+    memory.observe(state(3, now + 5_010, 0.7), null, true);
     const entity = memory.summary().entities[0];
     expect(entity?.status).toBe('confirmed');
     expect(entity?.sightingCount).toBe(3);
@@ -40,7 +40,7 @@ describe('RobotMemoryService', () => {
         y: 0.2,
       },
     ];
-    memory.observe(next);
+    memory.observe(next, null, true);
     const summary = memory.summary();
     expect(summary.entities).toHaveLength(0);
     expect(summary.anonymousPresence.active).toBe(true);
@@ -55,11 +55,11 @@ describe('RobotMemoryService', () => {
     const now = Date.now();
     const first = state(1, now, 0);
     mapping.start(first);
-    memory.observe(first, jpeg(1));
-    memory.observe(state(2, now + 20, 0), jpeg(2));
-    const confirmed = state(3, now + 40, 0.5);
+    memory.observe(first, jpeg(1), true);
+    memory.observe(state(2, now + 5_000, 0), jpeg(2), true);
+    const confirmed = state(3, now + 5_010, 0.5);
     confirmed.vision!.detections[0]!.x = 0;
-    memory.observe(confirmed, jpeg(3));
+    memory.observe(confirmed, jpeg(3), true);
     mapping.observe(confirmed);
 
     const snapshot = mapping.snapshot();
@@ -83,9 +83,9 @@ describe('RobotMemoryService', () => {
     const now = Date.now();
     const first = state(1, now, 0);
     mapping.start(first);
-    memory.observe(first, jpeg(1));
-    memory.observe(state(2, now + 20, 0), jpeg(2));
-    const mixed = state(3, now + 40, 0.5);
+    memory.observe(first, jpeg(1), true);
+    memory.observe(state(2, now + 5_000, 0), jpeg(2), true);
+    const mixed = state(3, now + 5_010, 0.5);
     mixed.vision!.detections[0]!.x = 0;
     mixed.vision!.detections.push({
       confidence: 0.9,
@@ -98,9 +98,45 @@ describe('RobotMemoryService', () => {
       x: 0.6,
       y: 0.2,
     });
-    memory.observe(mixed, jpeg(3));
+    memory.observe(mixed, jpeg(3), true);
 
     expect(mapping.snapshot().visualMemory.keyframeCount).toBe(0);
+    database.close();
+  });
+
+  it('does not persist live recognition while capture is disabled', () => {
+    const database = openDatabase(':memory:');
+    const memory = new RobotMemoryService(database, 'household-test');
+
+    memory.observe(state(1, Date.now(), 0));
+
+    expect(memory.summary().entities).toHaveLength(0);
+    expect(
+      (
+        database
+          .prepare('SELECT COUNT(*) AS count FROM robot_memory_observations')
+          .get() as { count: number }
+      ).count,
+    ).toBe(0);
+    database.close();
+  });
+
+  it('samples a repeated object instead of recording every camera frame', () => {
+    const database = openDatabase(':memory:');
+    const memory = new RobotMemoryService(database, 'household-test');
+    const now = Date.now();
+
+    memory.observe(state(1, now, 0), null, true);
+    memory.observe(state(2, now + 100, 0), null, true);
+
+    expect(memory.summary().entities[0]?.sightingCount).toBe(1);
+    expect(
+      (
+        database
+          .prepare('SELECT COUNT(*) AS count FROM robot_memory_observations')
+          .get() as { count: number }
+      ).count,
+    ).toBe(1);
     database.close();
   });
 });

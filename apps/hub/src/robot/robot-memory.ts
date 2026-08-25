@@ -32,6 +32,7 @@ const MAX_KEYFRAMES = 48;
 const MAX_KEYFRAMES_PER_ENTITY = 3;
 const KEYFRAME_COOLDOWN_MS = 10_000;
 const MAX_KEYFRAME_BYTES = 256 * 1024;
+const OBSERVATION_SAMPLE_INTERVAL_MS = 5_000;
 
 interface RecordedObject {
   becameConfirmed: boolean;
@@ -49,6 +50,7 @@ interface MapEstimate {
 
 export class RobotMemoryService {
   #lastFrameId = -1;
+  #lastPresenceWriteAtMs = 0;
 
   constructor(
     private readonly database: Database.Database,
@@ -59,7 +61,9 @@ export class RobotMemoryService {
   observe(
     state: RobotState,
     keyframe: RobotVisionKeyframe | null = null,
+    captureEnabled = false,
   ): void {
+    if (!captureEnabled) return;
     const frame = state.vision;
     if (!frame || frame.frameId === this.#lastFrameId) return;
     if (Date.parse(frame.expiresAt) <= Date.now()) return;
@@ -257,7 +261,7 @@ export class RobotMemoryService {
         ? this.database
             .prepare(
               `SELECT id, confidence, sighting_count, status,
-                    viewpoint_keys_json, map_x, map_y
+                    viewpoint_keys_json, map_x, map_y, last_seen_at
                FROM robot_memory_entities
               WHERE household_id = ? AND room_id = ? AND kind = 'object'
                 AND class_label = ? AND map_x IS NOT NULL AND map_y IS NOT NULL
@@ -281,7 +285,7 @@ export class RobotMemoryService {
         : this.database
             .prepare(
               `SELECT id, confidence, sighting_count, status,
-                    viewpoint_keys_json, map_x, map_y
+                    viewpoint_keys_json, map_x, map_y, last_seen_at
                FROM robot_memory_entities
               WHERE household_id = ? AND room_id = ? AND kind = 'object'
                 AND class_label = ? AND spatial_key = ?`,
@@ -293,20 +297,33 @@ export class RobotMemoryService {
           id: string;
           map_x: number | null;
           map_y: number | null;
+          last_seen_at: string;
           sighting_count: number;
           status: 'candidate' | 'confirmed' | 'uncertain';
           viewpoint_keys_json: string;
         }
       | undefined;
     const id = existing?.id ?? randomUUID();
-    const count = (existing?.sighting_count ?? 0) + 1;
-    const previousConfidence = existing?.confidence ?? confidence;
-    const averageConfidence =
-      (previousConfidence * (count - 1) + confidence) / count;
     const viewpoints = new Set<string>(
       existing ? (JSON.parse(existing.viewpoint_keys_json) as string[]) : [],
     );
     const newViewpoint = !viewpoints.has(viewpointKey);
+    if (
+      existing &&
+      !newViewpoint &&
+      Date.parse(observedAt) - Date.parse(existing.last_seen_at) <
+        OBSERVATION_SAMPLE_INTERVAL_MS
+    )
+      return {
+        becameConfirmed: false,
+        entityId: existing.id,
+        isConfirmed: existing.status === 'confirmed',
+        newViewpoint: false,
+      };
+    const count = (existing?.sighting_count ?? 0) + 1;
+    const previousConfidence = existing?.confidence ?? confidence;
+    const averageConfidence =
+      (previousConfidence * (count - 1) + confidence) / count;
     viewpoints.add(viewpointKey);
     const status =
       count >= 3 && viewpoints.size >= 2 && averageConfidence >= 0.8
@@ -554,6 +571,13 @@ export class RobotMemoryService {
     y: number,
     frameId: number,
   ): void {
+    const observedAtMs = Date.parse(observedAt);
+    if (
+      observedAtMs - this.#lastPresenceWriteAtMs <
+      OBSERVATION_SAMPLE_INTERVAL_MS
+    )
+      return;
+    this.#lastPresenceWriteAtMs = observedAtMs;
     const latest = this.database
       .prepare(
         `SELECT id, last_seen_at, confidence FROM robot_presence_events

@@ -778,6 +778,44 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
     episodeCount: 0,
     humanRecovery,
   });
+  const robotMemory = {
+    roomName: 'Salon',
+    entities: [
+      {
+        id: '8bf07ebd-9e1b-45f7-b95b-d771049ea365',
+        kind: 'object' as const,
+        classLabel: 'lampe',
+        displayName: 'Lampe bureau',
+        roomName: 'Salon',
+        confidence: 0.93,
+        status: 'confirmed' as const,
+        sightingCount: 8,
+        firstSeenAt: '2026-08-25T00:00:00.000Z',
+        lastSeenAt: '2026-08-25T00:10:00.000Z',
+        lastPosition: { x: 0.4, y: 0.3 },
+      },
+      {
+        id: '6d8daa69-e13c-4a64-9ca2-5987f5a441a7',
+        kind: 'object' as const,
+        classLabel: 'chaise',
+        displayName: 'Chaise possible',
+        roomName: 'Salon',
+        confidence: 0.61,
+        status: 'candidate' as const,
+        sightingCount: 1,
+        firstSeenAt: '2026-08-25T00:11:00.000Z',
+        lastSeenAt: '2026-08-25T00:11:00.000Z',
+        lastPosition: { x: 0.6, y: 0.4 },
+      },
+    ],
+    anonymousPresence: { active: false, lastSeenAt: null },
+    mapping: { enabled: true, status: 'observer' as const },
+    learning: {
+      mode: 'online' as const,
+      policyStatus: 'candidate' as const,
+      episodeCount: 12,
+    },
+  };
   await page.route('**/api/robot/state', async (route) =>
     route.fulfill({ json: robotState }),
   );
@@ -786,6 +824,9 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   );
   await page.route('**/api/robot/autonomy', async (route) =>
     route.fulfill({ json: robotAutonomy() }),
+  );
+  await page.route('**/api/robot/memory', async (route) =>
+    route.fulfill({ json: robotMemory }),
   );
   await page.route('**/api/robot/autonomy/start', async (route) => {
     robotState = { ...robotState, operatingMode: 'autonomous' };
@@ -916,6 +957,15 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   await expect(page.getByRole('button', { name: 'Manuel' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Carto' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Autonome' })).toBeEnabled();
+  await expect(page.getByText(/Mémoire en pause/u)).toBeVisible();
+  await page.getByText(/Objets mémorisés · 1 fiable/u).click();
+  await expect(page.getByText('Lampe bureau')).toBeVisible();
+  await expect(page.getByText('Chaise possible')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Voir 1 indice(s)' }).click();
+  await expect(page.getByText('Chaise possible')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Modifier le nom Lampe bureau' }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Carte' }).click();
   await expect(
     page.getByRole('img', { name: 'Vue du dessus de la cartographie' }),

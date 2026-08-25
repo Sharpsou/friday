@@ -408,7 +408,7 @@ export async function buildHub(options: BuildHubOptions) {
       const keyframe = state.vision
         ? (robot.visionKeyframe?.(state.vision.frameId) ?? null)
         : null;
-      robotMemory.observe(state, keyframe);
+      robotMemory.observe(state, keyframe, robotMapping.isRecording());
       robotMapping.observe(state, keyframe);
       return state;
     } catch (error) {

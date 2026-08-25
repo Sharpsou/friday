@@ -65,6 +65,10 @@ sur le PC dans un Worker isolé.
   faible soumis à une preuve de progrès ;
 - caméra limitée aux presets issus du manuel, avec politique de points de vue
   apprenable ; Carto continue pendant un mouvement de tête ;
+- en Manuel sans Carto, la reconnaissance reste visible mais n’ajoute ni
+  objet, présence, point de vue, cellule, trajectoire ou image ; pendant Carto,
+  la vision répétitive est échantillonnée toutes les cinq secondes ou lors
+  d’un changement de vue utile ;
 - carte tactile avec trajectoires, incertitude, objets, zoom/déplacement et
   commande `Va là` sur une cible admissible ;
 - images-clés sélectives liées aux objets, signatures ORB sans copie d’image,
@@ -86,7 +90,7 @@ preuve physique.
 Le candidat applicatif `08cafa1` a été vérifié et déployé le 25 août 2026 :
 
 - 21 tests Python ;
-- 22 tests contrats, 15 domaine, 150 hub et 91 PWA ;
+- 22 tests contrats, 15 domaine, 153 hub et 91 PWA ;
 - 25 scénarios Playwright mobiles ;
 - builds PWA/hub réussis ;
 - worker OpenCV 4.14.0 testé ;

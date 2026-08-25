@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -13,6 +14,7 @@ import type {
   RobotAutonomyStatus,
   RobotCognitionJournalEntry,
   RobotMapSnapshot,
+  RobotMemoryEntity,
   RobotMemorySummary,
   RobotState,
 } from '@friday/contracts';
@@ -55,6 +57,7 @@ const PAN_NUDGE = 0.5;
 const TILT_NUDGE = 0.05;
 const ROBOT_POWER_STORAGE_KEY = 'friday.robot.powerPercent';
 const ROBOT_TRIM_STORAGE_KEY = 'friday.robot.steeringTrimPercent';
+const EMPTY_MEMORY_ENTITIES: RobotMemoryEntity[] = [];
 
 function initialRobotPower(): number {
   const stored = Number(window.localStorage.getItem(ROBOT_POWER_STORAGE_KEY));
@@ -78,6 +81,129 @@ function stateLabel(state: RobotState | null): string {
   if (state.armed) return 'Armé';
   return 'Connecté';
 }
+
+const RobotMemoryPanel = memo(function RobotMemoryPanel({
+  isOwner,
+  memory,
+  onRename,
+}: {
+  isOwner: boolean;
+  memory: RobotMemorySummary | null;
+  onRename: (id: string, currentName: string) => Promise<void>;
+}) {
+  const [query, setQuery] = useState('');
+  const [showCandidates, setShowCandidates] = useState(false);
+  const entities = memory?.entities ?? EMPTY_MEMORY_ENTITIES;
+  const confirmedCount = entities.filter(
+    (entity) => entity.status === 'confirmed',
+  ).length;
+  const candidateCount = entities.length - confirmedCount;
+  const normalizedQuery = query.trim().toLocaleLowerCase('fr-FR');
+  const groups = useMemo(() => {
+    const grouped = new Map<string, RobotMemoryEntity[]>();
+    for (const entity of entities) {
+      if (!showCandidates && entity.status !== 'confirmed') continue;
+      if (
+        normalizedQuery &&
+        !`${entity.displayName} ${entity.classLabel} ${entity.roomName}`
+          .toLocaleLowerCase('fr-FR')
+          .includes(normalizedQuery)
+      )
+        continue;
+      const room = entity.roomName;
+      const roomEntities = grouped.get(room) ?? [];
+      roomEntities.push(entity);
+      grouped.set(room, roomEntities);
+    }
+    return [...grouped.entries()].map(([room, roomEntities]) => ({
+      room,
+      entities: roomEntities.toSorted((left, right) =>
+        left.displayName.localeCompare(right.displayName, 'fr'),
+      ),
+    }));
+  }, [entities, normalizedQuery, showCandidates]);
+
+  return (
+    <details className="panel robot-memory">
+      <summary>
+        Objets mémorisés · {confirmedCount.toString()} fiable(s)
+        {candidateCount > 0
+          ? ` · ${candidateCount.toString()} à confirmer`
+          : ''}
+      </summary>
+      <div className="robot-memory-tools">
+        {entities.length > 6 ? (
+          <label>
+            <span>Filtrer</span>
+            <input
+              aria-label="Filtrer les objets mémorisés"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Nom, type ou pièce"
+            />
+          </label>
+        ) : null}
+        {candidateCount > 0 ? (
+          <button
+            aria-pressed={showCandidates}
+            type="button"
+            onClick={() => setShowCandidates((visible) => !visible)}
+          >
+            {showCandidates
+              ? 'Masquer les indices'
+              : `Voir ${candidateCount.toString()} indice(s)`}
+          </button>
+        ) : null}
+      </div>
+      {groups.length > 0 ? (
+        <div className="robot-memory-groups">
+          {groups.map((group) => (
+            <section key={group.room}>
+              <h3>{group.room}</h3>
+              <ul>
+                {group.entities.map((entity) => (
+                  <li
+                    className={
+                      entity.status === 'confirmed' ? '' : 'is-candidate'
+                    }
+                    key={entity.id}
+                  >
+                    <span>
+                      <strong>{entity.displayName}</strong>
+                      <small>
+                        {entity.status === 'confirmed'
+                          ? `${Math.round(entity.confidence * 100).toString()} % · ${entity.sightingCount.toString()} observations`
+                          : `À confirmer · ${entity.sightingCount.toString()} observation(s)`}
+                      </small>
+                    </span>
+                    {isOwner ? (
+                      <button
+                        aria-label={`Modifier le nom ${entity.displayName}`}
+                        type="button"
+                        onClick={() =>
+                          void onRename(entity.id, entity.displayName)
+                        }
+                      >
+                        Modifier
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <p>
+          {confirmedCount === 0 && !showCandidates
+            ? 'Aucun objet fiable. Les détections à confirmer restent masquées pour garder cette vue lisible.'
+            : 'Aucun objet ne correspond à ce filtre.'}
+        </p>
+      )}
+    </details>
+  );
+});
 
 export default function RobotView({ isOwner }: { isOwner: boolean }) {
   const [state, setState] = useState<RobotState | null>(null);
@@ -449,6 +575,9 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     state.operatingMode === 'manual' &&
     !state.moving &&
     !busy;
+  const confirmedMemoryCount =
+    memory?.entities.filter((entity) => entity.status === 'confirmed').length ??
+    0;
 
   if (mapVisible && map)
     return (
@@ -590,7 +719,9 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
         ) : null}
       </div>
       <small className="robot-map-status">
-        Mémoire · {memory?.entities.length.toString() ?? '0'} objet(s) · Carto{' '}
+        Mémoire {map?.mapping.status === 'recording' ? 'sélective' : 'en pause'}
+        {' · '}
+        {confirmedMemoryCount.toString()} objet(s) fiable(s) · Carto{' '}
         {map?.mapping.status ?? 'indisponible'} ·{' '}
         {map
           ? `${Math.round(map.mapping.storageBytes / 1_024).toString()} Kio`
@@ -773,40 +904,11 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
         <small>Le propriétaire doit autoriser les actionneurs.</small>
       ) : null}
 
-      <details className="panel robot-memory">
-        <summary>
-          Mémoire visuelle · {memory?.entities.length.toString() ?? '0'}{' '}
-          objet(s)
-        </summary>
-        {memory?.entities.length ? (
-          <ul>
-            {memory.entities.map((entity) => (
-              <li key={entity.id}>
-                <span>
-                  <strong>{entity.displayName}</strong> · {entity.roomName} ·{' '}
-                  {Math.round(entity.confidence * 100).toString()} % ·{' '}
-                  {entity.sightingCount.toString()} vue(s)
-                </span>
-                {isOwner ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void renameMemoryEntity(entity.id, entity.displayName)
-                    }
-                  >
-                    Renommer
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>
-            Aucun objet confirmé. Friday attend plusieurs vues fiables avant de
-            mémoriser un emplacement.
-          </p>
-        )}
-      </details>
+      <RobotMemoryPanel
+        isOwner={isOwner}
+        memory={memory}
+        onRename={renameMemoryEntity}
+      />
 
       <details className="panel robot-telemetry">
         <summary>Télémétrie et diagnostic</summary>

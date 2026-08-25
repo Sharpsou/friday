@@ -439,6 +439,14 @@ des fermetures de boucle. Si le robot est déplacé à la main, Friday recherche
 un lieu connu et ouvre un nouveau segment plutôt que de dessiner un trajet
 fictif.
 
+En Manuel sans Carto, YOLO reste un affichage temps réel : aucune observation,
+présence, cellule, direction regardée, trajectoire ou image n’est ajoutée à la
+mémoire. Carto active une capture sélective ; les répétitions d’un même objet et
+point de vue sont échantillonnées toutes les cinq secondes, tandis qu’un
+changement utile peut être retenu immédiatement. L’interface mémoire montre les
+objets confirmés par pièce, masque les candidats par défaut et fournit filtre
+et renommage.
+
 Cette verticale ne transforme pas la caméra monoculaire et les IR en SLAM
 métrique ou en évitement domestique garanti. L’état et les limites sont dans
 [le document 27](../27-etat-canonique-app-robot-2026-08-25.md), l’exploitation

@@ -39,6 +39,7 @@ const BYTES_PER_POINT = 96;
 const MAX_SESSION_POINTS = 2_000;
 const MAX_HOUSEHOLD_POINTS = 10_000;
 const DRAFT_RETENTION_MS = 7 * 24 * 60 * 60_000;
+const VISUAL_SAMPLE_INTERVAL_MS = 5_000;
 
 interface RuntimeRow {
   correction_revision: number;
@@ -157,6 +158,9 @@ export class RobotMappingService {
   private confirmation: LocalizationConfirmation | null = null;
   private stationaryMismatchCount = 0;
   private localizationDegradedUntil = 0;
+  private lastVisualSampleAtMs = 0;
+  private lastVisualSampleKey: string | null = null;
+  private lastObservedFrameId: number | null = null;
 
   constructor(
     private readonly database: Database.Database,
@@ -172,6 +176,7 @@ export class RobotMappingService {
       )
       .run(this.householdId, now);
     const runtime = this.runtime();
+    this.lastObservedFrameId = runtime.last_frame_id;
     if (!isUuid(runtime.segment_id))
       this.database
         .prepare(
@@ -574,6 +579,10 @@ export class RobotMappingService {
     return this.snapshot();
   }
 
+  isRecording(): boolean {
+    return this.activeSession()?.status === 'recording';
+  }
+
   setMode(mode: RobotOperatingMode): void {
     if (mode !== 'manual' && mode !== 'autonomous') return;
     if (mode === 'manual') this.stop();
@@ -665,16 +674,37 @@ export class RobotMappingService {
     const frame = state.vision;
     if (!frame || Date.parse(frame.expiresAt) <= Date.now()) return;
     const runtime = this.runtime();
-    if (runtime.last_frame_id === frame.frameId) return;
-    this.database
-      .prepare(
-        `UPDATE robot_map_runtime SET last_frame_id = ?, updated_at = ?
-          WHERE household_id = ?`,
-      )
-      .run(frame.frameId, frame.observedAt, this.householdId);
-    this.recordMapCell(runtime, true);
-    this.recordViewpoint(state, runtime);
-    this.anchorConfirmedObjects(state, runtime);
+    if (this.lastObservedFrameId === frame.frameId) return;
+    this.lastObservedFrameId = frame.frameId;
+    const recording = this.isRecording();
+    const relocalizing = runtime.localization_status === 'relocalizing';
+    if (!recording && !relocalizing) return;
+    const sampleKey = [
+      Math.round(runtime.x / 0.2),
+      Math.round(runtime.y / 0.2),
+      cameraBucket(state.cameraPose.pan, 9),
+      cameraBucket(state.cameraPose.tilt, 7),
+    ].join(':');
+    const observedAtMs = Date.parse(frame.observedAt);
+    const sampleDue =
+      relocalizing ||
+      sampleKey !== this.lastVisualSampleKey ||
+      observedAtMs - this.lastVisualSampleAtMs >= VISUAL_SAMPLE_INTERVAL_MS;
+    if (sampleDue) {
+      this.lastVisualSampleKey = sampleKey;
+      this.lastVisualSampleAtMs = observedAtMs;
+      this.database
+        .prepare(
+          `UPDATE robot_map_runtime SET last_frame_id = ?, updated_at = ?
+            WHERE household_id = ?`,
+        )
+        .run(frame.frameId, frame.observedAt, this.householdId);
+    }
+    if (recording && sampleDue) {
+      this.recordMapCell(runtime, true);
+      this.recordViewpoint(state, runtime);
+      this.anchorConfirmedObjects(state, runtime);
+    }
     if (
       keyframe &&
       this.options.placeRecognition &&

@@ -639,7 +639,7 @@ export class RobotAutonomyService {
       let keyframe = state.vision
         ? (this.robot.visionKeyframe?.(state.vision.frameId) ?? null)
         : null;
-      this.memory?.observe(state, keyframe);
+      this.memory?.observe(state, keyframe, this.mapping.isRecording());
       this.mapping.observe(state, keyframe);
       // vcgencmd exposes a threshold bit, not a voltage magnitude. Servo and
       // motor current peaks can set it during otherwise usable operation, so
@@ -668,7 +668,7 @@ export class RobotAutonomyService {
       keyframe = state.vision
         ? (this.robot.visionKeyframe?.(state.vision.frameId) ?? null)
         : null;
-      this.memory?.observe(state, keyframe);
+      this.memory?.observe(state, keyframe, this.mapping.isRecording());
       this.mapping.observe(state, keyframe);
       const nextContext = this.mapping.autonomyContext();
       const nextDistance = this.distanceToTarget();

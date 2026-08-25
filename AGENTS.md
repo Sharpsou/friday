@@ -55,7 +55,7 @@ historiques 01–08 ou les anciens checkpoints Robot pour contredire le document
 
 - Navigation : Aujourd’hui, Agenda, Courses, Budget, Chat, Veille, Robot.
 - SQLite 25 ; Dexie 7.
-- `pnpm verify` de référence : 21 tests Python, 22 contrats, 15 domaine, 150
+- `pnpm verify` de référence : 21 tests Python, 22 contrats, 15 domaine, 153
   hub, 91 PWA, 25 Playwright et builds production.
 - Candidat déployé sur l’origine A17 ; health check et intégrité SQLite `ok`.
 - Sauvegarde pré-migration 25 :

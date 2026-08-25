@@ -23,7 +23,7 @@ Friday est un monorepo pnpm TypeScript :
 - calculs lourds Robot sur le PC, hors de la boucle matérielle du Pi.
 
 La commande d’autorité est `pnpm verify`. Le dernier candidat vérifié passe :
-21 tests Python, 22 contrats, 15 domaine, 150 hub, 91 PWA et 25 parcours
+21 tests Python, 22 contrats, 15 domaine, 153 hub, 91 PWA et 25 parcours
 Playwright mobiles, puis les builds de production.
 
 ## 2. Application réellement présente
@@ -87,7 +87,8 @@ reprend ni mission ni exploration autonome.
 ## 5. Modes et autonomie
 
 - `Manuel` : joystick et presets existants ; `Carto` peut observer pendant la
-  conduite et reste active quand la caméra bouge.
+  conduite et reste active quand la caméra bouge. Sans Carto, YOLO reste
+  visible en direct mais aucune observation visuelle n’est persistée.
 - `Autonome` : exploration Dyna-Q démarrée explicitement par le propriétaire ;
   Carto démarre automatiquement ; vitesses candidates 10–20 %, impulsions
   bornées et masque capteurs/actionneurs.
@@ -130,10 +131,19 @@ et reste bornée à ±15 % des coefficients initiaux.
 La mémoire est bornée :
 
 - trajectoires : 2 000 points par session et 10 000 par foyer ;
+- observations visuelles : seulement pendant Carto, au plus une écriture par
+  objet et point de vue toutes les cinq secondes, sauf changement de vue ;
 - images-clés : 48 JPEG, 16 Mio, au plus 3 par objet et aucune frame où une
   personne est détectée ;
 - signatures : 600, 12 Mio, descripteurs/empreinte/pose/objets mais aucune
   copie d’image supplémentaire.
+
+L’interface `Objets mémorisés` montre les entités confirmées en premier, les
+regroupe par pièce et masque par défaut les simples indices. Elle permet de
+filtrer par nom, type ou pièce, d’afficher les indices et de renommer chaque
+entrée. Le statut `Mémoire en pause` signifie qu’aucune observation durable ne
+s’ajoute ; le dernier état technique de pose peut néanmoins être remplacé sans
+créer d’historique afin de servir le contrôle manuel et `Récup`.
 
 Quand le robot est soulevé ou déplacé physiquement :
 

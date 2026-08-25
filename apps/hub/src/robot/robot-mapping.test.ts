@@ -187,6 +187,24 @@ describe('RobotMappingService', () => {
     expect(snapshot.paths[0]?.points).toHaveLength(1);
   });
 
+  it('does not persist map observations without an active Carto session', () => {
+    const database = openDatabase(':memory:');
+    databases.push(database);
+    const mapping = new RobotMappingService(database, HOUSEHOLD);
+
+    mapping.observe(state(2));
+
+    expect(mapping.snapshot().mapping.status).toBe('inactive');
+    expect(mapping.snapshot().viewpoints).toHaveLength(0);
+    expect(
+      (
+        database
+          .prepare('SELECT COUNT(*) AS count FROM robot_map_cells')
+          .get() as { count: number }
+      ).count,
+    ).toBe(0);
+  });
+
   it('keeps autonomous mode and mission previews fail-closed', () => {
     const database = openDatabase(':memory:');
     databases.push(database);
