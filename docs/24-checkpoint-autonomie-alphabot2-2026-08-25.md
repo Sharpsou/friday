@@ -113,6 +113,12 @@ boucle autonome entre dans `recovering` avant toute action moteur et réessaie
 automatiquement ; elle ne doit pas être physiquement recettée tant que le bit
 actif n’a pas disparu.
 
+Correction de déploiement : le premier essai du bouton renvoyait `Mode
+invalide`, car `controller.py` et `hardware.py` avaient été actualisés tandis
+que `models.py` restait ancien dans `venv/site-packages`. Les sources et le
+paquet installé ont été resynchronisés. Un appel direct réel à `/mode` a accepté
+`autonomous`, puis `manual`, avec roues et servos OFF pendant toute la recette.
+
 ## Autorités techniques
 
 - boucle : `apps/hub/src/robot/robot-autonomy.ts` ;

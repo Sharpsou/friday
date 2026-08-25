@@ -33,6 +33,13 @@ buffers et `rpicam-vid --flush`; le relais lit au plus 16 Kio avec `read1()` et
 vide immédiatement sa sortie. La PWA affiche ce flux en 4:3 avec
 `object-fit: contain`, sans recadrage logiciel.
 
+Lors d’un déploiement Python, synchroniser le paquet `friday_robot` complet,
+pas seulement les fichiers modifiés visibles dans le diff. Vérifier notamment
+le module réellement importé dans `.venv/lib/python*/site-packages` : une copie
+source correcte sous `/home/pi/friday-robot` ne garantit pas que le venv la
+charge. Après redémarrage, confirmer que `MODES` contient `autonomous` et que
+les capacités exposent `map_observer` et `autonomous_exploration`.
+
 La reconnaissance tourne par défaut sur le PC du hub. Les poids ne sont ni dans
 Git ni sur le téléphone : utiliser `D:\FridayData\robot\models`, avec un
 `manifest.json` contenant source, licence et SHA-256. Le Pi 3 ne reçoit qu'un
