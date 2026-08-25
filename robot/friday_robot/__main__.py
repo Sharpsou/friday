@@ -6,19 +6,27 @@ import signal
 import threading
 
 from .controller import RobotController
-from .hardware import AlphaBot2Hardware, SimulatedHardware
+from .hardware import AlphaBot2Hardware
 from .server import create_server
 
 
-def main() -> None:
+def argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Service embarqué Friday Robot")
-    parser.add_argument("--mode", choices=("simulated", "alphabot2"), default=os.environ.get("FRIDAY_ROBOT_MODE", "simulated"))
-    args = parser.parse_args()
+    parser.add_argument(
+        "--mode",
+        choices=("alphabot2",),
+        default=os.environ.get("FRIDAY_ROBOT_MODE", "alphabot2"),
+    )
+    return parser
+
+
+def main() -> None:
+    args = argument_parser().parse_args()
     bind = os.environ.get("FRIDAY_ROBOT_BIND", "127.0.0.1")
     port = int(os.environ.get("FRIDAY_ROBOT_PORT", "8765"))
     token = os.environ.get("FRIDAY_ROBOT_TOKEN", "")
     camera_url = os.environ.get("FRIDAY_ROBOT_CAMERA_URL")
-    hardware = SimulatedHardware(camera_url) if args.mode == "simulated" else AlphaBot2Hardware(camera_url)
+    hardware = AlphaBot2Hardware(camera_url)
     controller = RobotController(hardware, args.mode)
     server = create_server(bind, port, controller, token)
 

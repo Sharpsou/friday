@@ -9,6 +9,7 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/friday-robot
 EnvironmentFile=/home/pi/.config/friday-robot/runtime.env
+Environment=FRIDAY_CAMERA_FPS=15
 ExecStart=/home/pi/friday-robot/.venv/bin/friday-robot --mode ${FRIDAY_ROBOT_MODE}
 Restart=on-failure
 RestartSec=2

@@ -1,5 +1,17 @@
 # Friday — point de reprise pour un nouveau chat
 
+> Mise à jour du 25 août 2026 : la vision Robot utilise désormais YOLO26s ONNX
+> sur le PC dans un Worker Node isolé. Le flux CSI est mutualisé entre la PWA et
+> la reconnaissance, une image sur deux est analysée et la dernière
+> surimpression persiste jusqu'au résultat suivant. Le sélecteur de mode est
+> retiré ; `Cartographie` et `Autonome` sont des indicateurs `À venir`
+> désactivés. Voir le checkpoint Robot.
+
+> Mise à jour du 24 août 2026 : le prototype AlphaBot2 réel est téléopérable
+> depuis l’onglet Robot. Son état canonique, ses limites physiques et sa reprise
+> sans mouvement sont dans
+> [22-checkpoint-robot-alphabot2-2026-08-24.md](22-checkpoint-robot-alphabot2-2026-08-24.md).
+>
 > Mise à jour du 18 août 2026 : la Veille orchestrée remplace le premier
 > candidat RSS. Elle propose une liste de dossiers privés, un `+` contextuel,
 > une découverte multi-sources incluant le journalisme, des concepts à trois
@@ -9,7 +21,7 @@
 > lancement manuel et reprise : un simple redémarrage avant l'heure configurée ne
 > collecte et n'analyse plus la Veille.
 
-Date de l’audit : 10 août 2026 ; état actualisé le 18 août 2026
+Date de l’audit : 10 août 2026 ; état actualisé le 24 août 2026
 
 Statut : **point d’entrée canonique**
 
@@ -31,9 +43,10 @@ Le code Friday et son historique Git doivent être préservés. Le prochain chat
 | 2 | ce document | état réel, reprise et prochaines actions |
 | 3 | [09-decision-finale-pwa-mvp.md](09-decision-finale-pwa-mvp.md) | produit, périmètre et contraintes PWA |
 | 4 | [10-feuille-de-route-technique-implementation.md](10-feuille-de-route-technique-implementation.md) | architecture, modèle, lots, tests et skills |
-| 5 | [06-questions.md](06-questions.md) | réponses utilisateur et valeurs par défaut |
-| 6 | [01-audit-projets-sources.md](01-audit-projets-sources.md) | faits extraits des quatre sources, pas architecture active |
-| 7 | [08-option-pwa-offline.md](08-option-pwa-offline.md) | étude expliquant le choix PWA |
+| 5 | [22-checkpoint-robot-alphabot2-2026-08-24.md](22-checkpoint-robot-alphabot2-2026-08-24.md) | état canonique du prototype Robot seulement |
+| 6 | [06-questions.md](06-questions.md) | réponses utilisateur et valeurs par défaut |
+| 7 | [01-audit-projets-sources.md](01-audit-projets-sources.md) | faits extraits des quatre sources, pas architecture active |
+| 8 | [08-option-pwa-offline.md](08-option-pwa-offline.md) | étude expliquant le choix PWA |
 
 Documents historiques, à ne pas utiliser pour décider la stack :
 
@@ -88,8 +101,8 @@ Chemin : `D:\prog\friday`
 - la détection de mise à jour PWA conserve désormais le signal même s'il arrive avant le montage de l'interface ; une recherche est lancée au démarrage, au retour au premier plan, au retour réseau et lors d'un clic sur l'état de connexion, puis l'utilisateur confirme avec `Mettre à jour` avant le rechargement ; l'utilisateur a confirmé le 9 août 2026 que l'iPhone avait bien reçu la mise à jour, sans préciser le déclencheur exact ;
 - l'ADR-008 documente désormais une sauvegarde portable : snapshot SQLite cohérent, archive avec manifeste et secret d'authentification, chiffrement `age`, partage natif ou téléchargement, import prévalidé et génération de restauration empêchant la réinjection d'une ancienne outbox ; cette solution est acceptée comme conception mais n'est pas encore implantée ;
 - le budget partagé est un candidat fonctionnel complet : cinquième onglet, mouvements réels, revenus/frais récurrents déterministes, enveloppes modifiables et supprimables, provisions, réserve, corrections et tombstones empruntent le cache chiffré et l’outbox existante ; les sections longues sont condensées et repliables à 360 px ;
-- le Chat est une sixième destination privée par profil : conversations et outbox chiffrées localement, file SQLite persistante, pause/reprise, progression persistante avec temps effectif et rendu Markdown ; `qwen3.5:9b-q4_K_M` est le modèle par défaut et Gemma 4 reste sélectionnable ; Tavily alimente `Web léger`, tandis que `Web approfondi` combine Tavily et Exa MCP anonyme côté hub ; aucune mutation métier directe ; le checkpoint consolidé est `docs/15-checkpoint-chat-tavily.md` ;
-- le navigateur Playwright côté hub, le cache FTS5 de pages et le modèle Assistant rapide restent retirés ; les migrations SQLite 14–15 portent le journal Tavily et le modèle, 16–18 la Veille orchestrée et 19 les fournisseurs/diagnostics Exa, tout en conservant l’historique lisible ;
+- le Chat est une sixième destination privée par profil : conversations et outbox chiffrées localement, file SQLite persistante, pause/reprise, progression persistante avec temps effectif et rendu Markdown ; `qwen3.5:9b-q4_K_M` est le modèle par défaut et Gemma 4 reste sélectionnable ; Tavily alimente `Web léger`, tandis que `Web approfondi` combine Tavily et Exa MCP anonyme côté hub ; le mode `Friday` interroge seulement les faits locaux du foyer et la mémoire Robot avec citations `[F…]`, sans droit de mutation ni recherche Web ; les checkpoints sont `docs/15-checkpoint-chat-tavily.md` et `docs/23-checkpoint-memoire-friday-apprentissage-shadow-2026-08-25.md` ;
+- le navigateur Playwright côté hub, le cache FTS5 de pages et le modèle Assistant rapide restent retirés ; les migrations SQLite 14–15 portent le journal Tavily et le modèle, 16–18 la Veille orchestrée, 19 les fournisseurs/diagnostics Exa et 20 la mémoire Robot ainsi que l’extension compatible du mode Friday, tout en conservant l’historique lisible ;
 - la Veille orchestrée privée par profil est candidate : découverte et validation multi-sources, référence initiale immédiate, cadence quotidienne/hebdomadaire, collecte et analyse uniquement lors d'un run autorisé, rattrapage unique d'une échéance manquée, mémoire concepts/sujets et complément Web borné ; l'état actif est dans `docs/17-etat-veille-orchestree.md` ;
 - aucune donnée financière réelle n’a été chargée : BitLocker, les ACL de `D:\FridayData` et la sauvegarde SQLite préalable restent une porte bloquante explicitée dans `docs/runbooks/reprise-budget.md` ;
 - la taxonomie `retail-fr-v1` couvre 11 familles de magasins et 25 rayons de supermarché. Le pipeline hybride applique les corrections exactes du foyer puis les règles courantes avant Ministral 3 8B ; chaque réponse porte l'index du produit. Le corpus local de 150 libellés atteint 99,3 % famille/rayon avec 96,7 % de couverture déterministe ; le corpus difficile atteint 88,9 % en 10,4 s à chaud lors de la mesure du 9 août 2026 ;
@@ -97,7 +110,7 @@ Chemin : `D:\prog\friday`
 - le candidat avec les destinations distinctes `Agenda` et `Courses` a été redémarré sur `https://192.168.1.14:8443` le 9 août 2026 ; le healthcheck réussit et `/api/auth/state` confirme un foyer initialisé (`bootstrapRequired: false`) sans ouvrir de session à un client non authentifié ;
 - l’accès extérieur retenu pour une reprise ultérieure est une route Tailscale privée limitée à `192.168.1.14/32`, sans ouverture de box ni changement d’origine ; sa mise en œuvre et l’enrôlement local uniquement sont documentés mais en pause ;
 - une sauvegarde pré-migration 12 intègre a été créée hors dépôt le 10 août 2026 ; la migration de retrait 13 conserve ce filet de restauration tout en supprimant les tables Web devenues inutiles ;
-- dernier contrôle complet du candidat du 23 août 2026 : `pnpm verify` réussi avec 209 tests unitaires/intégration, les builds PWA/hub et 24 scénarios Chrome mobile ;
+- le prototype AlphaBot2 réel et l’onglet Robot compact sont intégrés ; YOLO26s ONNX détecte objets/personnes sur le PC dans un Worker isolé, sans identité ni droit d'action, et partage l'unique capture CSI avec la vidéo PWA ; les objets confirmés sont mémorisés localement et interrogeables, tandis que cartographie, politique apprise et autonomie restent verrouillées ; voir le [checkpoint Robot](22-checkpoint-robot-alphabot2-2026-08-24.md) puis le [checkpoint mémoire Friday](23-checkpoint-memoire-friday-apprentissage-shadow-2026-08-25.md) ;
 - terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026 ; la recette physique responsable/filtre reste à confirmer ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;
@@ -113,7 +126,7 @@ Chemin : `D:\prog\friday`
 | `D:\prog\modulo` | pas de Git, document fondateur | principes local-first, calme et Action Firewall | lecture seule |
 | Agent physique Friday | conception interne fondée sur des composants et logiciels ouverts | compagnon à roues, LiDAR, intelligence Pi autonome et persona continu | prototype zéro AlphaBot2-Pi réinstallé et intégré en mode sûr sans LiDAR ni pince ; cible complète post-MVP à 490–650 €, plafond livré 700 € ; voir le [journal du 24 août](21-journal-implementation-alphabot2-2026-08-24.md), le [document fondateur](19-document-fondateur-agent-physique-friday.md), le [plan](20-plan-implementation-robot-friday-alphabot2.md) et l’[ADR-014](adr/014-agent-physique-otto-diy-oeil-friday.md) |
 
-Aucun fichier des quatre projets locaux ne doit être copié ou modifié sans une décision de réutilisation explicite. Friday réutilise d’abord des concepts, des règles et des scénarios de test. Mini Pi et Otto DIY restent des inspirations externes : aucun firmware, fichier matériel ou runtime robotique n'est intégré au monorepo à ce stade.
+Aucun fichier des quatre projets locaux ne doit être copié ou modifié sans une décision de réutilisation explicite. Friday réutilise d’abord des concepts, des règles et des scénarios de test. Mini Pi et Otto DIY restent des inspirations externes. Le runtime Python AlphaBot2 développé pour Friday est désormais intégré sous `robot/` ; aucun firmware externe n’a été importé.
 
 ### Environnement local constaté
 
@@ -289,6 +302,11 @@ Le nouveau chat doit :
 9. discuter avec l’utilisateur du prochain lot avant implantation, Calendar en lecture restant l’option fonctionnelle naturelle ;
 10. exécuter `pnpm verify` et redémarrer le runtime sans navigateur après toute implantation.
 
+Si le travail demandé concerne le Robot, remplacer les étapes fonctionnelles 4 à
+9 par la lecture du [checkpoint Robot](22-checkpoint-robot-alphabot2-2026-08-24.md)
+et du [runbook](runbooks/robot-alphabot2.md). Commencer par une lecture d’état
+sans mouvement et ne pas refaire les essais physiques consignés dans le journal.
+
 Pour publier un changement ordinaire sur le dépôt actuel, utiliser Git directement : commit sur la branche active puis `git push origin main`. Ne pas considérer l’absence de `gh` comme un blocage au commit ou au push.
 
 ## 10. Prompt prêt à copier dans un nouveau chat
@@ -315,6 +333,12 @@ L’ADR-013 retient une route Tailscale /32 mais sa mise en œuvre est en pause.
 Demande à l'utilisateur de confirmer le prochain lot, Calendar en lecture étant
 l'option naturelle. Après toute implantation, exécute `pnpm verify`, redémarre le hub
 sans navigateur et documente la preuve.
+
+Si la demande porte sur le Robot, lis aussi
+docs/22-checkpoint-robot-alphabot2-2026-08-24.md et
+docs/runbooks/robot-alphabot2.md. Vérifie l’état sans mouvement avant toute
+commande physique. La détection générique YOLO26s sur PC est livrée sans droit
+d'action ; identité, cartographie, évitement et autonomie restent non livrés.
 ```
 
 ## 11. Checklist de reprise
@@ -332,7 +356,7 @@ sans navigateur et documente la preuve.
 
 ## 12. Contrôles réalisés et limites
 
-Contrôles automatiques actualisés sur le candidat complet du 18 août 2026 :
+Contrôles automatiques actualisés sur le candidat complet du 24 août 2026 :
 
 - documentation active, README et instructions agent contrôlés ;
 - aucun lien Markdown local manquant ;
@@ -343,7 +367,8 @@ Contrôles automatiques actualisés sur le candidat complet du 18 août 2026 :
 - décisions PWA, offline/outbox, budget, profils et gate de skills présentes dans les documents canoniques ;
 - présence du dépôt Git, du monorepo et de `package.json` confirmée comme nouvel état de reprise.
 - `pnpm verify` réussi le 23 août 2026 avec 209 tests unitaires/intégration, les builds PWA/hub et 24 scénarios E2E Google Chrome mobile ;
-- `pnpm verify` réussi le 24 août 2026 sur le candidat consolidé avec 237 tests Python/unitaires/intégration, les builds PWA/hub et 25 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi le 24 août 2026 sur le candidat Robot réel avec 21 tests Python, 233 tests TypeScript unitaires/intégration, les builds PWA/hub et 25 scénarios E2E Google Chrome mobile ;
+- `pnpm verify` réussi le 25 août 2026 après isolation YOLO et simplification de l'interface avec 21 tests Python, 238 tests TypeScript unitaires/intégration, les builds PWA/hub et 25 scénarios E2E Google Chrome mobile ;
 - health checks local et LAN réussis après redémarrage sans navigateur.
 
 Ce que cet audit ne prétend pas avoir validé :
@@ -366,13 +391,21 @@ Ces limites sont des tâches de Lot 0/P1, pas des informations perdues.
 
 ## 13. Socle Robot Friday
 
-Le plan complet de l’AlphaBot2-Pi réemployé est dans
-`docs/20-plan-implementation-robot-friday-alphabot2.md`. Le socle logiciel est
-présent et déployé : contrats partagés, passerelle authentifiée du hub,
-simulateur, onglet PWA, flux CSI réel, capteurs passifs, servos de caméra et
-service Python à watchdog local. Le Pi 3B utilise maintenant Raspberry Pi OS
-Trixie 32 bits et SSH par clé sur le port 22. Les roues restent neutralisées ;
-le servo pan tremble par intermittence et le dernier lissage doit être confirmé
-au prochain allumage. Le checkpoint complet est dans
-`docs/21-journal-implementation-alphabot2-2026-08-24.md` et la reprise sûre
-dans `docs/runbooks/robot-alphabot2.md`.
+Le [checkpoint Robot](22-checkpoint-robot-alphabot2-2026-08-24.md) est la source
+canonique de l’état actuel. Le Pi 3B sous Trixie 32 bits exécute la caméra et le
+runtime Python réel ; l’onglet compact commande séparément roues et servos,
+affiche le capteur 640×480 et propose joystick différentiel, puissance et trim.
+La production n’expose plus de simulation. YOLO26s ONNX tourne sur le PC dans
+un Worker Node, analyse par défaut une image sur deux et alimente l'unique case
+`Reco`; la capture CSI est unique et les poids restent hors Git dans
+`D:\FridayData\robot\models`. Le sélecteur de mode technique est supprimé : le
+manuel est implicite et `Cartographie`/`Autonome` restent des boutons `À venir`
+désactivés. Le servo pan tremble par
+intermittence et des sous-tensions ont été enregistrées. Le dernier état lu sans
+mouvement indiquait `moving=false`, les deux switchs sur ON, armement actif,
+température proche de 50 °C et `0x50000`, donc événement de sous-tension
+historique sans défaut actif à cet instant. Cette lecture est transitoire et doit
+être refaite avant tout essai. La détection générique est implémentée ; suivi,
+identité, cartographie, évitement et autonomie ne le sont pas. Utiliser le [runbook](runbooks/robot-alphabot2.md) pour les
+opérations et le [journal](21-journal-implementation-alphabot2-2026-08-24.md)
+uniquement pour la chronologie.

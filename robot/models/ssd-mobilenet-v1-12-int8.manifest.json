@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "name": "ssd-mobilenet-v1-12-int8",
+      "task": "object_detection",
+      "file": "ssd_mobilenet_v1_12-int8.onnx",
+      "sha256": "2b79e6a7fb1ec6a33f332b9b10d82d9de4b7b49dcd26b5946921bb356895c954",
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/onnxmodelzoo/ssd_mobilenet_v1_12-int8/resolve/main/ssd_mobilenet_v1_12-int8.onnx",
+      "labels": "coco-2017"
+    }
+  ]
+}

@@ -2,13 +2,25 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, BinaryIO, Iterator
 
 from .controller import CommandRejected, RobotController
 
 
 MAX_BODY = 8_192
+LOGGER = logging.getLogger(__name__)
+
+
+def iter_low_latency_chunks(
+    stream: BinaryIO, chunk_size: int = 16 * 1024
+) -> Iterator[bytes]:
+    """Lit ce qui est disponible sans attendre le remplissage d'un gros tampon."""
+    read1 = getattr(stream, "read1", None)
+    reader = read1 if callable(read1) else stream.read
+    while chunk := reader(chunk_size):
+        yield chunk
 
 
 def handler_factory(controller: RobotController, token: str):
@@ -35,12 +47,15 @@ def handler_factory(controller: RobotController, token: str):
             try:
                 if self.path == "/stop":
                     result = controller.stop()
+                elif self.path == "/halt":
+                    result = controller.halt()
                 else:
                     body = self._body()
                     routes = {
                         "/arm": controller.arm,
                         "/drive": controller.drive,
                         "/camera/look": controller.look,
+                        "/actuators": controller.set_actuators,
                         "/mode": controller.set_mode,
                     }
                     action = routes.get(self.path)
@@ -52,6 +67,7 @@ def handler_factory(controller: RobotController, token: str):
             except (CommandRejected, ValueError, json.JSONDecodeError) as error:
                 self._json(400, {"error": str(error)})
             except Exception:
+                LOGGER.exception("Échec d'une commande matérielle sur %s", self.path)
                 controller.stop()
                 self._json(503, {"error": "Commande matérielle indisponible."})
 
@@ -94,8 +110,9 @@ def handler_factory(controller: RobotController, token: str):
                 self.end_headers()
                 headers_sent = True
                 try:
-                    while chunk := stream.read(64 * 1024):
+                    for chunk in iter_low_latency_chunks(stream):
                         self.wfile.write(chunk)
+                        self.wfile.flush()
                 finally:
                     stream.close()
             except (BrokenPipeError, ConnectionResetError):

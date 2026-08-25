@@ -147,6 +147,11 @@ export async function sendAssistantMessage(
     return result;
   } catch (error) {
     if (!navigator.onLine || error instanceof TypeError) {
+      if (payload.mode === 'friday')
+        throw new Error(
+          'Le mode Friday nécessite le hub pour lire les données actuelles de la maison.',
+          { cause: error },
+        );
       await queueAssistantMessage(conversationId, payload);
       return null;
     }

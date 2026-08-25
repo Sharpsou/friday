@@ -126,8 +126,8 @@ if (Test-Path -LiteralPath $robotHubConfigPath) {
   }
 
   $robotMode = [string]$robotHubConfig.mode
-  if ($robotMode -notin @('disabled', 'simulated', 'alphabot2')) {
-    throw 'Le mode du robot doit valoir disabled, simulated ou alphabot2.'
+  if ($robotMode -notin @('disabled', 'alphabot2')) {
+    throw 'Le mode du robot doit valoir disabled ou alphabot2.'
   }
 
   $env:FRIDAY_ROBOT_MODE = $robotMode

@@ -10,11 +10,12 @@ Le détail des décisions, incidents corrigés, retraits et preuves est consolid
 
 `Chat` reste privé par profil, avec historique canonique SQLite, cache et outbox chiffrés dans Dexie, file persistante, annulation/reprise et aucune mutation directe des données métier.
 
-Chaque conversation conserve un des trois modes :
+Chaque conversation conserve un des quatre modes :
 
 - `Local` : aucune connexion Internet et aucune sélection de sources ;
 - `Web léger` : au moins une et au plus 2 recherches Tavily `basic`, soit 2 crédits, puis un dossier borné à 5 sources ; trois sources pertinentes, deux domaines et 75 % des aspects planifiés sont requis pour déclarer la couverture complète ;
 - `Web approfondi` : Tavily et Exa MCP anonyme démarrent en parallèle, avec au plus 6 appels Tavily et 2 appels Exa adaptatifs. Le dossier final est borné à 8 sources ; après deux appels Tavily, les requêtes restantes sont évitées dès que six sources pertinentes, trois domaines et 75 % des aspects sont couverts.
+- `Friday` : lecture locale et en lecture seule des faits Agenda, Courses, Budget, foyer et mémoire Robot du foyer authentifié. Aucun appel Tavily/Exa, aucune mutation métier ou commande Robot ; les faits sont référencés `[F…]` et une réponse non correctement fondée est remplacée par une restitution déterministe. Ce mode exige le hub en ligne et n’est pas mis en outbox afin de ne pas répondre depuis un instantané périmé.
 
 Un mode Web impose désormais une recherche. Le modèle sélectionné construit les requêtes mais ne peut pas rétrograder une demande explicitement Web en réponse locale.
 
@@ -52,7 +53,7 @@ Le raisonnement brut n’est jamais affiché, enregistré en base ou réinjecté
 
 ## Compatibilité
 
-La migration SQLite 14 ajoute les modes, métadonnées de réflexion, journal de recherches et compteur de crédits. La migration 15 ajoute le modèle aux messages et runs, avec `gemma4` comme valeur de reprise. Les anciens marqueurs `classic`, `web`, `fast` et `deep` restent lisibles. Les anciennes conversations et copies Dexie sans nouveaux champs prennent les défauts `Local` et `Gemma 4`; une ancienne demande hors ligne `classic` est convertie en `local` lors de sa relecture.
+La migration SQLite 14 ajoute les modes, métadonnées de réflexion, journal de recherches et compteur de crédits. La migration 15 ajoute le modèle aux messages et runs, avec `gemma4` comme valeur de reprise. La migration 20 ajoute le mode `Friday` au moyen de colonnes d’extension afin de conserver les contraintes et données historiques. Les anciens marqueurs `classic`, `web`, `fast` et `deep` restent lisibles. Les anciennes conversations et copies Dexie sans nouveaux champs prennent les défauts `Local` et `Gemma 4`; une ancienne demande hors ligne `classic` est convertie en `local` lors de sa relecture.
 
 ## Validation restante
 

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "name": "yolo26s",
+      "task": "object_detection",
+      "file": "yolo26s.onnx",
+      "sha256": "d26b65c432111eb95798cd2320603d4d75627605dbec6c6b7f98c499a80e7321",
+      "license": "AGPL-3.0",
+      "source": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26s.onnx",
+      "labels": "coco-2017",
+      "inputSize": 640
+    }
+  ]
+}

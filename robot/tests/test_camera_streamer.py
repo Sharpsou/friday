@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -8,7 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from friday_robot.camera_streamer import iter_jpeg_frames
+from friday_robot.camera_streamer import camera_command, iter_jpeg_frames
 from friday_robot.hardware import (
     Pca9685PanTilt,
     SimulatedHardware,
@@ -59,6 +60,18 @@ class FakeSmbus:
 
 
 class CameraStreamerTests(unittest.TestCase):
+    def test_camera_defaults_to_full_four_by_three_frame(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "friday_robot.camera_streamer.shutil.which",
+            return_value="/usr/bin/rpicam-vid",
+        ):
+            command = camera_command()
+
+        self.assertEqual(command[command.index("--width") + 1], "640")
+        self.assertEqual(command[command.index("--height") + 1], "480")
+        self.assertEqual(command[command.index("--buffer-count") + 1], "2")
+        self.assertIn("--flush", command)
+
     def test_extracts_fragmented_jpeg_frames_and_ignores_noise(self) -> None:
         first = b"\xff\xd8one\xff\xd9"
         second = b"\xff\xd8two\xff\xd9"

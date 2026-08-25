@@ -8,9 +8,10 @@ User=pi
 Group=pi
 WorkingDirectory=/home/pi/friday-robot
 Environment=FRIDAY_CAMERA_WIDTH=640
-Environment=FRIDAY_CAMERA_HEIGHT=360
-Environment=FRIDAY_CAMERA_FPS=10
+Environment=FRIDAY_CAMERA_HEIGHT=480
+Environment=FRIDAY_CAMERA_FPS=15
 Environment=FRIDAY_CAMERA_QUALITY=70
+Environment=FRIDAY_CAMERA_BUFFER_COUNT=2
 ExecStart=/home/pi/friday-robot/.venv/bin/python -m friday_robot.camera_streamer
 Restart=on-failure
 RestartSec=2

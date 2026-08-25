@@ -4,13 +4,13 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 
 import type {
-  RobotDetectionKind,
   RobotDirection,
-  RobotOperatingMode,
+  RobotMemorySummary,
   RobotState,
 } from '@friday/contracts';
 
@@ -20,42 +20,42 @@ import {
   armRobot,
   driveRobot,
   getRobotState,
+  getRobotMemory,
+  haltRobot,
   lookRobotCamera,
+  renameRobotMemoryEntity,
   setRobotMode,
+  setRobotActuators,
   stopRobot,
   stopRobotOnPageExit,
 } from './sync/robot-client.js';
-import { nextCameraPose } from './robot-camera-controls.js';
-
-type OverlayKey = 'objects' | 'people' | 'identity' | 'markers' | 'safety';
-
-const OVERLAYS: Array<{ key: OverlayKey; label: string }> = [
-  { key: 'objects', label: 'Objets' },
-  { key: 'people', label: 'Personnes' },
-  { key: 'identity', label: 'Identités' },
-  { key: 'markers', label: 'Repères' },
-  { key: 'safety', label: 'Sécurité' },
-];
-
-const MODE_LABELS: Record<RobotOperatingMode, string> = {
-  manual: 'Manuel',
-  calibration: 'Calibrage',
-  line: 'Ligne',
-  visual_tracking: 'Suivi visuel',
-  markers: 'Balises',
-  companion: 'Compagnon',
-};
-
-const KIND_OVERLAY: Record<RobotDetectionKind, OverlayKey> = {
-  object: 'objects',
-  person: 'people',
-  identity: 'identity',
-  marker: 'markers',
-  safety: 'safety',
-};
+import { cameraCenterDelta, nextCameraPose } from './robot-camera-controls.js';
+import {
+  applySteeringTrim,
+  joystickDriveCommand,
+  shouldSendDriveCommand,
+  type DriveCommand,
+} from './robot-drive-controls.js';
 
 const PAN_NUDGE = 0.5;
 const TILT_NUDGE = 0.05;
+const ROBOT_POWER_STORAGE_KEY = 'friday.robot.powerPercent';
+const ROBOT_TRIM_STORAGE_KEY = 'friday.robot.steeringTrimPercent';
+
+function initialRobotPower(): number {
+  const stored = Number(window.localStorage.getItem(ROBOT_POWER_STORAGE_KEY));
+  return Number.isFinite(stored) && stored >= 10 && stored <= 35 ? stored : 20;
+}
+
+function initialSteeringTrim(): number {
+  const stored = Number(window.localStorage.getItem(ROBOT_TRIM_STORAGE_KEY));
+  return Number.isInteger(stored) && stored >= -10 && stored <= 10 ? stored : 0;
+}
+
+function steeringTrimLabel(trimPercent: number): string {
+  if (trimPercent === 0) return '0';
+  return `${trimPercent < 0 ? 'G' : 'D'} ${Math.abs(trimPercent).toString()}`;
+}
 
 function stateLabel(state: RobotState | null): string {
   if (!state?.available) return 'Indisponible';
@@ -67,18 +67,37 @@ function stateLabel(state: RobotState | null): string {
 
 export default function RobotView({ isOwner }: { isOwner: boolean }) {
   const [state, setState] = useState<RobotState | null>(null);
+  const [memory, setMemory] = useState<RobotMemorySummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [overlays, setOverlays] = useState<Record<OverlayKey, boolean>>({
-    objects: true,
-    people: true,
-    identity: false,
-    markers: true,
-    safety: true,
-  });
+  const [pageVisible, setPageVisible] = useState(
+    document.visibilityState === 'visible',
+  );
+  const [powerPercent, setPowerPercent] = useState(initialRobotPower);
+  const [steeringTrimPercent, setSteeringTrimPercent] =
+    useState(initialSteeringTrim);
+  const [recognitionVisible, setRecognitionVisible] = useState(true);
   const driveTimerRef = useRef<number | null>(null);
   const driveInFlightRef = useRef(false);
+  const driveCommandRef = useRef<DriveCommand | null>(null);
+  const powerPercentRef = useRef(powerPercent);
+  const armInFlightRef = useRef(false);
   const mountedRef = useRef(true);
+
+  useEffect(() => {
+    powerPercentRef.current = powerPercent;
+    window.localStorage.setItem(
+      ROBOT_POWER_STORAGE_KEY,
+      powerPercent.toString(),
+    );
+  }, [powerPercent]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      ROBOT_TRIM_STORAGE_KEY,
+      steeringTrimPercent.toString(),
+    );
+  }, [steeringTrimPercent]);
 
   const updateState = useCallback((next: RobotState) => {
     if (mountedRef.current) {
@@ -96,16 +115,33 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     );
   }, []);
 
+  const renameMemoryEntity = useCallback(
+    async (id: string, currentName: string) => {
+      const nextName = window.prompt('Nom de cet objet', currentName)?.trim();
+      if (!nextName || nextName === currentName) return;
+      try {
+        setMemory(await renameRobotMemoryEntity(id, nextName));
+        setError(null);
+      } catch (cause) {
+        showError(cause);
+      }
+    },
+    [showError],
+  );
+
   const stopDriveLoop = useCallback(
-    (sendStop = true) => {
+    (sendStop = true, disarm = false) => {
       const wasDriving = driveTimerRef.current !== null;
       if (driveTimerRef.current !== null) {
         window.clearInterval(driveTimerRef.current);
         driveTimerRef.current = null;
       }
       driveInFlightRef.current = false;
+      driveCommandRef.current = null;
       if (sendStop && wasDriving)
-        void stopRobot().then(updateState).catch(showError);
+        void (disarm ? stopRobot() : haltRobot())
+          .then(updateState)
+          .catch(showError);
     },
     [showError, updateState],
   );
@@ -119,8 +155,9 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     refresh();
     const timer = window.setInterval(refresh, 750);
     const onVisibility = () => {
+      setPageVisible(document.visibilityState === 'visible');
       if (document.visibilityState === 'hidden') {
-        stopDriveLoop();
+        stopDriveLoop(true, true);
       } else {
         refresh();
       }
@@ -142,11 +179,29 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     };
   }, [showError, stopDriveLoop, updateState]);
 
+  useEffect(() => {
+    const refreshMemory = () => {
+      if (document.visibilityState === 'visible')
+        void getRobotMemory()
+          .then((next) => {
+            if (mountedRef.current) setMemory(next);
+          })
+          .catch(() => undefined);
+    };
+    refreshMemory();
+    const timer = window.setInterval(refreshMemory, 5_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const sendDrivePulse = useCallback(
-    (direction: RobotDirection) => {
+    (command: DriveCommand) => {
       if (driveInFlightRef.current) return;
       driveInFlightRef.current = true;
-      void driveRobot(direction)
+      void driveRobot(
+        command.direction,
+        powerPercentRef.current / 100,
+        command.steering,
+      )
         .then(updateState)
         .catch((cause: unknown) => {
           stopDriveLoop(false);
@@ -159,33 +214,55 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     [showError, stopDriveLoop, updateState],
   );
 
-  const beginDrive = useCallback(
-    (
-      direction: RobotDirection,
-      event: ReactPointerEvent<HTMLButtonElement>,
-    ) => {
-      event.preventDefault();
-      event.currentTarget.setPointerCapture(event.pointerId);
+  const startDriveCommand = useCallback(
+    (command: DriveCommand) => {
+      driveCommandRef.current = command;
+      if (driveTimerRef.current !== null) {
+        sendDrivePulse(command);
+        return;
+      }
       stopDriveLoop(false);
-      sendDrivePulse(direction);
-      driveTimerRef.current = window.setInterval(
-        () => sendDrivePulse(direction),
-        180,
-      );
+      driveCommandRef.current = command;
+      sendDrivePulse(command);
+      driveTimerRef.current = window.setInterval(() => {
+        if (driveCommandRef.current) sendDrivePulse(driveCommandRef.current);
+      }, 180);
     },
     [sendDrivePulse, stopDriveLoop],
   );
 
-  const setMode = async (mode: RobotOperatingMode) => {
-    setBusy(true);
-    try {
-      updateState(await setRobotMode(mode));
-    } catch (cause) {
-      showError(cause);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const renewWheelArm = useCallback(() => {
+    if (armInFlightRef.current) return;
+    armInFlightRef.current = true;
+    void armRobot()
+      .then(updateState)
+      .catch(showError)
+      .finally(() => {
+        armInFlightRef.current = false;
+      });
+  }, [showError, updateState]);
+
+  useEffect(() => {
+    if (
+      !isOwner ||
+      !state?.available ||
+      !state.connected ||
+      !state.actuators.wheelsEnabled ||
+      !pageVisible
+    )
+      return;
+    if (!state.armed) renewWheelArm();
+    const timer = window.setInterval(renewWheelArm, 45_000);
+    return () => window.clearInterval(timer);
+  }, [
+    isOwner,
+    pageVisible,
+    renewWheelArm,
+    state?.armed,
+    state?.actuators.wheelsEnabled,
+    state?.available,
+    state?.connected,
+  ]);
 
   const nudgeCamera = async (panDelta: number, tiltDelta: number) => {
     if (!state) return;
@@ -200,40 +277,88 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     }
   };
 
+  const setActuator = async (
+    actuator: 'wheelsEnabled' | 'cameraServosEnabled',
+    enabled: boolean,
+  ) => {
+    if (!state) return;
+    if (actuator === 'wheelsEnabled' && !enabled) stopDriveLoop();
+    setBusy(true);
+    try {
+      const actuatorState = await setRobotActuators({
+        ...state.actuators,
+        [actuator]: enabled,
+      });
+      if (actuator === 'wheelsEnabled' && enabled) {
+        if (actuatorState.operatingMode !== 'manual')
+          await setRobotMode('manual');
+        updateState(await armRobot());
+      } else updateState(actuatorState);
+    } catch (cause) {
+      showError(cause);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const visibleDetections = useMemo(() => {
     if (
+      !recognitionVisible ||
       !state?.vision ||
       Date.parse(state.vision.expiresAt) <=
         Date.parse(state.lastSeenAt ?? state.vision.observedAt)
     )
       return [];
-    return state.vision.detections.filter(
-      (detection) => overlays[KIND_OVERLAY[detection.kind]],
-    );
-  }, [overlays, state]);
+    return state.vision.detections;
+  }, [recognitionVisible, state]);
 
   const canDrive =
     isOwner &&
     state?.available === true &&
     state.connected &&
-    state.armed &&
-    ['manual', 'calibration'].includes(state.operatingMode);
+    state.actuators.wheelsEnabled &&
+    state.operatingMode === 'manual';
   const canLook =
-    isOwner && state?.capabilities.includes('camera_look') === true && !busy;
+    isOwner &&
+    state?.capabilities.includes('camera_look') === true &&
+    state.actuators.cameraServosEnabled &&
+    !busy;
 
   return (
-    <section className="screen robot-view" aria-labelledby="robot-title">
-      <div className="section-heading robot-heading">
-        <div>
-          <span className="eyebrow">Corps physique</span>
-          <h2 id="robot-title">Robot</h2>
-        </div>
+    <section className="screen robot-view" aria-label="Robot">
+      <div className="robot-topbar">
         <span
           className={`robot-state is-${state?.moving ? 'moving' : state?.armed ? 'armed' : state?.connected ? 'connected' : 'offline'}`}
           role="status"
         >
           {stateLabel(state)}
         </span>
+        <div className="robot-actuator-switches" aria-label="Actionneurs">
+          <ActuatorSwitch
+            checked={state?.actuators.wheelsEnabled ?? false}
+            disabled={
+              !isOwner ||
+              !state?.available ||
+              !state.capabilities.includes('teleop') ||
+              busy
+            }
+            label="Roues"
+            onChange={(enabled) => void setActuator('wheelsEnabled', enabled)}
+          />
+          <ActuatorSwitch
+            checked={state?.actuators.cameraServosEnabled ?? false}
+            disabled={
+              !isOwner ||
+              !state?.available ||
+              !state.capabilities.includes('camera_look') ||
+              busy
+            }
+            label="Caméra"
+            onChange={(enabled) =>
+              void setActuator('cameraServosEnabled', enabled)
+            }
+          />
+        </div>
       </div>
 
       {state?.warning ? <p className="robot-warning">{state.warning}</p> : null}
@@ -243,18 +368,25 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
         </p>
       ) : null}
 
+      <div className="robot-future-modes" aria-label="Modes futurs">
+        <span>
+          Mémoire · {memory?.entities.length.toString() ?? '0'} objet(s)
+        </span>
+        <button disabled type="button">
+          Cartographie · observateur requis
+        </button>
+        <button disabled type="button">
+          Autonome · verrouillé
+        </button>
+      </div>
+
       <section className="robot-camera-panel" aria-label="Caméra du robot">
-        <div
-          className={`robot-camera ${state?.mode === 'simulated' ? 'is-simulated' : ''}`}
-        >
+        <div className="robot-camera">
           {state?.cameraAvailable ? (
             <img src={ROBOT_CAMERA_STREAM_URL} alt="Vue en direct du robot" />
           ) : (
             <div className="robot-camera-empty">Caméra indisponible</div>
           )}
-          {state?.mode === 'simulated' ? (
-            <span className="robot-simulation-label">SIMULATION</span>
-          ) : null}
           <div className="robot-overlays" aria-hidden="true">
             {visibleDetections.map((detection) => (
               <span
@@ -278,107 +410,162 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
           </div>
         </div>
         <div className="robot-overlay-options" aria-label="Surimpressions">
-          {OVERLAYS.map((overlay) => {
-            const identityUnavailable =
-              overlay.key === 'identity' &&
-              !state?.capabilities.includes('vision_identity');
-            return (
-              <label key={overlay.key}>
-                <input
-                  checked={overlays[overlay.key]}
-                  disabled={identityUnavailable}
-                  type="checkbox"
-                  onChange={(event) =>
-                    setOverlays((current) => ({
-                      ...current,
-                      [overlay.key]: event.target.checked,
-                    }))
-                  }
-                />
-                {overlay.label}
-              </label>
-            );
-          })}
+          <label>
+            <input
+              checked={recognitionVisible}
+              type="checkbox"
+              onChange={(event) => setRecognitionVisible(event.target.checked)}
+            />
+            Reco
+          </label>
         </div>
-      </section>
-
-      <div className="robot-control-layout">
-        <section className="panel robot-control-panel" aria-label="Caméra">
-          <div className="section-heading compact">
-            <div>
-              <span className="eyebrow">Regard</span>
-              <h3>Caméra</h3>
-            </div>
-            <small>
-              {Math.round((state?.cameraPose.pan ?? 0) * 100).toString()} /{' '}
+        <div className="robot-compact-controls">
+          <div className="robot-camera-buttons" aria-label="Orientation caméra">
+            <button
+              aria-label="Caméra gauche"
+              disabled={!canLook}
+              type="button"
+              onClick={() => void nudgeCamera(PAN_NUDGE, 0)}
+            >
+              ←
+            </button>
+            <button
+              aria-label="Caméra haut"
+              disabled={!canLook}
+              type="button"
+              onClick={() => void nudgeCamera(0, -TILT_NUDGE)}
+            >
+              ↑
+            </button>
+            <button
+              aria-label="Caméra centrer"
+              disabled={!canLook}
+              type="button"
+              onClick={() => {
+                if (!state) return;
+                const delta = cameraCenterDelta(state.cameraPose);
+                void nudgeCamera(delta.pan, delta.tilt);
+              }}
+            >
+              •
+            </button>
+            <button
+              aria-label="Caméra bas"
+              disabled={!canLook}
+              type="button"
+              onClick={() => void nudgeCamera(0, TILT_NUDGE)}
+            >
+              ↓
+            </button>
+            <button
+              aria-label="Caméra droite"
+              disabled={!canLook}
+              type="button"
+              onClick={() => void nudgeCamera(-PAN_NUDGE, 0)}
+            >
+              →
+            </button>
+            <small aria-label="Position caméra">
+              {Math.round((state?.cameraPose.pan ?? 0) * 100).toString()} ·{' '}
               {Math.round((state?.cameraPose.tilt ?? 0) * 100).toString()}
             </small>
           </div>
-          <DirectionPad
-            disabled={!canLook}
-            kind="camera"
-            onCenter={() =>
-              state &&
-              void nudgeCamera(-state.cameraPose.pan, -state.cameraPose.tilt)
-            }
-            onDown={() => void nudgeCamera(0, TILT_NUDGE)}
-            onLeft={() => void nudgeCamera(PAN_NUDGE, 0)}
-            onRight={() => void nudgeCamera(-PAN_NUDGE, 0)}
-            onUp={() => void nudgeCamera(0, -TILT_NUDGE)}
-          />
-        </section>
+        </div>
+      </section>
 
-        <section className="panel robot-control-panel" aria-label="Locomotion">
-          <div className="section-heading compact">
-            <div>
-              <span className="eyebrow">Déplacement</span>
-              <h3>Locomotion</h3>
-            </div>
-            <select
-              aria-label="Mode du robot"
-              disabled={!isOwner || !state?.available || busy}
-              value={state?.operatingMode ?? 'manual'}
+      <div className="robot-motion-dock" aria-label="Locomotion">
+        <div className="robot-drive-column">
+          <JoystickControl
+            disabled={!canDrive}
+            onCommand={startDriveCommand}
+            onRelease={() => stopDriveLoop()}
+            powerPercent={powerPercent}
+            steeringTrimPercent={steeringTrimPercent}
+          />
+          <label className="robot-power-control">
+            <span>
+              Puissance <strong>{powerPercent.toString()} %</strong>
+            </span>
+            <input
+              aria-label="Puissance moteurs"
+              disabled={!isOwner}
+              max="35"
+              min="10"
+              step="1"
+              type="range"
+              value={powerPercent}
+              onChange={(event) => setPowerPercent(event.target.valueAsNumber)}
+            />
+          </label>
+          <label className="robot-power-control">
+            <span>
+              Trim direction{' '}
+              <strong>{steeringTrimLabel(steeringTrimPercent)}</strong>
+            </span>
+            <input
+              aria-label="Trim direction"
+              disabled={!isOwner}
+              max="10"
+              min="-10"
+              step="1"
+              type="range"
+              value={steeringTrimPercent}
               onChange={(event) =>
-                void setMode(event.target.value as RobotOperatingMode)
+                setSteeringTrimPercent(event.target.valueAsNumber)
               }
-            >
-              {Object.entries(MODE_LABELS).map(([mode, label]) => (
-                <option key={mode} value={mode}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
+            />
+          </label>
+        </div>
+        <div className="robot-drive-actions">
           <button
             className="robot-stop"
             type="button"
             disabled={!state?.available}
-            onClick={() => void stopRobot().then(updateState).catch(showError)}
+            onClick={() => void setActuator('wheelsEnabled', false)}
           >
             ARRÊT
           </button>
-          <button
-            className="secondary-button robot-arm"
-            type="button"
-            disabled={!isOwner || !state?.available || busy || state.armed}
-            onClick={() => void armRobot().then(updateState).catch(showError)}
-          >
-            {state?.armed ? 'Conduite armée' : 'Activer 60 s'}
-          </button>
-          <DirectionPad
-            disabled={!canDrive}
-            kind="drive"
-            onDownPointer={(event) => beginDrive('backward', event)}
-            onLeftPointer={(event) => beginDrive('left', event)}
-            onRelease={() => stopDriveLoop()}
-            onRightPointer={(event) => beginDrive('right', event)}
-            onUpPointer={(event) => beginDrive('forward', event)}
-          />
-          {!isOwner ? (
-            <small>Le propriétaire doit autoriser la conduite.</small>
-          ) : null}
-        </section>
+        </div>
       </div>
+
+      {!isOwner ? (
+        <small>Le propriétaire doit autoriser les actionneurs.</small>
+      ) : null}
+
+      <details className="panel robot-memory">
+        <summary>
+          Mémoire visuelle · {memory?.entities.length.toString() ?? '0'}{' '}
+          objet(s)
+        </summary>
+        {memory?.entities.length ? (
+          <ul>
+            {memory.entities.map((entity) => (
+              <li key={entity.id}>
+                <span>
+                  <strong>{entity.displayName}</strong> · {entity.roomName} ·{' '}
+                  {Math.round(entity.confidence * 100).toString()} % ·{' '}
+                  {entity.sightingCount.toString()} vue(s)
+                </span>
+                {isOwner ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void renameMemoryEntity(entity.id, entity.displayName)
+                    }
+                  >
+                    Renommer
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>
+            Aucun objet confirmé. Friday attend plusieurs vues fiables avant de
+            mémoriser un emplacement.
+          </p>
+        )}
+      </details>
 
       <details className="panel robot-telemetry">
         <summary>Télémétrie et diagnostic</summary>
@@ -417,6 +604,24 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
             </dd>
           </div>
           <div>
+            <dt>Apprentissage</dt>
+            <dd>
+              {memory?.learning.mode === 'shadow'
+                ? `Observateur · ${memory.learning.episodeCount.toString()} épisode(s)`
+                : 'Désactivé'}
+            </dd>
+          </div>
+          <div>
+            <dt>Présence anonyme</dt>
+            <dd>
+              {memory?.anonymousPresence.active
+                ? 'Détectée maintenant'
+                : memory?.anonymousPresence.lastSeenAt
+                  ? `Dernière vue ${new Date(memory.anonymousPresence.lastSeenAt).toLocaleTimeString('fr-FR')}`
+                  : 'Aucune observation récente'}
+            </dd>
+          </div>
+          <div>
             <dt>Latence commande</dt>
             <dd>{state?.telemetry.commandLatencyMs?.toFixed(0) ?? '—'} ms</dd>
           </div>
@@ -430,68 +635,153 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
   );
 }
 
-function DirectionPad({
+function ActuatorSwitch({
+  checked,
   disabled,
-  kind,
-  onCenter,
-  onDown,
-  onDownPointer,
-  onLeft,
-  onLeftPointer,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="robot-actuator-switch">
+      <span>{label}</span>
+      <input
+        checked={checked}
+        role="switch"
+        type="checkbox"
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <i aria-hidden="true" />
+    </label>
+  );
+}
+
+function JoystickControl({
+  disabled,
+  onCommand,
   onRelease,
-  onRight,
-  onRightPointer,
-  onUp,
-  onUpPointer,
+  powerPercent,
+  steeringTrimPercent,
 }: {
   disabled: boolean;
-  kind: 'camera' | 'drive';
-  onCenter?: () => void;
-  onDown?: () => void;
-  onDownPointer?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onLeft?: () => void;
-  onLeftPointer?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onRelease?: () => void;
-  onRight?: () => void;
-  onRightPointer?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onUp?: () => void;
-  onUpPointer?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onCommand: (command: DriveCommand) => void;
+  onRelease: () => void;
+  powerPercent: number;
+  steeringTrimPercent: number;
 }) {
-  const prefix = kind === 'camera' ? 'Caméra' : 'Robot';
-  const button = (
-    name: 'haut' | 'bas' | 'gauche' | 'droite',
-    symbol: string,
-    onClick?: () => void,
-    onPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void,
-  ) => (
+  const knobRef = useRef<HTMLSpanElement>(null);
+  const directionRef = useRef<RobotDirection | null>(null);
+  const steeringRef = useRef(0);
+
+  const release = (target?: HTMLButtonElement, pointerId?: number) => {
+    if (
+      target &&
+      pointerId !== undefined &&
+      target.hasPointerCapture(pointerId)
+    )
+      target.releasePointerCapture(pointerId);
+    if (knobRef.current) knobRef.current.style.transform = 'translate(0, 0)';
+    if (directionRef.current !== null) onRelease();
+    directionRef.current = null;
+    steeringRef.current = 0;
+  };
+
+  const move = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (
+      event.type === 'pointermove' &&
+      !event.currentTarget.hasPointerCapture(event.pointerId)
+    )
+      return;
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const rawX = event.clientX - (bounds.left + bounds.width / 2);
+    const rawY = event.clientY - (bounds.top + bounds.height / 2);
+    const radiusX = bounds.width * 0.34;
+    const radiusY = bounds.height * 0.28;
+    const ellipticalDistance = Math.hypot(rawX / radiusX, rawY / radiusY);
+    const scale = ellipticalDistance > 1 ? 1 / ellipticalDistance : 1;
+    const x = rawX * scale;
+    const y = rawY * scale;
+    if (knobRef.current)
+      knobRef.current.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+
+    const normalizedX = Math.max(-1, Math.min(1, x / radiusX));
+    const normalizedY = Math.max(-1, Math.min(1, y / radiusY));
+    const rawCommand = joystickDriveCommand(
+      normalizedX,
+      normalizedY,
+      powerPercent / 100,
+    );
+    if (!rawCommand) {
+      if (directionRef.current !== null) onRelease();
+      directionRef.current = null;
+      return;
+    }
+    const command = applySteeringTrim(rawCommand, steeringTrimPercent / 100);
+    const previousCommand = directionRef.current
+      ? { direction: directionRef.current, steering: steeringRef.current }
+      : null;
+    const returnedToTrimmedCenter =
+      rawCommand.steering === 0 &&
+      previousCommand?.steering !== command.steering;
+    if (
+      shouldSendDriveCommand(previousCommand, command, returnedToTrimmedCenter)
+    ) {
+      directionRef.current = command.direction;
+      steeringRef.current = command.steering;
+      onCommand(command);
+    }
+  };
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const directions: Partial<Record<string, RobotDirection>> = {
+      ArrowUp: 'forward',
+      ArrowDown: 'backward',
+      ArrowLeft: 'left',
+      ArrowRight: 'right',
+    };
+    const direction = directions[event.key];
+    if (!direction) return;
+    event.preventDefault();
+    directionRef.current = direction;
+    const command = applySteeringTrim(
+      { direction, steering: 0 },
+      steeringTrimPercent / 100,
+    );
+    steeringRef.current = command.steering;
+    onCommand(command);
+  };
+
+  return (
     <button
-      aria-label={`${prefix} ${name}`}
-      className={`is-${name}`}
+      aria-label="Joystick locomotion"
+      className="robot-joystick"
       disabled={disabled}
       type="button"
-      onClick={onClick}
-      onPointerDown={onPointerDown}
-      onPointerCancel={onRelease}
-      onPointerUp={onRelease}
+      onKeyDown={onKeyDown}
+      onKeyUp={(event) => {
+        if (event.key.startsWith('Arrow')) release();
+      }}
+      onPointerCancel={(event) => release(event.currentTarget, event.pointerId)}
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        move(event);
+      }}
+      onPointerMove={move}
+      onPointerUp={(event) => release(event.currentTarget, event.pointerId)}
     >
-      {symbol}
+      <span className="robot-joystick-axis" aria-hidden="true">
+        <b>↑</b>
+        <b>←</b>
+        <b>→</b>
+        <b>↓</b>
+      </span>
+      <span className="robot-joystick-knob" ref={knobRef} aria-hidden="true" />
     </button>
-  );
-  return (
-    <div className={`robot-direction-pad is-${kind}`}>
-      {button('haut', '↑', onUp, onUpPointer)}
-      {button('gauche', '←', onLeft, onLeftPointer)}
-      <button
-        aria-label={`${prefix} centrer`}
-        className="is-center"
-        disabled={disabled || onCenter === undefined}
-        type="button"
-        onClick={onCenter}
-      >
-        •
-      </button>
-      {button('droite', '→', onRight, onRightPointer)}
-      {button('bas', '↓', onDown, onDownPointer)}
-    </div>
   );
 }

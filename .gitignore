@@ -11,6 +11,7 @@ test-results/
 output/
 tmp/
 __pycache__/
+.pytest_cache/
 *.py[cod]
 
 # Configuration locale et secrets

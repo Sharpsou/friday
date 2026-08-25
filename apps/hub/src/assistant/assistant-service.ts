@@ -29,6 +29,10 @@ import {
 
 import type { AssistantEngine } from './assistant-engine.js';
 import {
+  FridayMemoryReader,
+  type FridayGroundedFact,
+} from './friday-memory.js';
+import {
   ExaMcpError,
   ExaMcpSearchClient,
   type ExaFailureKind,
@@ -49,6 +53,7 @@ interface ConversationRow {
   created_at: string;
   id: string;
   mode: AssistantMode;
+  mode_v2: 'friday' | null;
   title: string;
   updated_at: string;
 }
@@ -61,6 +66,7 @@ interface MessageRow {
   effective_mode: AssistantStoredEffectiveMode | null;
   id: string;
   conversation_mode: AssistantMode;
+  conversation_mode_v2: 'friday' | null;
   thinking_policy: AssistantThinkingPolicy;
   thinking_used: 0 | 1;
   research_outcome: AssistantResearchOutcome;
@@ -81,6 +87,7 @@ interface RunRow {
   error_message: string | null;
   id: string;
   conversation_mode: AssistantMode;
+  conversation_mode_v2: 'friday' | null;
   thinking_policy: AssistantThinkingPolicy;
   thinking_used: 0 | 1;
   research_outcome: AssistantResearchOutcome;
@@ -139,6 +146,10 @@ export class AssistantService {
     private readonly engine: AssistantEngine,
     private readonly tavily = new TavilySearchClient(undefined),
     private readonly exa = new ExaMcpSearchClient(),
+    private readonly fridayMemory: Pick<
+      FridayMemoryReader,
+      'query'
+    > = new FridayMemoryReader(database),
   ) {
     const now = new Date().toISOString();
     this.database
@@ -161,7 +172,7 @@ export class AssistantService {
     return (
       this.database
         .prepare(
-          `SELECT id, title, mode, archived_at, created_at, updated_at
+          `SELECT id, title, mode, mode_v2, archived_at, created_at, updated_at
            FROM assistant_conversations WHERE profile_id = ?
           ORDER BY archived_at IS NOT NULL, updated_at DESC`,
         )
@@ -178,10 +189,18 @@ export class AssistantService {
     const now = new Date().toISOString();
     this.database
       .prepare(
-        `INSERT INTO assistant_conversations(id, profile_id, title, mode, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO assistant_conversations(id, profile_id, title, mode, mode_v2, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, profileId, title, mode, now, now);
+      .run(
+        id,
+        profileId,
+        title,
+        storedDatabaseMode(mode),
+        extendedMode(mode),
+        now,
+        now,
+      );
     return this.getConversation(profileId, id);
   }
 
@@ -200,12 +219,13 @@ export class AssistantService {
     this.database
       .prepare(
         `UPDATE assistant_conversations
-            SET title = ?, mode = ?, archived_at = ?, updated_at = ?
+            SET title = ?, mode = ?, mode_v2 = ?, archived_at = ?, updated_at = ?
           WHERE id = ? AND profile_id = ?`,
       )
       .run(
         update.title ?? current.title,
-        update.mode ?? current.mode,
+        storedDatabaseMode(update.mode ?? current.mode),
+        extendedMode(update.mode ?? current.mode),
         update.archived === undefined
           ? current.archivedAt
           : update.archived
@@ -250,7 +270,7 @@ export class AssistantService {
     const rows = this.database
       .prepare(
         `SELECT id, conversation_id, role, content, requested_mode, effective_mode, web_depth,
-                conversation_mode, assistant_model, thinking_policy, thinking_used, research_outcome, credits_used,
+                 conversation_mode, conversation_mode_v2, assistant_model, thinking_policy, thinking_used, research_outcome, credits_used,
                 run_id, created_at
            FROM assistant_messages WHERE conversation_id = ? AND profile_id = ?
           ORDER BY created_at, id`,
@@ -328,8 +348,8 @@ export class AssistantService {
         .prepare(
           `INSERT INTO assistant_messages(
              id, conversation_id, profile_id, role, content, requested_mode, web_depth,
-             conversation_mode, assistant_model, thinking_policy, run_id, created_at
-           ) VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?)`,
+             conversation_mode, conversation_mode_v2, assistant_model, thinking_policy, run_id, created_at
+           ) VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           messageId,
@@ -338,7 +358,8 @@ export class AssistantService {
           input.content,
           stored.requestedMode,
           stored.webDepth,
-          mode,
+          storedDatabaseMode(mode),
+          extendedMode(mode),
           model,
           thinkingPolicy,
           runId,
@@ -348,9 +369,9 @@ export class AssistantService {
         .prepare(
           `INSERT INTO assistant_runs(
              id, client_request_id, conversation_id, profile_id, user_message_id,
-             requested_mode, web_depth, conversation_mode, assistant_model, thinking_policy,
+             requested_mode, web_depth, conversation_mode, conversation_mode_v2, assistant_model, thinking_policy,
              status, stage_label, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 'Dans la file', ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 'Dans la file', ?, ?)`,
         )
         .run(
           runId,
@@ -360,7 +381,8 @@ export class AssistantService {
           messageId,
           stored.requestedMode,
           stored.webDepth,
-          mode,
+          storedDatabaseMode(mode),
+          extendedMode(mode),
           model,
           thinkingPolicy,
           now,
@@ -368,9 +390,9 @@ export class AssistantService {
         );
       this.database
         .prepare(
-          'UPDATE assistant_conversations SET mode = ?, updated_at = ? WHERE id = ?',
+          'UPDATE assistant_conversations SET mode = ?, mode_v2 = ?, updated_at = ? WHERE id = ?',
         )
-        .run(mode, now, conversationId);
+        .run(storedDatabaseMode(mode), extendedMode(mode), now, conversationId);
       this.addEvent(runId, profileId, 'queued', 'Dans la file', now);
     })();
     this.schedule();
@@ -631,14 +653,15 @@ export class AssistantService {
         this.database
           .prepare(
             `UPDATE assistant_messages
-                SET requested_mode = ?, web_depth = ?, conversation_mode = ?,
+                SET requested_mode = ?, web_depth = ?, conversation_mode = ?, conversation_mode_v2 = ?,
                     effective_mode = NULL, research_outcome = 'not_needed', credits_used = 0
               WHERE id = ? AND profile_id = ?`,
           )
           .run(
             nextStoredMode.requestedMode,
             nextStoredMode.webDepth,
-            conversation.mode,
+            storedDatabaseMode(conversation.mode),
+            extendedMode(conversation.mode),
             run.userMessageId,
             profileId,
           );
@@ -646,7 +669,7 @@ export class AssistantService {
       this.database
         .prepare(
           `UPDATE assistant_runs SET status = 'queued', stage_label = ?,
-             requested_mode = ?, web_depth = ?, conversation_mode = ?,
+             requested_mode = ?, web_depth = ?, conversation_mode = ?, conversation_mode_v2 = ?,
              effective_mode = CASE WHEN ? THEN NULL ELSE effective_mode END,
              research_outcome = CASE WHEN ? THEN 'not_needed' ELSE research_outcome END,
              credits_used = CASE WHEN ? THEN 0 ELSE credits_used END,
@@ -662,7 +685,8 @@ export class AssistantService {
             : 'Dans la file',
           nextStoredMode.requestedMode,
           nextStoredMode.webDepth,
-          conversation.mode,
+          storedDatabaseMode(conversation.mode),
+          extendedMode(conversation.mode),
           modeChanged ? 1 : 0,
           modeChanged ? 1 : 0,
           modeChanged ? 1 : 0,
@@ -731,17 +755,31 @@ export class AssistantService {
         (message) => message.id === row.user_message_id,
       );
       if (!userMessage) throw new Error('Message utilisateur introuvable.');
+      const mode = runMode(row);
       let evidence: TavilyEvidence[] = [];
+      let fridayFacts: FridayGroundedFact[] = [];
       let creditsUsed = row.credits_used;
       let researchOutcome: AssistantResearchOutcome = 'not_needed';
       let effectiveMode: AssistantStoredEffectiveMode = 'classic';
-      if (row.conversation_mode !== 'local') {
+      if (isWebMode(mode)) {
         const research = await this.research(row, history, controller.signal);
         if (research.awaitingConsent) return;
         evidence = research.evidence;
         creditsUsed = research.creditsUsed;
         researchOutcome = research.outcome;
         effectiveMode = evidence.length > 0 ? 'web' : 'classic';
+      } else if (mode === 'friday') {
+        this.setRunState(
+          row.id,
+          row.profile_id,
+          'reading',
+          'Lecture des données Maison et Robot',
+          new Date().toISOString(),
+        );
+        fridayFacts = this.fridayMemory.query(
+          row.profile_id,
+          userMessage.content,
+        );
       }
       this.database
         .prepare(
@@ -759,7 +797,7 @@ export class AssistantService {
         new Date().toISOString(),
       );
       let result =
-        row.conversation_mode !== 'local' && evidence.length === 0
+        isWebMode(mode) && evidence.length === 0
           ? {
               content: researchUnavailableAnswer(
                 this.researchDiagnostics(
@@ -771,19 +809,26 @@ export class AssistantService {
               ),
               thinkingUsed: false,
             }
-          : await this.engine.answer(history, controller.signal, {
-              evidence,
-              mode: row.conversation_mode,
-              model: row.assistant_model,
-              onStage: (label) =>
-                this.setRunState(
-                  row.id,
-                  row.profile_id,
-                  'writing',
-                  label,
-                  new Date().toISOString(),
-                ),
-            });
+          : mode === 'friday' && fridayFacts.length === 0
+            ? {
+                content:
+                  'Je n’ai trouvé aucun fait local autorisé correspondant à cette question.',
+                thinkingUsed: false,
+              }
+            : await this.engine.answer(history, controller.signal, {
+                evidence,
+                facts: fridayFacts,
+                mode,
+                model: row.assistant_model,
+                onStage: (label) =>
+                  this.setRunState(
+                    row.id,
+                    row.profile_id,
+                    'writing',
+                    label,
+                    new Date().toISOString(),
+                  ),
+              });
       if (result.thinkingUsed) {
         this.setRunState(
           row.id,
@@ -793,11 +838,7 @@ export class AssistantService {
           new Date().toISOString(),
         );
       }
-      if (
-        evidence.length > 0 &&
-        row.conversation_mode !== 'local' &&
-        this.engine.verifyAnswer
-      ) {
+      if (evidence.length > 0 && isWebMode(mode) && this.engine.verifyAnswer) {
         this.setRunState(
           row.id,
           row.profile_id,
@@ -809,7 +850,7 @@ export class AssistantService {
           userMessage.content,
           result.content,
           evidence,
-          row.conversation_mode,
+          mode,
           controller.signal,
           row.assistant_model,
         );
@@ -818,6 +859,8 @@ export class AssistantService {
           thinkingUsed: Boolean(result.thinkingUsed || verified.thinkingUsed),
         };
       }
+      if (mode === 'friday' && fridayFacts.length > 0)
+        result = groundFridayAnswer(result, fridayFacts);
       if (controller.signal.aborted) throw controller.signal.reason;
       let generatedTitle: string | null = null;
       if (this.shouldGenerateTitle(row)) {
@@ -1558,9 +1601,9 @@ export class AssistantService {
         .prepare(
           `INSERT INTO assistant_messages(
              id, conversation_id, profile_id, role, content, effective_mode, web_depth,
-             conversation_mode, assistant_model, thinking_policy, thinking_used, research_outcome, credits_used,
+             conversation_mode, conversation_mode_v2, assistant_model, thinking_policy, thinking_used, research_outcome, credits_used,
              run_id, created_at
-           ) VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           ) VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           messageId,
@@ -1569,7 +1612,8 @@ export class AssistantService {
           result.content,
           effectiveMode,
           row.web_depth,
-          row.conversation_mode,
+          storedDatabaseMode(runMode(row)),
+          extendedMode(runMode(row)),
           row.assistant_model,
           row.thinking_policy,
           result.thinkingUsed ? 1 : 0,
@@ -1676,7 +1720,7 @@ export class AssistantService {
   ): AssistantConversation {
     const row = this.database
       .prepare(
-        'SELECT id, title, mode, archived_at, created_at, updated_at FROM assistant_conversations WHERE id = ? AND profile_id = ?',
+        'SELECT id, title, mode, mode_v2, archived_at, created_at, updated_at FROM assistant_conversations WHERE id = ? AND profile_id = ?',
       )
       .get(id, profileId) as ConversationRow | undefined;
     if (!row) throw new AssistantNotFoundError('Conversation introuvable.');
@@ -1687,7 +1731,7 @@ export class AssistantService {
     const row = this.database
       .prepare(
         `SELECT id, conversation_id, role, content, requested_mode, effective_mode, web_depth,
-                conversation_mode, assistant_model, thinking_policy, thinking_used, research_outcome, credits_used,
+                 conversation_mode, conversation_mode_v2, assistant_model, thinking_policy, thinking_used, research_outcome, credits_used,
                 run_id, created_at
            FROM assistant_messages WHERE id = ? AND profile_id = ?`,
       )
@@ -1700,7 +1744,7 @@ export class AssistantService {
     return AssistantConversationSchema.parse({
       id: row.id,
       title: row.title,
-      mode: row.mode,
+      mode: row.mode_v2 ?? row.mode,
       archivedAt: row.archived_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -1733,7 +1777,7 @@ export class AssistantService {
       requestedMode: row.requested_mode,
       effectiveMode: row.effective_mode,
       webDepth: row.web_depth,
-      mode: row.conversation_mode,
+      mode: row.conversation_mode_v2 ?? row.conversation_mode,
       model: row.assistant_model,
       thinkingPolicy: row.thinking_policy,
       thinkingUsed: Boolean(row.thinking_used),
@@ -1764,7 +1808,7 @@ export class AssistantService {
       requestedMode: row.requested_mode,
       effectiveMode: row.effective_mode,
       webDepth: row.web_depth,
-      mode: row.conversation_mode,
+      mode: row.conversation_mode_v2 ?? row.conversation_mode,
       model: row.assistant_model,
       thinkingPolicy: row.thinking_policy,
       thinkingUsed: Boolean(row.thinking_used),
@@ -1821,7 +1865,8 @@ function storedMode(mode: AssistantMode): {
   requestedMode: 'classic' | 'web';
   webDepth: AssistantStoredWebDepth | null;
 } {
-  if (mode === 'local') return { requestedMode: 'classic', webDepth: null };
+  if (mode === 'local' || mode === 'friday')
+    return { requestedMode: 'classic', webDepth: null };
   return {
     requestedMode: 'web',
     webDepth: mode === 'web_light' ? 'fast' : 'deep',
@@ -1830,7 +1875,53 @@ function storedMode(mode: AssistantMode): {
 
 function assistantModeLabel(mode: AssistantMode): string {
   if (mode === 'local') return 'Local';
+  if (mode === 'friday') return 'Friday';
   return mode === 'web_light' ? 'Web léger' : 'Web approfondi';
+}
+
+function storedDatabaseMode(
+  mode: AssistantMode,
+): Exclude<AssistantMode, 'friday'> {
+  return mode === 'friday' ? 'local' : mode;
+}
+
+function extendedMode(mode: AssistantMode): 'friday' | null {
+  return mode === 'friday' ? 'friday' : null;
+}
+
+function runMode(row: RunRow): AssistantMode {
+  return row.conversation_mode_v2 ?? row.conversation_mode;
+}
+
+function isWebMode(
+  mode: AssistantMode,
+): mode is Extract<AssistantMode, 'web_deep' | 'web_light'> {
+  return mode === 'web_light' || mode === 'web_deep';
+}
+
+function groundFridayAnswer(
+  result: Awaited<ReturnType<AssistantEngine['answer']>>,
+  facts: FridayGroundedFact[],
+): Awaited<ReturnType<AssistantEngine['answer']>> {
+  const allowed = new Set(facts.map((fact) => fact.id));
+  const cited = [...result.content.matchAll(/\[(F\d+)\]/gu)].map(
+    (match) => match[1] ?? '',
+  );
+  if (cited.length > 0 && cited.every((id) => allowed.has(id))) return result;
+  return {
+    content: facts
+      .slice(0, 12)
+      .map((fact) => {
+        const freshness = fact.observedAt ? ` · ${fact.observedAt}` : '';
+        const confidence =
+          fact.confidence === null
+            ? ''
+            : ` · confiance ${Math.round(fact.confidence * 100).toString()} %`;
+        return `- ${fact.title} : ${fact.detail}${freshness}${confidence} [${fact.id}]`;
+      })
+      .join('\n'),
+    thinkingUsed: false,
+  };
 }
 
 function sanitizeSearchQuery(input: string): {

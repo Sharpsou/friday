@@ -177,9 +177,11 @@ describe('Friday hub', () => {
   });
 
   it('keeps robot control authenticated, armed, expiring and stoppable', async () => {
+    const robotController = new SimulatedRobotController();
+    const driveSpy = vi.spyOn(robotController, 'drive');
     const app = await buildHub({
       databasePath: ':memory:',
-      robotController: new SimulatedRobotController(),
+      robotController,
     });
     apps.push(app);
     const unauthenticated = await app.inject({
@@ -199,7 +201,29 @@ describe('Friday hub', () => {
       available: true,
       armed: false,
       mode: 'simulated',
+      actuators: { wheelsEnabled: false, cameraServosEnabled: false },
     });
+
+    const cameraStream = await app.inject({
+      method: 'GET',
+      url: '/api/robot/camera/stream',
+      headers: { cookie },
+    });
+    expect(cameraStream.statusCode, cameraStream.body).toBe(200);
+    expect(cameraStream.headers['content-type']).toContain('image/gif');
+    expect(cameraStream.headers['cache-control']).toBe(
+      'no-store, no-transform',
+    );
+    expect(cameraStream.headers['x-accel-buffering']).toBe('no');
+
+    const actuators = await app.inject({
+      method: 'POST',
+      url: '/api/robot/actuators',
+      headers: { cookie },
+      payload: { wheelsEnabled: true, cameraServosEnabled: true },
+    });
+    expect(actuators.statusCode, actuators.body).toBe(200);
+    expect(actuators.json().state.actuators.wheelsEnabled).toBe(true);
 
     const armed = await app.inject({
       method: 'POST',
@@ -210,22 +234,44 @@ describe('Friday hub', () => {
     expect(armed.statusCode, armed.body).toBe(200);
     expect(armed.json().state.armed).toBe(true);
 
-    const now = Date.now();
     const drive = await app.inject({
       method: 'POST',
       url: '/api/robot/drive',
       headers: { cookie },
       payload: {
         commandId: crypto.randomUUID(),
-        issuedAt: new Date(now).toISOString(),
-        expiresAt: new Date(now + 300).toISOString(),
+        issuedAt: '2026-08-23T00:00:00.000Z',
+        expiresAt: '2026-08-23T00:00:00.300Z',
         direction: 'forward',
         intensity: 0.2,
+        steering: 0.65,
         maxDurationMs: 300,
       },
     });
     expect(drive.statusCode, drive.body).toBe(200);
     expect(drive.json().state.moving).toBe(true);
+    const forwardedDrive = driveSpy.mock.calls[0]?.[0];
+    expect(
+      Date.parse(forwardedDrive!.expiresAt) -
+        Date.parse(forwardedDrive!.issuedAt),
+    ).toBe(1_800);
+    expect(forwardedDrive!.maxDurationMs).toBe(300);
+    expect(forwardedDrive!.steering).toBe(0.65);
+
+    const camera = await app.inject({
+      method: 'POST',
+      url: '/api/robot/camera/look',
+      headers: { cookie },
+      payload: {
+        commandId: crypto.randomUUID(),
+        issuedAt: '2026-08-23T00:00:00.000Z',
+        expiresAt: '2026-08-23T00:00:01.800Z',
+        pan: 0.5,
+        tilt: 0,
+      },
+    });
+    expect(camera.statusCode, camera.body).toBe(200);
+    expect(camera.json().state.cameraPose).toEqual({ pan: 0.5, tilt: 0 });
 
     const stopped = await app.inject({
       method: 'POST',
@@ -239,7 +285,7 @@ describe('Friday hub', () => {
     });
   });
 
-  it('rejects stale robot commands and cross-site mutation attempts', async () => {
+  it('rejects malformed robot commands and cross-site mutation attempts', async () => {
     const app = await buildHub({
       databasePath: ':memory:',
       publicOrigin: 'https://friday.test',
@@ -247,20 +293,21 @@ describe('Friday hub', () => {
     });
     apps.push(app);
     const cookie = await bootstrap(app);
-    const stale = await app.inject({
+    const malformed = await app.inject({
       method: 'POST',
       url: '/api/robot/drive',
       headers: { cookie },
       payload: {
         commandId: crypto.randomUUID(),
-        issuedAt: '2026-08-23T00:00:00.000Z',
+        issuedAt: 'not-an-instant',
         expiresAt: '2026-08-23T00:00:00.300Z',
         direction: 'forward',
         intensity: 0.2,
+        steering: 0,
         maxDurationMs: 300,
       },
     });
-    expect(stale.statusCode).toBe(400);
+    expect(malformed.statusCode).toBe(400);
 
     const crossSite = await app.inject({
       method: 'POST',

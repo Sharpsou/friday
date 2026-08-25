@@ -42,9 +42,10 @@ def camera_command() -> list[str]:
     if not executable:
         raise RuntimeError("rpicam-vid est introuvable.")
     width = _bounded_int("FRIDAY_CAMERA_WIDTH", 640, 160, 1920)
-    height = _bounded_int("FRIDAY_CAMERA_HEIGHT", 360, 120, 1080)
+    height = _bounded_int("FRIDAY_CAMERA_HEIGHT", 480, 120, 1080)
     fps = _bounded_int("FRIDAY_CAMERA_FPS", 10, 1, 30)
     quality = _bounded_int("FRIDAY_CAMERA_QUALITY", 70, 20, 95)
+    buffer_count = _bounded_int("FRIDAY_CAMERA_BUFFER_COUNT", 2, 2, 8)
     return [
         executable,
         "--timeout", "0",
@@ -52,8 +53,10 @@ def camera_command() -> list[str]:
         "--width", str(width),
         "--height", str(height),
         "--framerate", str(fps),
+        "--buffer-count", str(buffer_count),
         "--codec", "mjpeg",
         "--quality", str(quality),
+        "--flush",
         "--output", "-",
     ]
 

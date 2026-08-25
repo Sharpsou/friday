@@ -44,9 +44,12 @@ import {
   PushRequestSchema,
   PushResponseSchema,
   RobotArmRequestSchema,
+  RobotActuatorsRequestSchema,
   RobotCameraLookRequestSchema,
   RobotCommandResponseSchema,
   RobotDriveRequestSchema,
+  RobotMemoryRenameRequestSchema,
+  RobotMemorySummarySchema,
   RobotOperatingModeRequestSchema,
   RobotStateSchema,
   WatchArticleSchema,
@@ -97,8 +100,8 @@ import {
   RobotCommandRejectedError,
   type RobotController,
   RobotUnavailableError,
-  validateRobotCommandTiming,
 } from './robot/robot-controller.js';
+import { RobotMemoryService } from './robot/robot-memory.js';
 
 export interface BuildHubOptions {
   authAttemptLimit?: number;
@@ -236,6 +239,7 @@ export async function buildHub(options: BuildHubOptions) {
   );
   const watch = new WatchService(database, assistantEngine, undefined, tavily);
   const robot = options.robotController ?? new DisabledRobotController();
+  const robotMemory = new RobotMemoryService(database, HOUSEHOLD_ID);
   const publicOrigin = options.publicOrigin ?? 'http://localhost';
   const closedAuth = new ClosedAuthService({
     ...(options.authAttemptLimit
@@ -328,7 +332,12 @@ export async function buildHub(options: BuildHubOptions) {
       'camera=(), geolocation=(), microphone=()',
     );
     if (request.raw.url?.startsWith('/api/')) {
-      reply.header('cache-control', 'no-store');
+      reply.header(
+        'cache-control',
+        request.raw.url.startsWith('/api/robot/camera/stream')
+          ? 'no-store, no-transform'
+          : 'no-store',
+      );
     }
     return payload;
   });
@@ -345,7 +354,39 @@ export async function buildHub(options: BuildHubOptions) {
   app.get('/api/robot/state', async (request, reply) => {
     try {
       await closedAuth.requireSession(request.headers);
-      return RobotStateSchema.parse(await robot.state());
+      const state = RobotStateSchema.parse(await robot.state());
+      robotMemory.observe(state);
+      return state;
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/memory', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return RobotMemorySummarySchema.parse(robotMemory.summary());
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.patch('/api/robot/memory/entities/:id', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = z
+      .object({ id: z.string().uuid() })
+      .safeParse(request.params);
+    const body = RobotMemoryRenameRequestSchema.safeParse(request.body);
+    if (!params.success || !body.success)
+      return reply.code(400).send({ error: 'invalid_robot_memory_entity' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      return RobotMemorySummarySchema.parse(
+        robotMemory.rename(params.data.id, body.data.displayName),
+      );
     } catch (error) {
       return sendRobotError(error, reply);
     }
@@ -376,7 +417,7 @@ export async function buildHub(options: BuildHubOptions) {
     if (!acceptsTrustedMutationOrigin(request.headers))
       return reply.code(403).send({ error: 'untrusted_origin' });
     const body = RobotDriveRequestSchema.safeParse(request.body);
-    if (!body.success || !validateRobotCommandTiming(body.data))
+    if (!body.success)
       return reply.code(400).send({ error: 'invalid_robot_drive' });
     try {
       const session = await closedAuth.requireSession(request.headers);
@@ -384,9 +425,18 @@ export async function buildHub(options: BuildHubOptions) {
         return reply.code(403).send({ error: 'robot_owner_required' });
       if (!acceptsRobotCommandRate(session.deviceId, 10))
         return reply.code(429).send({ error: 'robot_rate_limited' });
+      // The hub is the clock authority shared with the Pi. Preserve the
+      // short, schema-bounded motor pulse while giving the command enough
+      // transport time to reach a loaded Pi. The embedded watchdog still
+      // limits actual motion with maxDurationMs.
+      const forwardedAt = Date.now();
       return RobotCommandResponseSchema.parse({
         accepted: true,
-        state: await robot.drive(body.data),
+        state: await robot.drive({
+          ...body.data,
+          issuedAt: new Date(forwardedAt).toISOString(),
+          expiresAt: new Date(forwardedAt + 1_800).toISOString(),
+        }),
       });
     } catch (error) {
       return sendRobotError(error, reply);
@@ -397,7 +447,7 @@ export async function buildHub(options: BuildHubOptions) {
     if (!acceptsTrustedMutationOrigin(request.headers))
       return reply.code(403).send({ error: 'untrusted_origin' });
     const body = RobotCameraLookRequestSchema.safeParse(request.body);
-    if (!body.success || !validateRobotCommandTiming(body.data))
+    if (!body.success)
       return reply.code(400).send({ error: 'invalid_robot_camera_look' });
     try {
       const session = await closedAuth.requireSession(request.headers);
@@ -405,9 +455,38 @@ export async function buildHub(options: BuildHubOptions) {
         return reply.code(403).send({ error: 'robot_owner_required' });
       if (!acceptsRobotCommandRate(session.deviceId, 10))
         return reply.code(429).send({ error: 'robot_rate_limited' });
+      // The browser clock is not a safety authority. Re-stamp this bounded
+      // target-position command at the hub boundary so ordinary phone clock
+      // skew cannot make it expire before it reaches the Pi.
+      const forwardedAt = Date.now();
       return RobotCommandResponseSchema.parse({
         accepted: true,
-        state: await robot.look(body.data),
+        state: await robot.look({
+          ...body.data,
+          issuedAt: new Date(forwardedAt).toISOString(),
+          expiresAt: new Date(forwardedAt + 1_800).toISOString(),
+        }),
+      });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/actuators', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotActuatorsRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_robot_actuators' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (!acceptsRobotCommandRate(session.deviceId, 5))
+        return reply.code(429).send({ error: 'robot_rate_limited' });
+      return RobotCommandResponseSchema.parse({
+        accepted: true,
+        state: await robot.setActuators(body.data),
       });
     } catch (error) {
       return sendRobotError(error, reply);
@@ -447,6 +526,22 @@ export async function buildHub(options: BuildHubOptions) {
     }
   });
 
+  app.post('/api/robot/halt', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      return RobotCommandResponseSchema.parse({
+        accepted: true,
+        state: await robot.halt(),
+      });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
   app.get('/api/robot/camera/stream', async (request, reply) => {
     try {
       await closedAuth.requireSession(request.headers);
@@ -457,7 +552,10 @@ export async function buildHub(options: BuildHubOptions) {
       stream.body.once('close', () =>
         request.raw.removeListener('close', abort),
       );
-      return reply.type(stream.contentType).send(stream.body);
+      return reply
+        .header('X-Accel-Buffering', 'no')
+        .type(stream.contentType)
+        .send(stream.body);
     } catch (error) {
       return sendRobotError(error, reply);
     }

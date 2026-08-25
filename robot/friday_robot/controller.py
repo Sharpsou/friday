@@ -22,10 +22,13 @@ class RobotController:
         self._armed_until = None
         self._moving_until = None
         self._pose = CameraPose()
+        self._wheels_enabled = False
+        self._camera_servos_enabled = False
         self._closed = False
         self._lock = threading.RLock()
         self._watchdog_stop = threading.Event()
         self._watchdog = threading.Thread(target=self._watchdog_loop, daemon=True)
+        self._hardware.set_camera_servos_enabled(False)
         self._watchdog.start()
 
     def arm(self, payload: object) -> dict[str, Any]:
@@ -35,28 +38,34 @@ class RobotController:
             raise CommandRejected("Durée d'armement invalide.")
         with self._lock:
             self._assert_open()
+            if not self._wheels_enabled:
+                raise CommandRejected("Roues désactivées.")
             self._armed_until = utc_now() + timedelta(milliseconds=duration)
             return self.state()
 
     def drive(self, payload: object) -> dict[str, Any]:
-        body = strict_object(payload, {"commandId", "issuedAt", "expiresAt", "direction", "intensity", "maxDurationMs"})
+        body = strict_object(payload, {"commandId", "issuedAt", "expiresAt", "direction", "intensity", "steering", "maxDurationMs"})
         self._validate_command(body)
-        direction, intensity, duration = body["direction"], body["intensity"], body["maxDurationMs"]
+        direction, intensity, steering, duration = body["direction"], body["intensity"], body["steering"], body["maxDurationMs"]
         if direction not in DIRECTIONS:
             raise CommandRejected("Direction invalide.")
         if isinstance(intensity, bool) or not isinstance(intensity, (int, float)) or not 0.1 <= intensity <= 0.35:
             raise CommandRejected("Intensité invalide.")
+        if isinstance(steering, bool) or not isinstance(steering, (int, float)) or not -1 <= steering <= 1:
+            raise CommandRejected("Angle de direction invalide.")
         if isinstance(duration, bool) or not isinstance(duration, int) or not 100 <= duration <= 500:
             raise CommandRejected("Durée de mouvement invalide.")
         with self._lock:
             self._assert_open()
+            if not self._wheels_enabled:
+                raise CommandRejected("Roues désactivées.")
             now = utc_now()
             if not self._armed_until or self._armed_until <= now:
                 raise CommandRejected("Conduite non armée.")
             if self._operating_mode not in {"manual", "calibration"}:
                 raise CommandRejected("Téléopération interdite dans ce mode.")
             try:
-                self._hardware.drive(direction, float(intensity))
+                self._hardware.drive(direction, float(intensity), float(steering))
             except Exception:
                 self._safe_stop()
                 raise
@@ -73,8 +82,26 @@ class RobotController:
         pose = CameraPose(float(pan), float(tilt))
         with self._lock:
             self._assert_open()
+            if not self._camera_servos_enabled:
+                raise CommandRejected("Servos caméra désactivés.")
             self._hardware.look(pose)
             self._pose = pose
+            return self.state()
+
+    def set_actuators(self, payload: object) -> dict[str, Any]:
+        body = strict_object(payload, {"wheelsEnabled", "cameraServosEnabled"})
+        wheels_enabled = body["wheelsEnabled"]
+        camera_servos_enabled = body["cameraServosEnabled"]
+        if not isinstance(wheels_enabled, bool) or not isinstance(camera_servos_enabled, bool):
+            raise CommandRejected("État des actionneurs invalide.")
+        with self._lock:
+            self._assert_open()
+            if not wheels_enabled:
+                self._safe_stop()
+                self._armed_until = None
+            self._hardware.set_camera_servos_enabled(camera_servos_enabled)
+            self._wheels_enabled = wheels_enabled
+            self._camera_servos_enabled = camera_servos_enabled
             return self.state()
 
     def set_mode(self, payload: object) -> dict[str, Any]:
@@ -93,6 +120,11 @@ class RobotController:
             self._armed_until = None
             return self.state()
 
+    def halt(self) -> dict[str, Any]:
+        with self._lock:
+            self._safe_stop()
+            return self.state()
+
     def state(self) -> dict[str, Any]:
         with self._lock:
             self._expire()
@@ -104,9 +136,13 @@ class RobotController:
                 "armed": bool(self._armed_until and self._armed_until > now),
                 "mode": self._mode,
                 "cameraAvailable": "camera_stream" in self._hardware.capabilities,
+                "actuators": {
+                    "wheelsEnabled": self._wheels_enabled,
+                    "cameraServosEnabled": self._camera_servos_enabled,
+                },
                 "moving": bool(self._moving_until and self._moving_until > now),
                 "lastSeenAt": iso(now),
-                "warning": "Simulation : aucune sortie GPIO." if self._mode == "simulated" else None,
+                "warning": None,
                 "capabilities": self._hardware.capabilities,
                 "operatingMode": self._operating_mode,
                 "controlExpiresAt": iso(self._armed_until if self._armed_until and self._armed_until > now else None),

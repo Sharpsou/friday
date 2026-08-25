@@ -6,8 +6,9 @@ import { buildHub } from './app.js';
 import {
   DisabledRobotController,
   HttpRobotController,
-  SimulatedRobotController,
 } from './robot/robot-controller.js';
+import { VisionRobotController } from './robot/robot-vision.js';
+import { WorkerRobotVisionEngine } from './robot/robot-vision-worker-client.js';
 
 const host = process.env.FRIDAY_HOST ?? '127.0.0.1';
 const port = Number.parseInt(process.env.FRIDAY_PORT ?? '8443', 10);
@@ -43,10 +44,8 @@ const photoTranscriptionTimeoutMs = photoTranscriptionTimeoutRaw
   : undefined;
 const robotMode = process.env.FRIDAY_ROBOT_MODE ?? 'disabled';
 
-if (!['disabled', 'simulated', 'alphabot2'].includes(robotMode)) {
-  throw new Error(
-    'FRIDAY_ROBOT_MODE doit valoir disabled, simulated ou alphabot2.',
-  );
+if (!['disabled', 'alphabot2'].includes(robotMode)) {
+  throw new Error('FRIDAY_ROBOT_MODE doit valoir disabled ou alphabot2.');
 }
 
 if (
@@ -58,15 +57,68 @@ if (
   );
 }
 
-const robotController =
-  robotMode === 'simulated'
-    ? new SimulatedRobotController()
-    : robotMode === 'alphabot2'
-      ? new HttpRobotController(
-          process.env.FRIDAY_ROBOT_URL!,
-          process.env.FRIDAY_ROBOT_TOKEN!,
-        )
-      : new DisabledRobotController();
+const robotVisionEnabled =
+  robotMode === 'alphabot2' &&
+  process.env.FRIDAY_ROBOT_VISION_ENABLED !== 'false';
+const robotVisionFrameStrideRaw = process.env.FRIDAY_ROBOT_VISION_FRAME_STRIDE;
+const robotVisionFrameStride = Number.parseInt(
+  robotVisionFrameStrideRaw ?? '2',
+  10,
+);
+const robotVisionConfidenceRaw = process.env.FRIDAY_ROBOT_VISION_CONFIDENCE;
+const robotVisionConfidence = Number.parseFloat(
+  robotVisionConfidenceRaw ?? '0.30',
+);
+if (
+  !Number.isSafeInteger(robotVisionFrameStride) ||
+  robotVisionFrameStride < 1 ||
+  robotVisionFrameStride > 30
+) {
+  throw new Error(
+    'FRIDAY_ROBOT_VISION_FRAME_STRIDE doit être un entier entre 1 et 30.',
+  );
+}
+if (
+  !Number.isFinite(robotVisionConfidence) ||
+  robotVisionConfidence < 0.1 ||
+  robotVisionConfidence > 0.95
+) {
+  throw new Error(
+    'FRIDAY_ROBOT_VISION_CONFIDENCE doit être compris entre 0.1 et 0.95.',
+  );
+}
+const baseRobotController =
+  robotMode === 'alphabot2'
+    ? new HttpRobotController(
+        process.env.FRIDAY_ROBOT_URL!,
+        process.env.FRIDAY_ROBOT_TOKEN!,
+      )
+    : new DisabledRobotController();
+const robotController = robotVisionEnabled
+  ? new VisionRobotController(
+      baseRobotController,
+      new WorkerRobotVisionEngine({
+        manifestPath:
+          process.env.FRIDAY_ROBOT_VISION_MANIFEST_PATH ??
+          resolve(
+            process.env.FRIDAY_DATA_DIR ?? defaultDataDirectory,
+            'robot',
+            'models',
+            'manifest.json',
+          ),
+        minConfidence: robotVisionConfidence,
+      }),
+      {
+        frameStride: robotVisionFrameStride,
+        onError(error) {
+          console.warn(
+            'Reconnaissance robot temporairement indisponible:',
+            error instanceof Error ? error.message : error,
+          );
+        },
+      },
+    )
+  : baseRobotController;
 
 if (
   ollamaTimeoutRaw &&

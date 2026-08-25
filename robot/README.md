@@ -8,22 +8,31 @@ langage ne sont copiés sur le robot.
 
 ```bash
 export FRIDAY_ROBOT_TOKEN='au-moins-32-caracteres-aleatoires'
-python3 -m friday_robot --mode simulated
+export FRIDAY_ROBOT_HARDWARE_CONFIRMED=YES
+python3 -m friday_robot --mode alphabot2
 ```
 
-Le mode `alphabot2` exige en plus `FRIDAY_ROBOT_HARDWARE_CONFIRMED=YES`. Cette
+Le service de production n’accepte que le mode `alphabot2`, qui exige
+`FRIDAY_ROBOT_HARDWARE_CONFIRMED=YES`. Cette
 barrière ne remplace pas les essais roues levées décrits dans
 `docs/20-plan-implementation-robot-friday-alphabot2.md`.
+
+Les roues et les servos caméra démarrent toujours désactivés. L’API
+`POST /actuators` reçoit explicitement les deux booléens `wheelsEnabled` et
+`cameraServosEnabled`. Couper les roues stoppe et désarme ; couper les servos
+libère les canaux PCA9685. `POST /halt` arrête seulement le mouvement courant
+et conserve l’armement, tandis que `POST /stop` désarme également.
 
 Variables principales :
 
 - `FRIDAY_ROBOT_BIND` (défaut `127.0.0.1`) et `FRIDAY_ROBOT_PORT` (défaut `8765`) ;
 - `FRIDAY_ROBOT_TOKEN`, secret Bearer de 32 caractères minimum ;
 - `FRIDAY_ROBOT_CAMERA_URL`, flux HTTP MJPEG local optionnel ;
+- `FRIDAY_CAMERA_FPS` (15 sur le prototype), cadence déclarée par la télémétrie ;
 - `FRIDAY_ROBOT_READ_ONLY_SENSORS=YES`, lecture IR/TLC1543 réelle même en mode
-  simulé, sans configurer les moteurs ;
-- `FRIDAY_ROBOT_REAL_CAMERA_SERVOS=YES`, tête PCA9685 réelle même en mode
-  simulé ;
+  de test isolé ;
+- `FRIDAY_ROBOT_REAL_CAMERA_SERVOS=YES`, compatibilité de configuration du
+  prototype antérieur ; le mode AlphaBot2 utilise toujours le PCA9685 réel ;
 - `FRIDAY_ROBOT_LEFT_INVERTED` et `FRIDAY_ROBOT_RIGHT_INVERTED` (`0` ou `1`) ;
 - `FRIDAY_ROBOT_MODEL_DIR`, registre local de modèles, jamais téléchargé au runtime.
 
@@ -33,5 +42,13 @@ tilt, à l’adresse I²C `0x40` et 50 Hz. Le pan utilise la plage symétrique
 une unique libération du PWM. Le tilt utilise `900–1500–2100 µs`. Le servo pan
 présente un tremblement intermittent : ne pas lancer de balayage automatique et
 suivre `docs/runbooks/robot-alphabot2.md`.
+
+La classe simulée subsiste uniquement comme doublure injectée par les tests ;
+elle n’est plus sélectionnable par le service ni par le lanceur Friday.
+
+Le service CSI utilise MJPEG 640×480, 15 images/s, deux buffers caméra et
+`rpicam-vid --flush`. Le relais HTTP privilégie `read1()` par blocs de 16 Kio
+afin de transmettre les octets disponibles sans attendre le remplissage d’un
+tampon de 64 Kio.
 
 Tests sans GPIO : `python -m unittest discover -s robot/tests -p "test_*.py"`.

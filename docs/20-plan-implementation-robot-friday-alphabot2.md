@@ -1,18 +1,24 @@
 # Plan d’implémentation — Robot Friday sur AlphaBot2-Pi
 
-Date : 24 août 2026
+Date : 24 août 2026 ; état actualisé le 25 août 2026
 
-Statut : **plan directeur en cours d’exécution ; socle R0/R1/R4 et partie
-statique de R2 livrés, aucune autonomie domestique autorisée**
+Statut : **plan directeur en cours d’exécution ; R0/R1 livrés, R2/R3/R4
+partiellement recettés sur le matériel réel, aucune autonomie domestique
+autorisée**
 
 État au 24 août 2026 : le Pi a été sauvegardé puis réinstallé, l’accès SSH par
 clé, le service Python, le watchdog, la passerelle hub, l’onglet PWA, le flux
-CSI, les capteurs passifs et les servos de tête sont déployés. Les roues restent
-neutralisées dans le mode `simulated`. Le servo pan tremble par intermittence,
-des sous-tensions ont été observées et le dernier lissage doit être confirmé au
-prochain allumage. Locomotion post-réinstallation, modèles de vision,
-évitement, identité et cognition restent à réaliser. Voir le
-[journal de séance](21-journal-implementation-alphabot2-2026-08-24.md).
+CSI, les capteurs passifs et les servos de tête sont déployés. La production
+cible désormais uniquement le mode `alphabot2`, avec roues et servos désactivés
+au démarrage puis contrôlés par des switchs explicites. La locomotion manuelle
+réelle, les diagonales, la puissance et le trim sont implantés, sans mesure
+finale de ligne droite. Le servo pan tremble par intermittence et des
+sous-tensions ont été observées. La première étape R5 est livrée avec YOLO26s
+ONNX isolé sur le PC ; suivi, cartographie, évitement, identité et cognition
+restent à réaliser. L’état présent est dans le
+[checkpoint](22-checkpoint-robot-alphabot2-2026-08-24.md), la chronologie dans
+le [journal](21-journal-implementation-alphabot2-2026-08-24.md) et les opérations
+dans le [runbook](runbooks/robot-alphabot2.md).
 
 Documents d’autorité :
 
@@ -74,11 +80,13 @@ visuels avancés.
 
 ### 2.3 Où résident les modèles et les données
 
-- Modèles PC : `D:\FridayData\robot\models\<modèle>\<version>`, hors Git,
+- Modèles PC : `D:\FridayData\robot\models`, hors Git,
   accompagnés d’un manifeste contenant origine, licence, hash SHA-256, format,
   classes, prétraitement, seuils et résultats de benchmark.
-- Service de vision : processus Python séparé, lié uniquement à
-  `127.0.0.1`, appelé par le hub Friday avec des contrats JSON stricts.
+- Vision active : Worker Node distinct construit avec le hub, utilisant ONNX
+  Runtime CPU. Le processus principal ne fait ni prétraitement ni inférence et
+  ne reçoit que des observations validées. Un service loopback séparé reste une
+  option future si un autre runtime l'exige, pas l'architecture livrée.
 - Modèles embarqués futurs : `/var/lib/friday-robot/models`, uniquement après
   copie administrative explicite et vérification du hash ; aucun téléchargement
   automatique ou code distant.
@@ -121,7 +129,7 @@ embarqué est donc conservé dans R5, après sécurisation de l’alimentation :
 
 - MobileNet SSD quantifié à `300×300` ou candidat comparable ;
 - visage YuNet quantifié à résolution réduite, sans reconnaissance d’identité ;
-- caméra 640×360 et télémétrie matérielle actives simultanément ;
+- caméra 640×480 et télémétrie matérielle actives simultanément ;
 - mesure FPS, p50/p95, CPU, mémoire, température, `get_throttled`, pertes
   d’images et retard maximal de la boucle watchdog ;
 - essai de 30 minutes, puis mouvements de tête courts pendant l’inférence.
@@ -169,7 +177,7 @@ flowchart LR
 - expiration d’une commande : 350 à 500 ms maximum ;
 - renouvellement pendant un appui : environ 150 à 200 ms ;
 - capteurs IR/ligne : fréquence mesurée puis fixée, cible 20 Hz minimum ;
-- vidéo initiale : 640×360, cible 8 à 12 images/s ;
+- vidéo livrée : 640×480 à 15 images/s ;
 - détection PC : cible 5 images/s minimum, suivi léger entre deux détections ;
 - identité : 1 à 2 évaluations/s seulement lorsqu’un visage stable est présent ;
 - VLM/description : ponctuel, sur demande ou événement, jamais dans une boucle
@@ -178,7 +186,9 @@ flowchart LR
 ### 3.2 Chemin d’une commande humaine
 
 1. L’utilisateur authentifié ouvre `Robot` et voit l’état réel.
-2. Il arme volontairement la conduite pour 60 secondes au plus.
+2. Il active volontairement le switch `Roues` ; la PWA arme alors la conduite
+   pour 60 secondes au plus et renouvelle à 45 secondes tant que la page reste
+   visible.
 3. Un appui maintenu envoie des impulsions lentes, identifiées et expirables.
 4. Le hub vérifie session, origine, schéma, horodatage, autorité et débit.
 5. Le Pi revalide les mêmes bornes et transforme la direction en rampe PWM.
@@ -332,12 +342,11 @@ L’onglet devient une septième destination principale, sans bouton `+` métier
 À 360 px, l’écran se compose verticalement de :
 
 1. état `Indisponible`, `Connecté`, `Armé`, `En mouvement` ou `Arrêt requis` ;
-2. vidéo 16:9 avec indicateur caméra visible ;
-3. barre de surimpressions ;
-4. commandes de tête ;
-5. grand arrêt rouge toujours visible ;
-6. commandes de locomotion à appui maintenu ;
-7. télémétrie repliable et modes expérimentaux.
+2. vidéo 4:3 montrant le capteur 640×480 sans recadrage ;
+3. case unique `Reco` pour afficher ou masquer toutes les détections ;
+4. commandes de tête compactes sous la vidéo ;
+5. joystick elliptique, puissance, trim et arrêt sous l’image ;
+6. télémétrie repliable et indicateurs `Cartographie`/`Autonome` à venir.
 
 La barre de navigation à sept entrées devra être testée à 360 px. Si les
 libellés ne restent pas lisibles, le choix prévu est une barre horizontale
@@ -346,7 +355,9 @@ réduction illisible de la police.
 
 ### 6.2 Vidéo et surimpressions
 
-Options indépendantes :
+Le candidat livré expose une seule case `Reco`. Les catégories techniques
+ci-dessous restent des capacités de contrat ou des lots futurs, et non des
+cases distinctes dans l'interface :
 
 - `Objets` : boîtes, classe et confiance ;
 - `Personnes` : boîtes et identifiants anonymes ;
@@ -363,13 +374,13 @@ toute boîte expirée. La surimpression ne doit jamais sembler appartenir à une
 image plus récente que l’observation.
 
 Le premier flux est MJPEG, simple et inspectable. La cible initiale est
-640×360 à 8–12 images/s. WebRTC n’est ajouté que si le benchmark montre une
+640×480 à 15 images/s. WebRTC n’est ajouté que si le benchmark montre une
 latence insuffisante ; il ne doit pas précéder la maîtrise du watchdog.
 
 ### 6.3 Commandes de tête
 
-- quatre flèches et bouton centre ;
-- pression courte = petit incrément ; pression maintenue = mouvement progressif ;
+- quatre petits boutons et bouton centre ;
+- pression courte = incrément borné ; aucun maintien répétitif automatique ;
 - position normalisée dans l’UI, conversion en microsecondes uniquement sur le
   Pi ;
 - plages logicielles actuelles : pan `700–2300 µs`, tilt `900–2100 µs` ;
@@ -380,25 +391,28 @@ latence insuffisante ; il ne doit pas précéder la maîtrise du watchdog.
 
 ### 6.4 Commandes de locomotion
 
-- flèches avant/arrière/gauche/droite à grandes cibles tactiles ;
-- conduite inactive à l’ouverture ; bouton `Activer 60 s` ;
-- vitesse Alpha limitée à une plage lente, sans valeur en m/s trompeuse ;
+- joystick tactile elliptique sous l’image, avec diagonales différentielles ;
+- conduite inactive tant que le switch `Roues` est OFF ; l’armement interne de
+  60 s est déclenché et renouvelé par ce switch, sans bouton séparé ;
+- puissance bornée et persistée de 10 à 35 %, sans valeur en m/s trompeuse ;
+- trim de direction `G 10` à `D 10`, en marche avant uniquement ;
 - appui maintenu obligatoire, aucune commande au simple changement d’écran ;
 - `pointerup`, `pointercancel`, perte de focus, masquage ou démontage déclenche
   `stop` ;
 - clavier possible sur PC avec `Espace = arrêt`, sans activation implicite ;
 - le bouton `ARRÊT` reste utilisable même si l’armement a expiré ;
-- aucune diagonale ni macro de déplacement au premier lot.
+- aucune macro de déplacement ni commande autonome.
 
 ### 6.5 Modes proposés progressivement
 
-- `Manuel` : premier et seul mode actif au départ ;
-- `Calibrage` : impulsion définie, saisie de la distance/dérive mesurée ;
-- `Ligne` : uniquement sur piste déclarée et après recette ;
-- `Suivi visuel` : tête seule, puis corps en mode observateur, puis impulsions
-  confirmées ;
-- `Balises` : déplacements entre tags en enceinte fermée ;
-- `Compagnon` : comportements expressifs sans locomotion autonome au départ.
+- `Manuel` est le seul mode actif et devient implicite dans la PWA ; activer les
+  roues force ce mode avant l'armement.
+- L'ancien menu `Calibrage`/`Ligne`/`Suivi visuel`/`Balises`/`Compagnon` est
+  retiré : ces entrées n'implémentaient aucun comportement et pouvaient seulement
+  désactiver la téléopération.
+- `Cartographie` et `Autonome` sont affichés comme jalons `À venir`, désactivés
+  et sans appel API. Leur présence ne vaut ni conception validée ni
+  autorisation de mouvement.
 
 Chaque mode expérimental affiche ses préconditions et refuse de démarrer si un
 capteur, le flux, le watchdog ou l’armement manque.
@@ -422,7 +436,7 @@ capteur, le flux, le watchdog ou l’armement manque.
 Les estimations sont des heures de travail agentique, hors attente de matériel
 et hors temps d’observation utilisateur.
 
-### Phase R0 — figer, sauvegarder et sécuriser le Pi — 6 à 10 h
+### Phase R0 — figer, sauvegarder et sécuriser le Pi — livrée
 
 Implémentation :
 
@@ -437,7 +451,7 @@ Tests/gate : redémarrage sans mouvement, SSH par clé, aucun service moteur
 automatique, image restaurable. Action physique utilisateur requise pour la
 carte SD et la zone de test.
 
-### Phase R1 — simulateur, contrats et Physical Agent Gateway — 12 à 18 h
+### Phase R1 — simulateur, contrats et Physical Agent Gateway — livrée
 
 Implémentation :
 
@@ -451,7 +465,7 @@ Implémentation :
 Gate : aucune entrée invalide ne produit de mouvement simulé ; `stop` est
 prioritaire ; 100 % des scénarios de perte de lien finissent à zéro.
 
-### Phase R2 — adaptateur Pi et maîtrise statique — 14 à 22 h
+### Phase R2 — adaptateur Pi et maîtrise statique — partiellement recettée
 
 Implémentation :
 
@@ -466,7 +480,7 @@ Tests/gate sur cales : sens de chaque roue, arrêt, expiration, exception,
 SIGTERM, déconnexion Wi-Fi, plages servo, absence de collision mécanique et
 absence de sous-tension active persistante.
 
-### Phase R3 — locomotion caractérisée — 8 à 14 h + recette physique
+### Phase R3 — locomotion caractérisée — contrôle livré, mesures restantes
 
 Implémentation :
 
@@ -481,11 +495,11 @@ médiane documentée sur 0,5 m et 1 m ; 20 parcours de ligne ; toute perte de
 ligne prolongée arrête le robot. Si la dérive dépasse la tolérance décidée, la
 « ligne droite » reste une commande manuelle approximative.
 
-### Phase R4 — onglet Robot en simulation puis sur banc — 14 à 22 h
+### Phase R4 — onglet Robot réel — livré, recette d’endurance restante
 
 Implémentation :
 
-- destination `Robot`, vidéo, surimpressions factices et télémétrie ;
+- destination `Robot`, vidéo, surimpressions réelles et télémétrie ;
 - armement, commandes à maintien, arrêt, tête et centre ;
 - client sans outbox, sans cache et sans retry tardif ;
 - proxy hub vers adaptateur, auth et limite de débit ;
@@ -498,9 +512,21 @@ fermée.
 
 ### Phase R5 — vision PC générique — 18 à 30 h
 
+État au 25 août 2026 : YOLO26s ONNX sur ONNX Runtime CPU remplace le premier
+candidat SSD-MobileNet. Le Worker dédié lit une capture MJPEG mutualisée avec la
+PWA, saute par défaut une image sur deux et alimente les surimpressions
+objets/personnes sans persistance, identité, suivi ni droit d'action. Sur trois
+images sombres réelles, une inférence chaude prend 112 à 145 ms et retrouve
+table, bouteille et chaises au seuil 0,30. Le premier chargement prend environ
+780 ms. Après isolation, `/api/health` reste à 2,1 ms de médiane, 3,4 ms p95,
+4,3 ms p99 et 71,4 ms maximum sur la mesure persistante, sans pointe proche du
+watchdog moteur de 350 ms. La gate de cinq détections/s est franchie ; le corpus
+local, la précision/rappel, la latence p95 prolongée et le suivi anonyme restent
+à faire.
+
 Implémentation :
 
-- service vision loopback ;
+- Worker vision isolé et fermeture propre avec le contrôleur ;
 - corpus local autorisé sans visages persistés ;
 - benchmark MobileNet SSD, PP-PicoDet et éventuellement un troisième candidat ;
 - benchmark embarqué Pi 3B défini en 2.5, après le benchmark PC et sans
@@ -509,7 +535,7 @@ Implémentation :
 - surimpressions objets/personnes/diagnostic ;
 - gestes de tête suivant une cible, corps immobile.
 
-Gate : modèle/licence/hash enregistrés ; cible ≥ 5 détections/s à 640×360 ;
+Gate : modèle/licence/hash enregistrés ; cible ≥ 5 détections/s à 640×480 ;
 latence d’observation p95 mesurée ; précision/rappel par classes utiles ; perte
 de cible = arrêt du geste de tête, jamais recherche motorisée ouverte.
 

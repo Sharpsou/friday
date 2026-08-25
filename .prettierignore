@@ -5,6 +5,7 @@ dist/
 coverage/
 playwright-report/
 test-results/
+**/.pytest_cache/
 docs/00-reprise-nouveau-chat.md
 docs/01-audit-projets-sources.md
 docs/02-perimetre-mvp.md

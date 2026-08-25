@@ -7,6 +7,7 @@ import {
 } from './assistant-service.js';
 import { openDatabase } from '../db/database.js';
 import { ExaMcpSearchClient } from './exa-mcp-search.js';
+import type { FridayMemoryReader } from './friday-memory.js';
 import { TavilySearchClient } from './tavily-search.js';
 
 const PROFILE_ONE = 'f61f8f8b-8d09-4575-8e83-357618e881ac';
@@ -54,13 +55,81 @@ describe('AssistantService', () => {
     engine = fakeEngine(),
     tavily = new TavilySearchClient(undefined),
     exa = new ExaMcpSearchClient(),
+    fridayMemory?: Pick<FridayMemoryReader, 'query'>,
   ) {
     const database = openDatabase(':memory:');
     databases.push(database);
-    const service = new AssistantService(database, engine, tavily, exa);
+    const service = new AssistantService(
+      database,
+      engine,
+      tavily,
+      exa,
+      fridayMemory,
+    );
     services.push(service);
     return service;
   }
+
+  it('answers in Friday mode only from grounded household facts', async () => {
+    let receivedFacts: unknown;
+    const fridayMemory = {
+      query: () => [
+        {
+          confidence: 0.92,
+          detail: 'pièce=Salon; observations=4',
+          id: 'F1',
+          observedAt: '2026-08-25T00:00:00.000Z',
+          source: 'robot' as const,
+          title: 'Télécommande',
+        },
+      ],
+    };
+    const service = createService(
+      fakeEngine({
+        answer: async (_history, _signal, options) => {
+          receivedFacts = options;
+          return { content: 'Elle est dans le salon [F1].' };
+        },
+      }),
+      new TavilySearchClient(undefined),
+      new ExaMcpSearchClient(),
+      fridayMemory,
+    );
+    const conversation = service.createConversation(
+      PROFILE_ONE,
+      'Mémoire Friday',
+      'friday',
+    );
+    const submission = service.submit(PROFILE_ONE, conversation.id, {
+      clientRequestId: '81bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+      content: 'Où est la télécommande ?',
+      mode: 'friday',
+      thinkingPolicy: 'auto',
+    });
+
+    await waitFor(
+      () =>
+        service.getRun(PROFILE_ONE, submission.run.id).status === 'completed',
+    );
+
+    expect(receivedFacts).toMatchObject({
+      mode: 'friday',
+      facts: [{ id: 'F1', title: 'Télécommande' }],
+    });
+    expect(
+      service
+        .listConversations(PROFILE_ONE)
+        .find((item) => item.id === conversation.id)?.mode,
+    ).toBe('friday');
+    expect(
+      service.getMessages(PROFILE_ONE, conversation.id).messages.at(-1),
+    ).toMatchObject({
+      content: 'Elle est dans le salon [F1].',
+      effectiveMode: 'classic',
+      mode: 'friday',
+      sources: [],
+    });
+  });
 
   it('persists a classic conversation and handles duplicate requests idempotently', async () => {
     let selectedModel: string | undefined;

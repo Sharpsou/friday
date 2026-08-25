@@ -2906,11 +2906,15 @@ textarea:focus-visible {
 
 .robot-view {
   display: grid;
-  gap: 14px;
+  gap: 8px;
 }
 
-.robot-heading {
+.robot-topbar {
+  min-width: 0;
+  display: flex;
   align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
 }
 
 .robot-state {
@@ -2933,11 +2937,85 @@ textarea:focus-visible {
   background: var(--mint);
 }
 
+.robot-actuator-switches {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+
+.robot-actuator-switch {
+  position: relative;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.robot-actuator-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.robot-actuator-switch i {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgb(var(--surface-rgb) / 85%);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.robot-actuator-switch i::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  content: '';
+  transition:
+    transform 140ms ease,
+    background 140ms ease;
+}
+
+.robot-actuator-switch input:checked + i {
+  border-color: rgb(var(--accent-rgb) / 75%);
+  background: rgb(var(--accent-rgb) / 30%);
+}
+
+.robot-actuator-switch input:checked + i::after {
+  background: var(--mint);
+  transform: translateX(14px);
+}
+
+.robot-actuator-switch input:focus-visible + i {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
+}
+
+.robot-actuator-switch input:disabled + i,
+.robot-actuator-switch:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .robot-warning,
 .robot-error {
   margin: 0;
   border-radius: 12px;
-  padding: 10px 12px;
+  padding: 7px 10px;
   font-size: 0.82rem;
 }
 
@@ -2945,6 +3023,35 @@ textarea:focus-visible {
   border: 1px solid rgb(var(--accent-rgb) / 28%);
   color: var(--muted);
   background: rgb(var(--accent-rgb) / 7%);
+}
+
+.robot-future-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.robot-future-modes > span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.robot-future-modes button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--muted);
+  background: rgb(var(--surface-rgb) / 70%);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.robot-future-modes button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .robot-error {
@@ -2962,7 +3069,7 @@ textarea:focus-visible {
 
 .robot-camera {
   position: relative;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 45%, rgb(102 245 196 / 14%), transparent 34%),
@@ -2979,7 +3086,7 @@ textarea:focus-visible {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .robot-camera-empty {
@@ -2987,20 +3094,6 @@ textarea:focus-visible {
   display: grid;
   place-items: center;
   color: var(--muted);
-}
-
-.robot-simulation-label {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  border: 1px solid var(--mint);
-  border-radius: 999px;
-  padding: 3px 7px;
-  color: var(--mint);
-  background: rgb(7 17 15 / 82%);
-  font-size: 0.62rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
 }
 
 .robot-overlays {
@@ -3054,103 +3147,213 @@ textarea:focus-visible {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding: 9px;
+  padding: 6px 7px 4px;
 }
 
 .robot-overlay-options label {
-  min-height: 34px;
+  min-height: 28px;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 5px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 0 9px;
+  padding: 0 7px;
   color: var(--muted);
   font-size: 0.7rem;
   font-weight: 750;
 }
 
-.robot-control-layout {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.robot-motion-dock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 8px 12px;
+  background: rgb(var(--surface-rgb) / 46%);
 }
 
-.robot-control-panel {
+.robot-drive-column {
   display: grid;
-  align-content: start;
-  gap: 12px;
+  justify-items: center;
+  gap: 5px;
 }
 
-.section-heading.compact h3 {
-  margin: 2px 0 0;
+.robot-power-control {
+  display: grid;
+  width: 164px;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 0.68rem;
 }
 
-.robot-direction-pad {
-  width: min(100%, 240px);
-  display: grid;
-  grid-template-columns: repeat(3, minmax(54px, 1fr));
-  grid-template-rows: repeat(3, 54px);
-  gap: 7px;
-  justify-self: center;
+.robot-power-control span {
+  display: flex;
+  justify-content: space-between;
+}
+
+.robot-power-control strong {
+  color: var(--text);
+}
+
+.robot-power-control input {
+  width: 100%;
+  accent-color: rgb(var(--accent-rgb));
+}
+
+.robot-joystick {
+  position: relative;
+  width: 164px;
+  height: 112px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 50%;
+  color: rgb(255 255 255 / 68%);
+  background: rgb(5 15 13 / 62%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+  backdrop-filter: blur(7px);
   touch-action: none;
   user-select: none;
 }
 
-.robot-direction-pad button {
-  border: 1px solid var(--line-strong);
-  border-radius: 13px;
+.robot-joystick:disabled {
+  opacity: 0.44;
+}
+
+.robot-joystick-axis {
+  position: absolute;
+  inset: 8px;
+  font-size: 0.66rem;
+  pointer-events: none;
+}
+
+.robot-joystick-axis b {
+  position: absolute;
+  font-weight: 750;
+}
+
+.robot-joystick-axis b:nth-child(1) {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.robot-joystick-axis b:nth-child(2) {
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+}
+
+.robot-joystick-axis b:nth-child(3) {
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+}
+
+.robot-joystick-axis b:nth-child(4) {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.robot-joystick-knob {
+  position: absolute;
+  top: calc(50% - 18px);
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgb(var(--accent-rgb) / 85%);
+  border-radius: 50%;
+  background: rgb(var(--accent-rgb) / 76%);
+  box-shadow: 0 0 18px rgb(var(--accent-rgb) / 34%);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.robot-compact-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 7px 7px;
+}
+
+.robot-camera-buttons,
+.robot-drive-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.robot-drive-actions {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.robot-camera-buttons button {
+  width: 32px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0;
   color: var(--text);
-  background: rgb(var(--surface-rgb) / 82%);
-  font-size: 1.35rem;
-  font-weight: 850;
-  touch-action: none;
+  background: rgb(var(--surface-rgb) / 78%);
+  font-size: 0.9rem;
 }
 
-.robot-direction-pad button:active:not(:disabled) {
-  color: #07110f;
-  background: var(--mint);
-  transform: scale(0.96);
-}
-
-.robot-direction-pad .is-haut {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.robot-direction-pad .is-gauche {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.robot-direction-pad .is-center {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.robot-direction-pad .is-droite {
-  grid-column: 3;
-  grid-row: 2;
-}
-
-.robot-direction-pad .is-bas {
-  grid-column: 2;
-  grid-row: 3;
+.robot-camera-buttons small {
+  min-width: 34px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  text-align: center;
 }
 
 .robot-stop {
-  min-height: 48px;
+  min-height: 34px;
   border: 1px solid #ff8e82;
-  border-radius: 13px;
+  border-radius: 10px;
+  padding: 0 10px;
   color: #fff;
   background: #a82d28;
   font-weight: 900;
   letter-spacing: 0.08em;
 }
 
-.robot-arm {
-  min-height: 44px;
+.robot-memory summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.robot-memory ul {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.robot-memory li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px;
+  font-size: 0.78rem;
+}
+
+.robot-memory li button {
+  min-height: 32px;
+  flex: 0 0 auto;
+}
+
+.robot-memory p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .robot-telemetry summary {
@@ -3185,12 +3388,29 @@ textarea:focus-visible {
 }
 
 @media (max-width: 620px) {
-  .robot-control-layout {
-    grid-template-columns: 1fr;
-  }
-
   .robot-telemetry dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .robot-topbar {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .robot-actuator-switches {
+    justify-content: center;
+  }
+
+  .robot-compact-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .robot-camera-buttons,
+  .robot-drive-actions {
+    justify-content: center;
   }
 }
 

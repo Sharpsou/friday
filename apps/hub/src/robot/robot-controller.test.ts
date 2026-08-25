@@ -47,6 +47,16 @@ describe('Robot controller boundary', () => {
         now,
       ),
     ).toBe(false);
+    expect(
+      validateRobotCommandTiming(
+        {
+          issuedAt: '2026-08-23T12:00:00.000Z',
+          expiresAt: '2026-08-23T12:00:01.800Z',
+        },
+        now,
+        2_000,
+      ),
+    ).toBe(true);
   });
 
   it('keeps motion disabled until an adapter is explicitly configured', async () => {
@@ -64,6 +74,14 @@ describe('Robot controller boundary', () => {
 
   it('simulates an armed expiring pulse without touching GPIO', async () => {
     const controller = new SimulatedRobotController();
+    await expect(
+      controller.setActuators({
+        wheelsEnabled: true,
+        cameraServosEnabled: false,
+      }),
+    ).resolves.toMatchObject({
+      actuators: { wheelsEnabled: true, cameraServosEnabled: false },
+    });
     await expect(controller.arm(1_000)).resolves.toMatchObject({ armed: true });
     const now = Date.now();
     await expect(
@@ -73,13 +91,38 @@ describe('Robot controller boundary', () => {
         expiresAt: new Date(now + 300).toISOString(),
         direction: 'forward',
         intensity: 0.2,
+        steering: 0,
         maxDurationMs: 300,
       }),
     ).resolves.toMatchObject({ moving: true, mode: 'simulated' });
+    await expect(controller.halt()).resolves.toMatchObject({
+      armed: true,
+      moving: false,
+    });
     await expect(controller.stop()).resolves.toMatchObject({
       armed: false,
       moving: false,
     });
+    await controller.close();
+  });
+
+  it('starts actuators off and disabling wheels stops and disarms', async () => {
+    const controller = new SimulatedRobotController();
+    await expect(controller.state()).resolves.toMatchObject({
+      actuators: { wheelsEnabled: false, cameraServosEnabled: false },
+    });
+    await expect(controller.arm(1_000)).rejects.toThrow('Roues désactivées');
+    await controller.setActuators({
+      wheelsEnabled: true,
+      cameraServosEnabled: true,
+    });
+    await controller.arm(1_000);
+    await expect(
+      controller.setActuators({
+        wheelsEnabled: false,
+        cameraServosEnabled: true,
+      }),
+    ).resolves.toMatchObject({ armed: false, moving: false });
     await controller.close();
   });
 });

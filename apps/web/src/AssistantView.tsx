@@ -52,6 +52,7 @@ const AssistantMarkdown = lazy(() => import('./AssistantMarkdown.js'));
 function modeLabel(mode: AssistantMode): string {
   if (mode === 'web_light') return 'Web léger';
   if (mode === 'web_deep') return 'Web approfondi';
+  if (mode === 'friday') return 'Friday';
   return 'local';
 }
 
@@ -706,6 +707,7 @@ export default function AssistantView({
                       ['local', 'Local'],
                       ['web_light', 'Web léger'],
                       ['web_deep', 'Web approfondi'],
+                      ['friday', 'Friday'],
                     ] as const
                   ).map(([mode, label]) => (
                     <button

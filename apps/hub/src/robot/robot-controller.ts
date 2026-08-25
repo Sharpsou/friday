@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import {
   RobotCommandResponseSchema,
   RobotStateSchema,
+  type RobotActuatorsRequest,
   type RobotCameraLookRequest,
   type RobotDriveRequest,
   type RobotOperatingMode,
@@ -23,7 +24,9 @@ export interface RobotController {
   arm(durationMs: number): Promise<RobotState>;
   drive(command: RobotDriveRequest): Promise<RobotState>;
   look(command: RobotCameraLookRequest): Promise<RobotState>;
+  setActuators(actuators: RobotActuatorsRequest): Promise<RobotState>;
   setMode(mode: RobotOperatingMode): Promise<RobotState>;
+  halt(): Promise<RobotState>;
   stop(): Promise<RobotState>;
   openCameraStream(signal: AbortSignal): Promise<RobotCameraStream>;
   close(): Promise<void>;
@@ -35,6 +38,7 @@ const DISABLED_STATE: RobotState = {
   armed: false,
   mode: 'disabled',
   cameraAvailable: false,
+  actuators: { wheelsEnabled: false, cameraServosEnabled: false },
   moving: false,
   lastSeenAt: null,
   warning: 'Robot non configuré.',
@@ -73,8 +77,16 @@ export class DisabledRobotController implements RobotController {
     throw new RobotUnavailableError('Robot non configuré.');
   }
 
+  async setActuators(): Promise<RobotState> {
+    throw new RobotUnavailableError('Robot non configuré.');
+  }
+
   async setMode(): Promise<RobotState> {
     throw new RobotUnavailableError('Robot non configuré.');
+  }
+
+  async halt(): Promise<RobotState> {
+    return DISABLED_STATE;
   }
 
   async stop(): Promise<RobotState> {
@@ -99,6 +111,7 @@ export class SimulatedRobotController implements RobotController {
   #closed = false;
   #operatingMode: RobotOperatingMode = 'manual';
   #cameraPose = { pan: 0, tilt: 0 };
+  #actuators = { wheelsEnabled: false, cameraServosEnabled: false };
   readonly #watchdog: NodeJS.Timeout;
 
   constructor() {
@@ -113,6 +126,8 @@ export class SimulatedRobotController implements RobotController {
 
   async arm(durationMs: number): Promise<RobotState> {
     this.#assertOpen();
+    if (!this.#actuators.wheelsEnabled)
+      throw new RobotCommandRejectedError('Roues désactivées.');
     this.#armedUntil = Date.now() + Math.min(durationMs, 60_000);
     return this.#snapshot();
   }
@@ -120,8 +135,10 @@ export class SimulatedRobotController implements RobotController {
   async drive(command: RobotDriveRequest): Promise<RobotState> {
     this.#assertOpen();
     this.#expire();
-    if (!validateRobotCommandTiming(command))
+    if (!validateRobotCommandTiming(command, Date.now(), 2_000))
       throw new RobotCommandRejectedError('Commande expirée.');
+    if (!this.#actuators.wheelsEnabled)
+      throw new RobotCommandRejectedError('Roues désactivées.');
     if (this.#armedUntil <= Date.now())
       throw new RobotCommandRejectedError('Conduite non armée.');
     if (!['manual', 'calibration'].includes(this.#operatingMode))
@@ -137,9 +154,21 @@ export class SimulatedRobotController implements RobotController {
 
   async look(command: RobotCameraLookRequest): Promise<RobotState> {
     this.#assertOpen();
-    if (!validateRobotCommandTiming(command))
+    if (!this.#actuators.cameraServosEnabled)
+      throw new RobotCommandRejectedError('Servos caméra désactivés.');
+    if (!validateRobotCommandTiming(command, Date.now(), 2_000))
       throw new RobotCommandRejectedError('Commande caméra expirée.');
     this.#cameraPose = { pan: command.pan, tilt: command.tilt };
+    return this.#snapshot();
+  }
+
+  async setActuators(actuators: RobotActuatorsRequest): Promise<RobotState> {
+    this.#assertOpen();
+    if (!actuators.wheelsEnabled) {
+      this.#movingUntil = 0;
+      this.#armedUntil = 0;
+    }
+    this.#actuators = { ...actuators };
     return this.#snapshot();
   }
 
@@ -148,6 +177,11 @@ export class SimulatedRobotController implements RobotController {
     this.#movingUntil = 0;
     this.#armedUntil = 0;
     this.#operatingMode = mode;
+    return this.#snapshot();
+  }
+
+  async halt(): Promise<RobotState> {
+    this.#movingUntil = 0;
     return this.#snapshot();
   }
 
@@ -192,6 +226,7 @@ export class SimulatedRobotController implements RobotController {
       armed: this.#armedUntil > now.getTime(),
       mode: 'simulated',
       cameraAvailable: !this.#closed,
+      actuators: { ...this.#actuators },
       moving,
       lastSeenAt: now.toISOString(),
       warning: 'Simulation : aucune sortie GPIO.',
@@ -302,6 +337,7 @@ export function parseRobotBaseUrl(value: string): URL {
 export function validateRobotCommandTiming(
   command: Pick<RobotDriveRequest, 'issuedAt' | 'expiresAt'>,
   now = Date.now(),
+  maxLifetimeMs = 1_000,
 ): boolean {
   const issuedAt = Date.parse(command.issuedAt);
   const expiresAt = Date.parse(command.expiresAt);
@@ -311,7 +347,7 @@ export function validateRobotCommandTiming(
     issuedAt >= now - 2_000 &&
     issuedAt <= now + 1_000 &&
     expiresAt > now &&
-    expiresAt - issuedAt <= 1_000
+    expiresAt - issuedAt <= maxLifetimeMs
   );
 }
 
@@ -344,8 +380,16 @@ export class HttpRobotController implements RobotController {
     return this.#json('/camera/look', 'POST', command);
   }
 
+  setActuators(actuators: RobotActuatorsRequest): Promise<RobotState> {
+    return this.#json('/actuators', 'POST', actuators);
+  }
+
   setMode(mode: RobotOperatingMode): Promise<RobotState> {
     return this.#json('/mode', 'POST', { mode });
+  }
+
+  halt(): Promise<RobotState> {
+    return this.#json('/halt', 'POST', {});
   }
 
   stop(): Promise<RobotState> {
@@ -387,7 +431,11 @@ export class HttpRobotController implements RobotController {
     body?: unknown,
   ): Promise<RobotState> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2_000);
+    // A smoothed pan move can legitimately take longer than an ordinary
+    // command. Keep the motor pulse deadline strict, but allow its response
+    // (which also contains telemetry) enough time to return.
+    const timeoutMs = path === '/camera/look' ? 3_500 : 2_000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(
         new URL(path.replace(/^\//u, ''), this.#baseUrl),
@@ -405,8 +453,17 @@ export class HttpRobotController implements RobotController {
         },
       );
       if (!response.ok) {
+        const payload: unknown = await response.json().catch(() => null);
+        const detail =
+          typeof payload === 'object' &&
+          payload !== null &&
+          'error' in payload &&
+          typeof payload.error === 'string'
+            ? payload.error
+            : null;
         throw new RobotCommandRejectedError(
-          `Le robot a refusé la commande (${response.status.toString()}).`,
+          detail ??
+            `Le robot a refusé la commande (${response.status.toString()}).`,
         );
       }
       const payload: unknown = await response.json();

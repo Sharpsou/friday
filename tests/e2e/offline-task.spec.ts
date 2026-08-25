@@ -445,7 +445,9 @@ test('the seven destinations fit at 360px and budget data can persist or be remo
     'Robot',
   ]);
   await navigation.getByRole('button', { name: 'Robot' }).click();
-  await expect(page.getByRole('heading', { name: 'Robot' })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Robot', exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('Caméra indisponible')).toBeVisible();
   await expect(page.getByRole('button', { name: 'ARRÊT' })).toBeDisabled();
   await navigation.getByRole('button', { name: 'Budget' }).click();
@@ -606,39 +608,121 @@ test('the seven destinations fit at 360px and budget data can persist or be remo
   }
 });
 
-test('the real camera stays visible while motor outputs remain simulated', async ({
+test('the real camera and physical actuator switches stay usable at 360px', async ({
   page,
 }) => {
-  await page.route('**/api/robot/state', async (route) =>
-    route.fulfill({
-      json: {
-        available: true,
-        connected: true,
-        armed: false,
-        mode: 'simulated',
-        cameraAvailable: true,
-        moving: false,
-        lastSeenAt: '2026-08-24T00:00:00.000Z',
-        warning: 'Simulation : aucune sortie GPIO.',
-        capabilities: ['teleop', 'camera_stream'],
-        operatingMode: 'manual',
-        controlExpiresAt: null,
-        cameraPose: { pan: 0, tilt: 0 },
-        telemetry: {
-          temperatureC: 47,
-          throttledCode: '0x0',
-          underVoltageActive: false,
-          underVoltageOccurred: false,
-          irLeftClear: true,
-          irRightClear: true,
-          lineSensors: [700, 720, 900, 850, 910],
-          cameraFps: 10,
-          commandLatencyMs: null,
+  let lastDriveDirection: string | null = null;
+  let lastDriveIntensity: number | null = null;
+  let lastDriveSteering: number | null = null;
+  let lastCameraTilt: number | null = null;
+  let robotState = {
+    available: true,
+    connected: true,
+    armed: false,
+    mode: 'alphabot2' as const,
+    cameraAvailable: true,
+    actuators: { wheelsEnabled: false, cameraServosEnabled: false },
+    moving: false,
+    lastSeenAt: '2026-08-24T00:00:00.000Z',
+    warning: null,
+    capabilities: [
+      'teleop',
+      'camera_look',
+      'camera_stream',
+      'vision_objects',
+      'vision_people',
+    ],
+    operatingMode: 'manual',
+    controlExpiresAt: null as string | null,
+    cameraPose: { pan: 0, tilt: 0 },
+    telemetry: {
+      temperatureC: 47,
+      throttledCode: '0x0',
+      underVoltageActive: false,
+      underVoltageOccurred: false,
+      irLeftClear: true,
+      irRightClear: true,
+      lineSensors: [700, 720, 900, 850, 910],
+      cameraFps: 10,
+      commandLatencyMs: null,
+    },
+    vision: {
+      frameId: 1,
+      observedAt: '2026-08-24T00:00:00.000Z',
+      expiresAt: '2026-08-24T00:00:02.000Z',
+      imageWidth: 640,
+      imageHeight: 480,
+      processingMs: 28,
+      detections: [
+        {
+          id: '1-0-object',
+          kind: 'object' as const,
+          label: 'Lit',
+          confidence: 0.59,
+          x: 0.1,
+          y: 0.2,
+          width: 0.5,
+          height: 0.4,
+          trackId: null,
         },
-        vision: null,
-      },
-    }),
+      ],
+    },
+  };
+  await page.route('**/api/robot/state', async (route) =>
+    route.fulfill({ json: robotState }),
   );
+  await page.route('**/api/robot/actuators', async (route) => {
+    const actuators = route
+      .request()
+      .postDataJSON() as typeof robotState.actuators;
+    robotState = { ...robotState, actuators };
+    await route.fulfill({ json: { accepted: true, state: robotState } });
+  });
+  await page.route('**/api/robot/arm', async (route) => {
+    robotState = {
+      ...robotState,
+      armed: true,
+      controlExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    await route.fulfill({ json: { accepted: true, state: robotState } });
+  });
+  await page.route('**/api/robot/drive', async (route) => {
+    const command = route.request().postDataJSON() as {
+      direction: string;
+      intensity: number;
+      steering: number;
+    };
+    lastDriveDirection = command.direction;
+    lastDriveIntensity = command.intensity;
+    lastDriveSteering = command.steering;
+    robotState = { ...robotState, moving: true };
+    await route.fulfill({ json: { accepted: true, state: robotState } });
+  });
+  await page.route('**/api/robot/stop', async (route) => {
+    robotState = {
+      ...robotState,
+      moving: false,
+      armed: false,
+      controlExpiresAt: null,
+    };
+    await route.fulfill({ json: { accepted: true, state: robotState } });
+  });
+  await page.route('**/api/robot/halt', async (route) => {
+    robotState = { ...robotState, moving: false };
+    await route.fulfill({ json: { accepted: true, state: robotState } });
+  });
+  await page.route('**/api/robot/camera/look', async (route) => {
+    const command = route.request().postDataJSON() as {
+      pan: number;
+      tilt: number;
+    };
+    lastCameraTilt = command.tilt;
+    robotState = {
+      ...robotState,
+      cameraPose: { pan: command.pan, tilt: command.tilt },
+    };
+    await route.fulfill({ json: { accepted: true, state: robotState } });
+  });
   await page.route('**/api/robot/camera/stream', async (route) =>
     route.fulfill({
       contentType: 'image/gif',
@@ -657,10 +741,110 @@ test('the real camera stays visible while motor outputs remain simulated', async
 
   const camera = page.getByRole('img', { name: 'Vue en direct du robot' });
   await expect(camera).toBeVisible();
-  await expect(page.getByText('SIMULATION', { exact: true })).toBeVisible();
+  const cameraFrameBox = await page.locator('.robot-camera').boundingBox();
+  expect(cameraFrameBox!.width / cameraFrameBox!.height).toBeCloseTo(4 / 3, 1);
+  const recognition = page.getByRole('checkbox', { name: 'Reco' });
+  await expect(recognition).toBeChecked();
+  await expect(page.locator('.robot-box', { hasText: 'Lit' })).toBeVisible();
+  await recognition.uncheck();
+  await expect(page.locator('.robot-box')).toHaveCount(0);
+  await expect(
+    page.getByRole('checkbox', {
+      name: /Objets|Personnes|Identités|Repères|Sécurité/,
+    }),
+  ).toHaveCount(0);
+  await expect(page.getByText('SIMULATION', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Robot' })).toHaveCount(0);
+  await expect(
+    page.getByRole('combobox', { name: 'Mode du robot' }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Cartographie' }),
+  ).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Autonome' })).toBeDisabled();
+  const wheels = page.getByRole('switch', { name: 'Roues' });
+  const cameraServos = page.getByRole('switch', { name: 'Caméra' });
+  await expect(wheels).not.toBeChecked();
+  await expect(cameraServos).not.toBeChecked();
+  await cameraServos.click();
+  await expect(cameraServos).toBeChecked();
+  await expect(
+    page.getByRole('button', { name: 'Caméra gauche' }),
+  ).toBeEnabled();
+  await page.getByRole('button', { name: 'Caméra centrer' }).click();
+  await expect.poll(() => lastCameraTilt).toBe(0.2);
+  await wheels.click();
+  await expect(wheels).toBeChecked();
+  await expect(page.getByRole('button', { name: 'Armer 60 s' })).toHaveCount(0);
+  const power = page.getByRole('slider', { name: 'Puissance moteurs' });
+  await expect(power).toHaveValue('20');
+  await power.fill('35');
+  await expect(power).toHaveValue('35');
+  const joystick = page.getByRole('button', { name: 'Joystick locomotion' });
+  await expect(joystick).toBeEnabled();
+  const joystickBox = await joystick.boundingBox();
+  await page.mouse.move(
+    joystickBox!.x + joystickBox!.width / 2,
+    joystickBox!.y + joystickBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    joystickBox!.x + joystickBox!.width - 10,
+    joystickBox!.y + 10,
+  );
+  await expect.poll(() => lastDriveDirection).toBe('forward');
+  await expect.poll(() => lastDriveIntensity).toBe(0.35);
+  await expect.poll(() => lastDriveSteering).toBeGreaterThan(0.15);
+  expect(lastDriveSteering).toBeLessThan(0.4);
+  await page.mouse.move(
+    joystickBox!.x + joystickBox!.width / 2,
+    joystickBox!.y + 10,
+  );
+  await expect.poll(() => lastDriveDirection).toBe('forward');
+  await expect.poll(() => lastDriveSteering).toBe(0);
+  await page.mouse.up();
+  const trim = page.getByRole('slider', { name: 'Trim direction' });
+  await expect(trim).toHaveValue('0');
+  await trim.fill('-5');
+  await expect(trim).toHaveValue('-5');
+  await expect(page.getByText('G 5', { exact: true })).toBeVisible();
+  lastDriveDirection = null;
+  lastDriveSteering = null;
+  await page.mouse.move(
+    joystickBox!.x + joystickBox!.width / 2,
+    joystickBox!.y + joystickBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    joystickBox!.x + joystickBox!.width / 2,
+    joystickBox!.y + 10,
+  );
+  await expect.poll(() => lastDriveDirection).toBe('forward');
+  await expect.poll(() => lastDriveSteering).toBe(-0.05);
+  await page.mouse.up();
+  lastDriveDirection = null;
+  lastDriveSteering = null;
+  await page.mouse.move(
+    joystickBox!.x + joystickBox!.width / 2,
+    joystickBox!.y + joystickBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    joystickBox!.x + joystickBox!.width - 10,
+    joystickBox!.y + joystickBox!.height / 2,
+  );
+  await expect.poll(() => lastDriveDirection).toBe('right');
+  await expect.poll(() => lastDriveSteering).toBe(0);
+  await page.mouse.up();
   expect(
     await camera.evaluate((image) => getComputedStyle(image).opacity),
   ).toBe('1');
+  if (process.env.FRIDAY_VISUAL_CAPTURE === '1') {
+    await page.screenshot({
+      path: 'output/playwright/robot-compact-360.png',
+      fullPage: true,
+    });
+  }
 });
 
 test('a new offline task stays pending while an older task remains shared', async ({

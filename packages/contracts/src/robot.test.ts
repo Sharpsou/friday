@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   RobotCameraLookRequestSchema,
+  RobotActuatorsRequestSchema,
   RobotDetectionSchema,
   RobotDriveRequestSchema,
   RobotStateSchema,
@@ -20,6 +21,7 @@ describe('Robot contracts', () => {
         ...timing,
         direction: 'forward',
         intensity: 0.25,
+        steering: 0.6,
         maxDurationMs: 350,
       }).direction,
     ).toBe('forward');
@@ -28,6 +30,7 @@ describe('Robot contracts', () => {
         ...timing,
         direction: 'forward',
         intensity: 0.8,
+        steering: 0,
         maxDurationMs: 2_000,
       }).success,
     ).toBe(false);
@@ -48,6 +51,7 @@ describe('Robot contracts', () => {
         armed: false,
         mode: 'disabled',
         cameraAvailable: false,
+        actuators: { wheelsEnabled: false, cameraServosEnabled: false },
         moving: false,
         lastSeenAt: null,
         warning: 'Robot non configuré.',
@@ -69,6 +73,18 @@ describe('Robot contracts', () => {
         vision: null,
       }).mode,
     ).toBe('disabled');
+  });
+
+  it('requires both actuator switches to be explicit booleans', () => {
+    expect(
+      RobotActuatorsRequestSchema.parse({
+        wheelsEnabled: true,
+        cameraServosEnabled: false,
+      }),
+    ).toEqual({ wheelsEnabled: true, cameraServosEnabled: false });
+    expect(
+      RobotActuatorsRequestSchema.safeParse({ wheelsEnabled: true }).success,
+    ).toBe(false);
   });
 
   it('rejects overlays outside the source image', () => {

@@ -69,6 +69,54 @@ export const RobotVisionFrameSchema = z
     detections: z.array(RobotDetectionSchema).max(100),
   })
   .strict();
+export const RobotMemoryEntitySchema = z
+  .object({
+    id: UuidSchema,
+    kind: z.enum(['object', 'light']),
+    classLabel: z.string().trim().min(1).max(80),
+    displayName: z.string().trim().min(1).max(120),
+    roomName: z.string().trim().min(1).max(80),
+    confidence: z.number().min(0).max(1),
+    status: z.enum(['candidate', 'confirmed', 'uncertain']),
+    sightingCount: z.number().int().nonnegative(),
+    firstSeenAt: UtcInstantSchema,
+    lastSeenAt: UtcInstantSchema,
+    lastPosition: z
+      .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
+      .strict(),
+  })
+  .strict();
+export const RobotMemorySummarySchema = z
+  .object({
+    roomName: z.string().trim().min(1).max(80),
+    entities: z.array(RobotMemoryEntitySchema).max(100),
+    anonymousPresence: z
+      .object({ active: z.boolean(), lastSeenAt: UtcInstantSchema.nullable() })
+      .strict(),
+    mapping: z
+      .object({
+        enabled: z.boolean(),
+        status: z.enum(['disabled', 'observer']),
+      })
+      .strict(),
+    learning: z
+      .object({
+        mode: z.enum(['disabled', 'shadow']),
+        policyStatus: z.enum([
+          'insufficient_data',
+          'candidate',
+          'validated',
+          'regressed',
+          'forbidden',
+        ]),
+        episodeCount: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+export const RobotMemoryRenameRequestSchema = z
+  .object({ displayName: z.string().trim().min(1).max(120) })
+  .strict();
 export const RobotTelemetrySchema = z
   .object({
     temperatureC: z.number().min(-20).max(120).nullable(),
@@ -92,6 +140,13 @@ export const RobotStateSchema = z
     armed: z.boolean(),
     mode: z.enum(['disabled', 'simulated', 'alphabot2']),
     cameraAvailable: z.boolean(),
+    actuators: z
+      .object({
+        wheelsEnabled: z.boolean(),
+        cameraServosEnabled: z.boolean(),
+      })
+      .strict()
+      .default({ wheelsEnabled: false, cameraServosEnabled: false }),
     moving: z.boolean(),
     lastSeenAt: UtcInstantSchema.nullable(),
     warning: z.string().trim().min(1).max(300).nullable(),
@@ -121,6 +176,7 @@ export const RobotArmRequestSchema = z
 export const RobotDriveRequestSchema = ExpiringRobotCommandSchema.extend({
   direction: RobotDirectionSchema,
   intensity: z.number().min(0.1).max(0.35),
+  steering: z.number().min(-1).max(1),
   maxDurationMs: z.number().int().min(100).max(500),
 }).strict();
 export const RobotCameraLookRequestSchema = ExpiringRobotCommandSchema.extend({
@@ -129,6 +185,12 @@ export const RobotCameraLookRequestSchema = ExpiringRobotCommandSchema.extend({
 }).strict();
 export const RobotOperatingModeRequestSchema = z
   .object({ mode: RobotOperatingModeSchema })
+  .strict();
+export const RobotActuatorsRequestSchema = z
+  .object({
+    wheelsEnabled: z.boolean(),
+    cameraServosEnabled: z.boolean(),
+  })
   .strict();
 export const RobotCommandResponseSchema = z
   .object({ accepted: z.literal(true), state: RobotStateSchema })
@@ -1006,7 +1068,12 @@ export const GroceryPhotoTranscriptionResponseSchema = z
   })
   .strict();
 
-export const AssistantModeSchema = z.enum(['local', 'web_light', 'web_deep']);
+export const AssistantModeSchema = z.enum([
+  'local',
+  'web_light',
+  'web_deep',
+  'friday',
+]);
 export const AssistantModelSchema = z.enum(['gemma4', 'qwen3.5']);
 export const AssistantThinkingPolicySchema = z.enum(['auto', 'forced']);
 export const AssistantResearchOutcomeSchema = z.enum([
@@ -1806,6 +1873,8 @@ export type RobotOperatingMode = z.infer<typeof RobotOperatingModeSchema>;
 export type RobotDetectionKind = z.infer<typeof RobotDetectionKindSchema>;
 export type RobotDetection = z.infer<typeof RobotDetectionSchema>;
 export type RobotVisionFrame = z.infer<typeof RobotVisionFrameSchema>;
+export type RobotMemoryEntity = z.infer<typeof RobotMemoryEntitySchema>;
+export type RobotMemorySummary = z.infer<typeof RobotMemorySummarySchema>;
 export type RobotTelemetry = z.infer<typeof RobotTelemetrySchema>;
 export type RobotState = z.infer<typeof RobotStateSchema>;
 export type RobotArmRequest = z.infer<typeof RobotArmRequestSchema>;
@@ -1816,4 +1885,5 @@ export type RobotCameraLookRequest = z.infer<
 export type RobotOperatingModeRequest = z.infer<
   typeof RobotOperatingModeRequestSchema
 >;
+export type RobotActuatorsRequest = z.infer<typeof RobotActuatorsRequestSchema>;
 export type RobotCommandResponse = z.infer<typeof RobotCommandResponseSchema>;

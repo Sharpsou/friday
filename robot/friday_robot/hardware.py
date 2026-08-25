@@ -15,9 +15,10 @@ from .models import CameraPose, Telemetry
 class Hardware(Protocol):
     capabilities: list[str]
 
-    def drive(self, direction: str, intensity: float) -> None: ...
+    def drive(self, direction: str, intensity: float, steering: float) -> None: ...
     def stop(self) -> None: ...
     def look(self, pose: CameraPose) -> None: ...
+    def set_camera_servos_enabled(self, enabled: bool) -> None: ...
     def telemetry(self) -> Telemetry: ...
     def open_camera(self) -> tuple[BinaryIO, str]: ...
     def close(self) -> None: ...
@@ -192,12 +193,15 @@ class Pca9685PanTilt:
                 self._full_off(channel)
 
     def close(self) -> None:
+        self.release()
+        close = getattr(self._bus, "close", None)
+        if callable(close):
+            close()
+
+    def release(self) -> None:
         with self._lock:
             self._full_off(0)
             self._full_off(1)
-            close = getattr(self._bus, "close", None)
-            if callable(close):
-                close()
 
     def _set_frequency(self, frequency: int) -> None:
         prescale = round(25_000_000 / 4096 / frequency - 1)
@@ -260,8 +264,8 @@ class SimulatedHardware:
             else None
         )
 
-    def drive(self, direction: str, intensity: float) -> None:
-        del direction, intensity
+    def drive(self, direction: str, intensity: float, steering: float) -> None:
+        del direction, intensity, steering
         if self.closed:
             raise RuntimeError("Matériel fermé.")
         self.moving = True
@@ -273,6 +277,10 @@ class SimulatedHardware:
         if self._pan_tilt:
             self._pan_tilt.look(pose)
         self.pose = pose
+
+    def set_camera_servos_enabled(self, enabled: bool) -> None:
+        if not enabled and self._pan_tilt:
+            self._pan_tilt.release()
 
     def telemetry(self) -> Telemetry:
         if self._sensor_probe:
@@ -310,6 +318,20 @@ class MotorPins:
     enb: int = 26
 
 
+def differential_wheel_commands(
+    direction: str, intensity: float, steering: float
+) -> tuple[float, float]:
+    """Mélange arcade : valeurs signées des roues gauche et droite."""
+    linear = 1.0 if direction == "forward" else -1.0 if direction == "backward" else 0.0
+    angular = (
+        1.0 if direction == "right" else -1.0 if direction == "left" else steering
+    )
+    left = linear + angular
+    right = linear - angular
+    normalization = max(1.0, abs(left), abs(right))
+    return left / normalization * intensity, right / normalization * intensity
+
+
 class AlphaBot2Hardware:
     """Adaptateur GPIO chargé uniquement sur le Pi, après confirmation physique."""
 
@@ -343,30 +365,33 @@ class AlphaBot2Hardware:
         self._pwm_left.start(0)
         self._pwm_right.start(0)
         self._pose = CameraPose()
+        self._pan_tilt = Pca9685PanTilt()
 
     def _motor(self, first: int, second: int, forward: bool) -> None:
         # Le pilote Waveshare définit l'avant par IN1=LOW, IN2=HIGH.
         self._gpio.output(first, self._gpio.LOW if forward else self._gpio.HIGH)
         self._gpio.output(second, self._gpio.HIGH if forward else self._gpio.LOW)
 
-    def drive(self, direction: str, intensity: float) -> None:
+    def drive(self, direction: str, intensity: float, steering: float) -> None:
         with self._lock:
             if direction == "forward" and not (
                 bool(self._gpio.input(16)) and bool(self._gpio.input(19))
             ):
                 self.stop()
                 raise RuntimeError("Obstacle détecté par les capteurs IR avant.")
-            left_forward = direction in {"forward", "right"}
-            right_forward = direction in {"forward", "left"}
-            if direction == "backward":
-                left_forward = right_forward = False
+            left_command, right_command = differential_wheel_commands(
+                direction, intensity, steering
+            )
+            left_forward = left_command >= 0
+            right_forward = right_command >= 0
             left_forward ^= self._left_inverted
             right_forward ^= self._right_inverted
             self._motor(self._pins.ain1, self._pins.ain2, left_forward)
             self._motor(self._pins.bin1, self._pins.bin2, right_forward)
-            duty = max(0.0, min(35.0, intensity * 100.0))
-            self._pwm_left.ChangeDutyCycle(duty)
-            self._pwm_right.ChangeDutyCycle(duty)
+            left_duty = max(0.0, min(35.0, abs(left_command) * 100.0))
+            right_duty = max(0.0, min(35.0, abs(right_command) * 100.0))
+            self._pwm_left.ChangeDutyCycle(left_duty)
+            self._pwm_right.ChangeDutyCycle(right_duty)
 
     def stop(self) -> None:
         with self._lock:
@@ -376,18 +401,12 @@ class AlphaBot2Hardware:
                 self._gpio.output(pin, self._gpio.LOW)
 
     def look(self, pose: CameraPose) -> None:
-        # Le PCA9685 n'est commandé qu'après installation du pilote optionnel.
-        # Refuser vaut mieux qu'un déplacement hors butée.
-        try:
-            from adafruit_servokit import ServoKit  # type: ignore[import-not-found]
-        except ImportError as error:
-            raise RuntimeError("Pilote ServoKit absent ; caméra immobile.") from error
-        kit = ServoKit(channels=16, address=0x40)
-        kit.servo[0].set_pulse_width_range(700, 2000)
-        kit.servo[1].set_pulse_width_range(900, 2100)
-        kit.servo[0].angle = 90 + pose.pan * 60
-        kit.servo[1].angle = 90 + pose.tilt * 45
+        self._pan_tilt.look(pose)
         self._pose = pose
+
+    def set_camera_servos_enabled(self, enabled: bool) -> None:
+        if not enabled:
+            self._pan_tilt.release()
 
     def telemetry(self) -> Telemetry:
         with self._lock:
@@ -413,6 +432,7 @@ class AlphaBot2Hardware:
             self.stop()
             self._pwm_left.stop()
             self._pwm_right.stop()
+            self._pan_tilt.close()
         finally:
             self._gpio.cleanup()
 
