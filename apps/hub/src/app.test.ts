@@ -204,6 +204,29 @@ describe('Friday hub', () => {
       actuators: { wheelsEnabled: false, cameraServosEnabled: false },
     });
 
+    const map = await app.inject({
+      method: 'GET',
+      url: '/api/robot/map',
+      headers: { cookie },
+    });
+    expect(map.statusCode, map.body).toBe(200);
+    expect(map.json()).toMatchObject({
+      operatingMode: 'manual',
+      mapping: { status: 'inactive', storageBytes: 0 },
+      autonomy: { available: false },
+    });
+
+    const autonomous = await app.inject({
+      method: 'POST',
+      url: '/api/robot/mode',
+      headers: { cookie },
+      payload: { mode: 'autonomous' },
+    });
+    expect(autonomous.statusCode, autonomous.body).toBe(409);
+    expect(autonomous.json()).toMatchObject({
+      error: 'robot_autonomy_not_validated',
+    });
+
     const cameraStream = await app.inject({
       method: 'GET',
       url: '/api/robot/camera/stream',

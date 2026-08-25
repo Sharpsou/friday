@@ -3025,20 +3025,14 @@ textarea:focus-visible {
   background: rgb(var(--accent-rgb) / 7%);
 }
 
-.robot-future-modes {
+.robot-mode-controls {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
-.robot-future-modes > span {
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.robot-future-modes button {
+.robot-mode-controls button {
   min-height: 30px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -3049,9 +3043,164 @@ textarea:focus-visible {
   font-weight: 800;
 }
 
-.robot-future-modes button:disabled {
+.robot-mode-controls button.is-active {
+  border-color: rgb(var(--accent-rgb) / 70%);
+  color: var(--mint);
+  background: rgb(var(--accent-rgb) / 20%);
+}
+
+.robot-mode-controls button.is-recording {
+  border-color: rgb(255 190 80 / 75%);
+  color: #ffd28c;
+}
+
+.robot-mode-controls button:disabled {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+.robot-map-status {
+  color: var(--muted);
+}
+
+.robot-map-modal {
+  min-height: calc(100dvh - 110px);
+  display: grid;
+  grid-template-rows: auto minmax(360px, 1fr) auto auto;
+  gap: 8px;
+}
+
+.robot-map-modal > header,
+.robot-map-modal > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.robot-map-modal > header div {
+  display: grid;
+  gap: 2px;
+}
+
+.robot-map-modal > header small,
+.robot-map-modal > footer span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.robot-map-modal button {
+  min-height: 38px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--text);
+  background: rgb(var(--surface-rgb) / 86%);
+  font-weight: 800;
+}
+
+.robot-map-canvas {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: #020908;
+}
+
+.robot-map-canvas svg {
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  display: block;
+  touch-action: none;
+  user-select: none;
+}
+
+.robot-map-grid-line {
+  fill: none;
+  stroke: rgb(var(--accent-rgb) / 9%);
+  stroke-width: 1;
+}
+
+.robot-map-path {
+  fill: none;
+  stroke: rgb(var(--accent-rgb) / 72%);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 7;
+}
+
+.robot-map-path.is-draft {
+  stroke-dasharray: 12 10;
+}
+
+.robot-map-path.is-certified {
+  stroke: var(--mint);
+}
+
+.robot-map-path + circle,
+.robot-map-path ~ circle[tabindex] {
+  cursor: pointer;
+  fill: rgb(var(--accent-rgb) / 70%);
+  stroke: #07110f;
+  stroke-width: 3;
+}
+
+.robot-map-path ~ circle.is-selected {
+  fill: #ffd28c;
+  stroke: #fff;
+}
+
+.robot-map-uncertainty {
+  fill: rgb(255 210 140 / 12%);
+  stroke: rgb(255 210 140 / 55%);
+  stroke-dasharray: 8 7;
+  stroke-width: 2;
+}
+
+.robot-map-robot {
+  fill: var(--mint);
+  stroke: #06110e;
+  stroke-width: 3;
+}
+
+.robot-map-object {
+  fill: #ffd28c;
+  stroke: #201509;
+  stroke-width: 2;
+}
+
+.robot-map-label {
+  paint-order: stroke;
+  fill: #f4f8f6;
+  stroke: #020908;
+  stroke-linejoin: round;
+  stroke-width: 5px;
+  font-size: 16px;
+  font-weight: 750;
+  pointer-events: none;
+}
+
+.robot-map-tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.robot-map-tools button {
+  min-height: 32px;
+  padding: 4px 9px;
+  font-size: 0.7rem;
+  backdrop-filter: blur(8px);
+}
+
+.robot-map-blocked {
+  margin: 0;
+  color: #ffd28c;
+  font-size: 0.78rem;
 }
 
 .robot-error {

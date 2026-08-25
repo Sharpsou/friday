@@ -23,9 +23,12 @@ export const RobotCapabilitySchema = z.enum([
   'vision_markers',
   'signal_buzzer',
   'signal_lights',
+  'map_observer',
+  'autonomous_route_replay',
 ]);
 export const RobotOperatingModeSchema = z.enum([
   'manual',
+  'autonomous',
   'calibration',
   'line',
   'visual_tracking',
@@ -116,6 +119,98 @@ export const RobotMemorySummarySchema = z
   .strict();
 export const RobotMemoryRenameRequestSchema = z
   .object({ displayName: z.string().trim().min(1).max(120) })
+  .strict();
+export const RobotMappingStatusSchema = z.enum([
+  'inactive',
+  'recording',
+  'paused',
+  'processing',
+]);
+export const RobotEstimatedPoseSchema = z
+  .object({
+    x: z.number().min(-10_000).max(10_000),
+    y: z.number().min(-10_000).max(10_000),
+    heading: z.number().min(-Math.PI).max(Math.PI),
+    uncertainty: z.number().min(0).max(100),
+    updatedAt: UtcInstantSchema,
+  })
+  .strict();
+export const RobotMapPointSchema = z
+  .object({
+    id: UuidSchema,
+    x: z.number().min(-10_000).max(10_000),
+    y: z.number().min(-10_000).max(10_000),
+    heading: z.number().min(-Math.PI).max(Math.PI),
+    uncertainty: z.number().min(0).max(100),
+    recordedAt: UtcInstantSchema,
+  })
+  .strict();
+export const RobotMapObjectSchema = z
+  .object({
+    id: UuidSchema,
+    displayName: z.string().trim().min(1).max(120),
+    classLabel: z.string().trim().min(1).max(80),
+    x: z.number().min(-10_000).max(10_000),
+    y: z.number().min(-10_000).max(10_000),
+    uncertainty: z.number().min(0).max(100),
+    confidence: z.number().min(0).max(1),
+    lastSeenAt: UtcInstantSchema,
+  })
+  .strict();
+export const RobotMapPathSchema = z
+  .object({
+    id: UuidSchema,
+    name: z.string().trim().min(1).max(80),
+    status: z.enum(['draft', 'explored', 'certified']),
+    points: z.array(RobotMapPointSchema).max(2_000),
+    createdAt: UtcInstantSchema,
+    updatedAt: UtcInstantSchema,
+  })
+  .strict();
+export const RobotMapSnapshotSchema = z
+  .object({
+    version: z.number().int().nonnegative(),
+    operatingMode: z.enum(['manual', 'autonomous']),
+    mapping: z
+      .object({
+        status: RobotMappingStatusSchema,
+        sessionId: UuidSchema.nullable(),
+        startedAt: UtcInstantSchema.nullable(),
+        pointCount: z.number().int().nonnegative(),
+        storageBytes: z.number().int().nonnegative(),
+        quotaBytes: z.number().int().positive(),
+      })
+      .strict(),
+    localization: z
+      .object({
+        status: z.enum(['unknown', 'estimated', 'uncertain', 'lost']),
+        pose: RobotEstimatedPoseSchema,
+      })
+      .strict(),
+    paths: z.array(RobotMapPathSchema).max(20),
+    objects: z.array(RobotMapObjectSchema).max(100),
+    autonomy: z
+      .object({
+        available: z.boolean(),
+        blockedReason: z.string().trim().min(1).max(240).nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+export const RobotMappingActionResponseSchema = z
+  .object({ accepted: z.literal(true), map: RobotMapSnapshotSchema })
+  .strict();
+export const RobotMissionPreviewRequestSchema = z
+  .object({ targetPointId: UuidSchema })
+  .strict();
+export const RobotMissionPreviewSchema = z
+  .object({
+    previewId: UuidSchema,
+    targetPointId: UuidSchema,
+    expiresAt: UtcInstantSchema,
+    allowed: z.boolean(),
+    blockedReason: z.string().trim().min(1).max(240).nullable(),
+  })
   .strict();
 export const RobotTelemetrySchema = z
   .object({
@@ -1875,6 +1970,13 @@ export type RobotDetection = z.infer<typeof RobotDetectionSchema>;
 export type RobotVisionFrame = z.infer<typeof RobotVisionFrameSchema>;
 export type RobotMemoryEntity = z.infer<typeof RobotMemoryEntitySchema>;
 export type RobotMemorySummary = z.infer<typeof RobotMemorySummarySchema>;
+export type RobotMappingStatus = z.infer<typeof RobotMappingStatusSchema>;
+export type RobotEstimatedPose = z.infer<typeof RobotEstimatedPoseSchema>;
+export type RobotMapPoint = z.infer<typeof RobotMapPointSchema>;
+export type RobotMapObject = z.infer<typeof RobotMapObjectSchema>;
+export type RobotMapPath = z.infer<typeof RobotMapPathSchema>;
+export type RobotMapSnapshot = z.infer<typeof RobotMapSnapshotSchema>;
+export type RobotMissionPreview = z.infer<typeof RobotMissionPreviewSchema>;
 export type RobotTelemetry = z.infer<typeof RobotTelemetrySchema>;
 export type RobotState = z.infer<typeof RobotStateSchema>;
 export type RobotArmRequest = z.infer<typeof RobotArmRequestSchema>;

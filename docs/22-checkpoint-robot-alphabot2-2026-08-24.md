@@ -16,9 +16,10 @@ Le prototype zéro est utilisable en téléopération réelle, mais il n’est p
 robot autonome. Le Raspberry Pi, la caméra CSI, les capteurs passifs, les roues
 et les deux servos sont intégrés à Friday. Une détection générique
 objets/personnes par YOLO26s tourne sur le PC et produit des surimpressions sans
-commander les actionneurs. Le LiDAR, la pince, l’identité consentie, le suivi,
-la cartographie, l’évitement fiable et la cognition corporelle ne sont pas
-implémentés.
+commander les actionneurs. Une cartographie 2D approximative, strictement
+observatrice, peut maintenant
+accompagner la téléopération. Le LiDAR, la pince, l’identité consentie, le SLAM
+métrique, l’évitement fiable et la navigation autonome ne sont pas implémentés.
 
 Le matériel présente encore deux limites physiques : le servo panoramique
 tremble par intermittence et des sous-tensions ont été enregistrées. Le code
@@ -37,6 +38,7 @@ prouve ni la réparation de l’alimentation ni la fiabilité des actionneurs.
 | flux CSI         | Python et `rpicam-vid`   | Pi, service `friday-camera.service`                | MJPEG 640×480, 15 images/s                                        |
 | vision active    | TypeScript, ONNX Runtime | Worker Node séparé sur le PC du hub                | YOLO26s, objets/personnes, aucune voie vers les actionneurs       |
 | modèle actif     | ONNX, COCO-2017          | `D:\FridayData\robot\models\yolo26s.onnx`          | poids hors Git, manifeste, licence et SHA-256 vérifiés            |
+| Carto 2D         | TypeScript, SQLite, SVG  | hub et PWA Friday                                  | odométrie estimée, objets confirmés, carte tactile sans images    |
 
 La PWA ne parle jamais directement au Pi. Les commandes physiques ne passent
 ni par l’outbox offline, ni par le service worker, ni par le Chat, et ne sont
@@ -76,10 +78,10 @@ redémarrage arrêtent et désarment.
 
 L’interface actuelle comporte :
 
-- aucun sélecteur de mode technique : la téléopération manuelle est implicite
-  et le switch `Roues` force le retour au mode `manual` avant l’armement ;
-- deux indicateurs désactivés `Cartographie` et `Autonome`, explicitement
-  marqués `À venir` et sans commande associée ;
+- deux boutons explicites `Manuel` et `Autonome` ; `Autonome` reste désactivé
+  et refusé côté hub tant que la porte physique n’est pas validée ;
+- en mode manuel, `Carto` démarre, met en pause, reprend ou termine une session
+  d’exploration ; `Carte` ouvre la vue du dessus tactile ;
 - un joystick tactile elliptique de 164×112 px sous la vidéo ;
 - les diagonales par mélange différentiel `gauche = linéaire + direction` et
   `droite = linéaire - direction`, puis normalisation ;
@@ -94,7 +96,32 @@ L’interface actuelle comporte :
 - cinq petits boutons caméra ; le centre vise `pan=0`, `tilt=+0,20` et les pas
   haut/bas valent `0,05` ;
 - le pan par grands pas normalisés de `0,5`, avec une rampe de 10 µs toutes les
-  20 ms, sans balayage automatique.
+  20 ms, sans balayage automatique ;
+- aucun mouvement de caméra pendant la locomotion ; une commande caméra met
+  Carto en pause et sa reprise exige le preset sûr `pan=0`, `tilt=+0,20`.
+
+## 4.1 Cartographie observatrice livrée
+
+La migration SQLite 21 ajoute des sessions, des points de trajectoire, une pose
+courante et des aperçus de mission. La position est une estimation : le hub
+intègre direction, puissance, trim et temps écoulé entre les impulsions moteur
+acceptées. Sans encodeurs ni IMU, elle dérive et son incertitude augmente avec
+la distance, les rotations et les sous-tensions.
+
+Seuls les objets déjà confirmés par la mémoire visuelle sont ancrés sur la
+carte. Les personnes restent anonymes et ne sont pas cartographiées comme des
+objets stables. La vue SVG affiche les trajets, la pose et son cercle
+d’incertitude, ainsi qu’un nombre borné d’étiquettes placées sans superposition
+grossière. Elle accepte glissement et pincement tactiles. Un point de trajet
+peut être sélectionné avec `Va là`, mais cette action ne produit qu’un aperçu
+refusé : elle n’a aucune voie vers les moteurs.
+
+Carto n’enregistre ni vidéo, ni JPEG, ni miniature. Un point ne contient que
+géométrie, commande bornée, identifiant de frame et horodatage, estimés à 96
+octets. Une session est bornée à 2 000 points, le foyer à 10 000 points et le
+budget déclaré à 250 Mio ; les brouillons anciens peuvent être purgés. Une
+session interrompue par le redémarrage du hub revient en pause, jamais en
+enregistrement silencieux.
 
 ## 5. Vidéo et capacités cognitives
 
@@ -181,14 +208,14 @@ conservé ou remis à zéro.
 
 ## 7. Preuves et limites de validation
 
-Le contrôle complet relancé le 25 août après la vision isolée et la
-simplification de l'interface réussit : 21 tests Python, 238 tests TypeScript
-unitaires/intégration (22 contrats, 15 domaine, 114 hub et 87 PWA), builds
+Le contrôle complet relancé le 25 août après l’ajout de Carto réussit : 21 tests
+Python, 252 tests TypeScript unitaires/intégration (22 contrats, 15 domaine, 126
+hub et 89 PWA), builds
 PWA/hub et 25 scénarios Chrome mobile. La commande
 d’autorité reste `pnpm verify`. Les tests couvrent les contrats, la passerelle,
 le runtime Python, le joystick, le trim, les délais, les switchs, la capture
 unique, le moteur YOLO, le Worker et un scénario Chrome mobile à 360 px sans
-sélecteur de mode.
+commande autonome.
 
 Sont réellement observés : flux CSI, téléopération, rotations et diagonales,
 activation des actionneurs, servo tilt, tremblement intermittent du pan, faible
@@ -212,6 +239,8 @@ sur Pi et remplacement du servo.
 - Pi : `robot/friday_robot/`, `robot/deploy/` et `robot/README.md` ;
 - exploitation : `docs/runbooks/robot-alphabot2.md` ;
 - chronologie : `docs/21-journal-implementation-alphabot2-2026-08-24.md` ;
+- cartographie : `apps/hub/src/robot/robot-mapping.ts`,
+  `apps/web/src/RobotMapView.tsx` et `apps/web/src/robot-map-layout.ts` ;
 - suite : `docs/20-plan-implementation-robot-friday-alphabot2.md`.
 
 ## 9. Reprise exacte dans un nouveau chat
@@ -225,7 +254,8 @@ sur Pi et remplacement du servo.
    avec arrêt accessible et puissance minimale.
 5. Pour poursuivre le produit sans mouvement, constituer un corpus consenti et
    mesurer précision/rappel, p95 prolongée et suivi anonyme. Ne pas activer
-   `Cartographie` ou `Autonome` : ces boutons sont seulement des jalons UI.
+   `Autonome` ; Carto reste un observateur de la téléopération et sa précision
+   doit être mesurée avant toute certification de trajet.
 6. Après toute évolution runtime, exécuter `pnpm verify`, reconstruire et
    redémarrer avec
    `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning`.
@@ -239,5 +269,6 @@ Préserve le worktree existant. Vérifie d’abord Git, l’état du Pi et les s
 sans mouvement. Ne confonds pas code livré, observation physique et capacité
 future. Le prototype réel est téléopéré, sans LiDAR ni pince. YOLO26s assure
 une détection générique sur le PC sans droit d'action ; suivi, identité,
-cartographie, évitement et autonomie ne sont pas implémentés.
+SLAM métrique, évitement et autonomie ne sont pas implémentés. Carto 2D ne
+fournit qu’une pose approximative pendant la téléopération.
 ```

@@ -41,7 +41,7 @@ describe('hub database migrations', () => {
     database.close();
 
     expect(retiredTables).toEqual([]);
-    expect(latest.version).toBe(20);
+    expect(latest.version).toBe(21);
   });
 
   it('adds optional time and duration columns to a version 1 database', () => {
@@ -127,6 +127,7 @@ describe('hub database migrations', () => {
       { version: 18 },
       { version: 19 },
       { version: 20 },
+      { version: 21 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -156,7 +157,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 20 });
+    expect(migrations.at(-1)).toEqual({ version: 21 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -192,7 +193,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 20 });
+    expect(migrations.at(-1)).toEqual({ version: 21 });
   });
 
   it('adds the five budget stores and the idempotent seed marker', () => {

@@ -1,11 +1,12 @@
 # Friday — point de reprise pour un nouveau chat
 
-> Mise à jour du 25 août 2026 : la vision Robot utilise désormais YOLO26s ONNX
-> sur le PC dans un Worker Node isolé. Le flux CSI est mutualisé entre la PWA et
-> la reconnaissance, une image sur deux est analysée et la dernière
-> surimpression persiste jusqu'au résultat suivant. Le sélecteur de mode est
-> retiré ; `Cartographie` et `Autonome` sont des indicateurs `À venir`
-> désactivés. Voir le checkpoint Robot.
+> Mise à jour du 25 août 2026 : le mode manuel expose désormais `Carto`. Il
+> construit une carte 2D légère à partir des commandes acceptées, du temps entre
+> impulsions et des objets confirmés, sans conserver les images. La carte
+> tactile affiche trajectoires, pose/incertitude et noms d’objets. Les boutons
+> `Manuel` et `Autonome` sont explicites, mais `Autonome` et l’exécution de
+> `Va là` restent verrouillés jusqu’aux recettes physiques. Voir le checkpoint
+> Robot.
 
 > Mise à jour du 24 août 2026 : le prototype AlphaBot2 réel est téléopérable
 > depuis l’onglet Robot. Son état canonique, ses limites physiques et sa reprise
@@ -398,14 +399,15 @@ affiche le capteur 640×480 et propose joystick différentiel, puissance et trim
 La production n’expose plus de simulation. YOLO26s ONNX tourne sur le PC dans
 un Worker Node, analyse par défaut une image sur deux et alimente l'unique case
 `Reco`; la capture CSI est unique et les poids restent hors Git dans
-`D:\FridayData\robot\models`. Le sélecteur de mode technique est supprimé : le
-manuel est implicite et `Cartographie`/`Autonome` restent des boutons `À venir`
-désactivés. Le servo pan tremble par
+`D:\FridayData\robot\models`. Les boutons `Manuel` et `Autonome` sont explicites.
+En manuel, `Carto` produit une trajectoire 2D approximative et une carte tactile
+sans stocker d’image ; `Autonome` reste désactivé. Le servo pan tremble par
 intermittence et des sous-tensions ont été enregistrées. Le dernier état lu sans
 mouvement indiquait `moving=false`, les deux switchs sur ON, armement actif,
 température proche de 50 °C et `0x50000`, donc événement de sous-tension
 historique sans défaut actif à cet instant. Cette lecture est transitoire et doit
-être refaite avant tout essai. La détection générique est implémentée ; suivi,
-identité, cartographie, évitement et autonomie ne le sont pas. Utiliser le [runbook](runbooks/robot-alphabot2.md) pour les
+être refaite avant tout essai. La détection générique et Carto 2D observatrice
+sont implémentées ; suivi, identité, SLAM métrique, évitement et autonomie ne le
+sont pas. Utiliser le [runbook](runbooks/robot-alphabot2.md) pour les
 opérations et le [journal](21-journal-implementation-alphabot2-2026-08-24.md)
 uniquement pour la chronologie.

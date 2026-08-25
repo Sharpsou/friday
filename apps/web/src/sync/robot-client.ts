@@ -1,6 +1,9 @@
 import {
   RobotCommandResponseSchema,
   RobotMemorySummarySchema,
+  RobotMapSnapshotSchema,
+  RobotMappingActionResponseSchema,
+  RobotMissionPreviewSchema,
   RobotStateSchema,
   type RobotCameraLookRequest,
   type RobotActuatorsRequest,
@@ -9,6 +12,8 @@ import {
   type RobotOperatingMode,
   type RobotState,
   type RobotMemorySummary,
+  type RobotMapSnapshot,
+  type RobotMissionPreview,
 } from '@friday/contracts';
 
 export const ROBOT_CAMERA_STREAM_URL = '/api/robot/camera/stream';
@@ -90,6 +95,57 @@ export async function getRobotMemory(): Promise<RobotMemorySummary> {
   if (!response.ok)
     throw new RobotClientError('Mémoire Robot indisponible.', response.status);
   return RobotMemorySummarySchema.parse(payload);
+}
+
+export async function getRobotMap(): Promise<RobotMapSnapshot> {
+  const response = await fetch('/api/robot/map', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok)
+    throw new RobotClientError('Carte Robot indisponible.', response.status);
+  return RobotMapSnapshotSchema.parse(payload);
+}
+
+export async function setRobotMapping(
+  action: 'pause' | 'resume' | 'start' | 'stop',
+): Promise<RobotMapSnapshot> {
+  const response = await fetch(`/api/robot/mapping/${action}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      typeof payload === 'object' &&
+      payload !== null &&
+      'message' in payload &&
+      typeof payload.message === 'string'
+        ? payload.message
+        : 'Impossible de modifier Carto.';
+    throw new RobotClientError(message, response.status);
+  }
+  return RobotMappingActionResponseSchema.parse(payload).map;
+}
+
+export async function previewRobotMission(
+  targetPointId: string,
+): Promise<RobotMissionPreview> {
+  const response = await fetch('/api/robot/missions/preview', {
+    method: 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ targetPointId }),
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok)
+    throw new RobotClientError('Destination indisponible.', response.status);
+  return RobotMissionPreviewSchema.parse(payload);
 }
 
 export async function renameRobotMemoryEntity(

@@ -10,10 +10,12 @@ import {
 
 import type {
   RobotDirection,
+  RobotMapSnapshot,
   RobotMemorySummary,
   RobotState,
 } from '@friday/contracts';
 
+import RobotMapView from './RobotMapView.js';
 import {
   ROBOT_CAMERA_STREAM_URL,
   RobotClientError,
@@ -21,15 +23,21 @@ import {
   driveRobot,
   getRobotState,
   getRobotMemory,
+  getRobotMap,
   haltRobot,
   lookRobotCamera,
   renameRobotMemoryEntity,
   setRobotMode,
+  setRobotMapping,
   setRobotActuators,
   stopRobot,
   stopRobotOnPageExit,
 } from './sync/robot-client.js';
-import { cameraCenterDelta, nextCameraPose } from './robot-camera-controls.js';
+import {
+  CAMERA_NEUTRAL_TILT,
+  cameraCenterDelta,
+  nextCameraPose,
+} from './robot-camera-controls.js';
 import {
   applySteeringTrim,
   joystickDriveCommand,
@@ -68,6 +76,8 @@ function stateLabel(state: RobotState | null): string {
 export default function RobotView({ isOwner }: { isOwner: boolean }) {
   const [state, setState] = useState<RobotState | null>(null);
   const [memory, setMemory] = useState<RobotMemorySummary | null>(null);
+  const [map, setMap] = useState<RobotMapSnapshot | null>(null);
+  const [mapVisible, setMapVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pageVisible, setPageVisible] = useState(
@@ -105,6 +115,20 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
       setError(null);
     }
   }, []);
+
+  useEffect(() => {
+    const refreshMap = () => {
+      if (document.visibilityState === 'visible')
+        void getRobotMap()
+          .then((next) => {
+            if (mountedRef.current) setMap(next);
+          })
+          .catch(() => undefined);
+    };
+    refreshMap();
+    const timer = window.setInterval(refreshMap, mapVisible ? 1_000 : 3_000);
+    return () => window.clearInterval(timer);
+  }, [mapVisible]);
 
   const showError = useCallback((cause: unknown) => {
     if (!mountedRef.current) return;
@@ -268,8 +292,44 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     if (!state) return;
     setBusy(true);
     try {
+      if (map?.mapping.status === 'recording')
+        setMap(await setRobotMapping('pause'));
       const target = nextCameraPose(state.cameraPose, panDelta, tiltDelta);
       updateState(await lookRobotCamera(target.pan, target.tilt));
+    } catch (cause) {
+      showError(cause);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changeMode = async (mode: 'manual' | 'autonomous') => {
+    setBusy(true);
+    try {
+      updateState(await setRobotMode(mode));
+      setMap(await getRobotMap());
+    } catch (cause) {
+      showError(cause);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changeMapping = async (
+    action: 'pause' | 'resume' | 'start' | 'stop',
+  ) => {
+    if (!state) return;
+    setBusy(true);
+    try {
+      if (
+        (action === 'start' || action === 'resume') &&
+        (Math.abs(state.cameraPose.pan) > 0.02 ||
+          Math.abs(state.cameraPose.tilt - CAMERA_NEUTRAL_TILT) > 0.02)
+      ) {
+        updateState(await lookRobotCamera(0, CAMERA_NEUTRAL_TILT));
+      }
+      setMap(await setRobotMapping(action));
+      setError(null);
     } catch (cause) {
       showError(cause);
     } finally {
@@ -317,12 +377,26 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     state?.available === true &&
     state.connected &&
     state.actuators.wheelsEnabled &&
-    state.operatingMode === 'manual';
+    state.operatingMode === 'manual' &&
+    (map?.mapping.status !== 'recording' ||
+      (Math.abs(state.cameraPose.pan) <= 0.02 &&
+        Math.abs(state.cameraPose.tilt - CAMERA_NEUTRAL_TILT) <= 0.02));
   const canLook =
     isOwner &&
     state?.capabilities.includes('camera_look') === true &&
     state.actuators.cameraServosEnabled &&
+    !state.moving &&
     !busy;
+
+  if (mapVisible && map)
+    return (
+      <RobotMapView
+        snapshot={map}
+        isOwner={isOwner}
+        onClose={() => setMapVisible(false)}
+        onError={showError}
+      />
+    );
 
   return (
     <section className="screen robot-view" aria-label="Robot">
@@ -368,17 +442,73 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
         </p>
       ) : null}
 
-      <div className="robot-future-modes" aria-label="Modes futurs">
-        <span>
-          Mémoire · {memory?.entities.length.toString() ?? '0'} objet(s)
-        </span>
-        <button disabled type="button">
-          Cartographie · observateur requis
+      <div className="robot-mode-controls" aria-label="Mode du robot">
+        <button
+          className={state?.operatingMode === 'manual' ? 'is-active' : ''}
+          disabled={!isOwner || busy}
+          type="button"
+          onClick={() => void changeMode('manual')}
+        >
+          Manuel
         </button>
-        <button disabled type="button">
-          Autonome · verrouillé
+        <button
+          className={state?.operatingMode === 'autonomous' ? 'is-active' : ''}
+          disabled={!isOwner || busy || !map?.autonomy.available}
+          title={map?.autonomy.blockedReason ?? undefined}
+          type="button"
+          onClick={() => void changeMode('autonomous')}
+        >
+          Autonome
         </button>
+        <button
+          type="button"
+          onClick={() => setMapVisible(true)}
+          disabled={!map}
+        >
+          Carte
+        </button>
+        {state?.operatingMode === 'manual' ? (
+          <button
+            className={
+              map?.mapping.status === 'recording' ? 'is-recording' : ''
+            }
+            disabled={!isOwner || busy || !state.cameraAvailable}
+            type="button"
+            onClick={() =>
+              void changeMapping(
+                map?.mapping.status === 'recording'
+                  ? 'pause'
+                  : map?.mapping.status === 'paused'
+                    ? 'resume'
+                    : 'start',
+              )
+            }
+          >
+            {map?.mapping.status === 'recording'
+              ? 'Carto active'
+              : map?.mapping.status === 'paused'
+                ? 'Reprendre Carto'
+                : 'Carto'}
+          </button>
+        ) : null}
+        {map?.mapping.status === 'recording' ||
+        map?.mapping.status === 'paused' ? (
+          <button
+            disabled={!isOwner || busy}
+            type="button"
+            onClick={() => void changeMapping('stop')}
+          >
+            Terminer
+          </button>
+        ) : null}
       </div>
+      <small className="robot-map-status">
+        Mémoire · {memory?.entities.length.toString() ?? '0'} objet(s) · Carto{' '}
+        {map?.mapping.status ?? 'indisponible'} ·{' '}
+        {map
+          ? `${Math.round(map.mapping.storageBytes / 1_024).toString()} Kio`
+          : '—'}
+      </small>
 
       <section className="robot-camera-panel" aria-label="Caméra du robot">
         <div className="robot-camera">

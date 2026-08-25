@@ -4,6 +4,7 @@ import helmet from '@fastify/helmet';
 import staticPlugin from '@fastify/static';
 import { fromNodeHeaders } from 'better-auth/node';
 import Fastify from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import {
@@ -50,6 +51,10 @@ import {
   RobotDriveRequestSchema,
   RobotMemoryRenameRequestSchema,
   RobotMemorySummarySchema,
+  RobotMapSnapshotSchema,
+  RobotMappingActionResponseSchema,
+  RobotMissionPreviewRequestSchema,
+  RobotMissionPreviewSchema,
   RobotOperatingModeRequestSchema,
   RobotStateSchema,
   WatchArticleSchema,
@@ -102,6 +107,10 @@ import {
   RobotUnavailableError,
 } from './robot/robot-controller.js';
 import { RobotMemoryService } from './robot/robot-memory.js';
+import {
+  RobotMappingError,
+  RobotMappingService,
+} from './robot/robot-mapping.js';
 
 export interface BuildHubOptions {
   authAttemptLimit?: number;
@@ -240,6 +249,7 @@ export async function buildHub(options: BuildHubOptions) {
   const watch = new WatchService(database, assistantEngine, undefined, tavily);
   const robot = options.robotController ?? new DisabledRobotController();
   const robotMemory = new RobotMemoryService(database, HOUSEHOLD_ID);
+  const robotMapping = new RobotMappingService(database, HOUSEHOLD_ID);
   const publicOrigin = options.publicOrigin ?? 'http://localhost';
   const closedAuth = new ClosedAuthService({
     ...(options.authAttemptLimit
@@ -302,6 +312,12 @@ export async function buildHub(options: BuildHubOptions) {
         message: error.message,
       });
     }
+    if (error instanceof RobotMappingError) {
+      return (reply.code(409) as { send(payload: unknown): unknown }).send({
+        error: error.code,
+        message: error.message,
+      });
+    }
     return sendClosedAuthError(error, reply);
   };
 
@@ -356,7 +372,69 @@ export async function buildHub(options: BuildHubOptions) {
       await closedAuth.requireSession(request.headers);
       const state = RobotStateSchema.parse(await robot.state());
       robotMemory.observe(state);
+      robotMapping.observe(state);
       return state;
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/map', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return RobotMapSnapshotSchema.parse(robotMapping.snapshot());
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  const mutateMapping = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    action: 'pause' | 'resume' | 'start' | 'stop',
+  ) => {
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({
+          error: 'robot_owner_required',
+        });
+      const state = RobotStateSchema.parse(await robot.state());
+      const map =
+        action === 'start'
+          ? robotMapping.start(state)
+          : action === 'pause'
+            ? robotMapping.pause()
+            : action === 'resume'
+              ? robotMapping.resume(state)
+              : robotMapping.stop();
+      return RobotMappingActionResponseSchema.parse({ accepted: true, map });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  };
+
+  for (const action of ['start', 'pause', 'resume', 'stop'] as const) {
+    app.post(`/api/robot/mapping/${action}`, async (request, reply) => {
+      if (!acceptsTrustedMutationOrigin(request.headers))
+        return reply.code(403).send({ error: 'untrusted_origin' });
+      return mutateMapping(request, reply, action);
+    });
+  }
+
+  app.post('/api/robot/missions/preview', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotMissionPreviewRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_robot_mission_preview' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      return RobotMissionPreviewSchema.parse(
+        robotMapping.previewMission(body.data.targetPointId),
+      );
     } catch (error) {
       return sendRobotError(error, reply);
     }
@@ -430,13 +508,15 @@ export async function buildHub(options: BuildHubOptions) {
       // transport time to reach a loaded Pi. The embedded watchdog still
       // limits actual motion with maxDurationMs.
       const forwardedAt = Date.now();
+      const state = await robot.drive({
+        ...body.data,
+        issuedAt: new Date(forwardedAt).toISOString(),
+        expiresAt: new Date(forwardedAt + 1_800).toISOString(),
+      });
+      robotMapping.recordDrive(body.data, state);
       return RobotCommandResponseSchema.parse({
         accepted: true,
-        state: await robot.drive({
-          ...body.data,
-          issuedAt: new Date(forwardedAt).toISOString(),
-          expiresAt: new Date(forwardedAt + 1_800).toISOString(),
-        }),
+        state,
       });
     } catch (error) {
       return sendRobotError(error, reply);
@@ -503,6 +583,7 @@ export async function buildHub(options: BuildHubOptions) {
       const session = await closedAuth.requireSession(request.headers);
       if (session.member.role !== 'owner')
         return reply.code(403).send({ error: 'robot_owner_required' });
+      robotMapping.setMode(body.data.mode);
       return RobotCommandResponseSchema.parse({
         accepted: true,
         state: await robot.setMode(body.data.mode),

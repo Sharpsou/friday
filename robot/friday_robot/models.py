@@ -5,7 +5,15 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-MODES = {"manual", "calibration", "line", "visual_tracking", "markers", "companion"}
+MODES = {
+    "manual",
+    "autonomous",
+    "calibration",
+    "line",
+    "visual_tracking",
+    "markers",
+    "companion",
+}
 DIRECTIONS = {"forward", "backward", "left", "right"}
 
 

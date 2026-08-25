@@ -615,6 +615,7 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   let lastDriveIntensity: number | null = null;
   let lastDriveSteering: number | null = null;
   let lastCameraTilt: number | null = null;
+  let mappingStatus: 'inactive' | 'paused' | 'recording' = 'inactive';
   let robotState = {
     available: true,
     connected: true,
@@ -668,9 +669,54 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
       ],
     },
   };
+  const robotMap = () => ({
+    version: 1,
+    operatingMode: 'manual' as const,
+    mapping: {
+      status: mappingStatus,
+      sessionId:
+        mappingStatus === 'inactive'
+          ? null
+          : '1507eb5a-72e4-473c-a982-4d6c8c47e75e',
+      startedAt:
+        mappingStatus === 'inactive' ? null : '2026-08-25T00:00:00.000Z',
+      pointCount: mappingStatus === 'inactive' ? 0 : 2,
+      storageBytes: mappingStatus === 'inactive' ? 0 : 192,
+      quotaBytes: 262_144_000,
+    },
+    localization: {
+      status: 'estimated' as const,
+      pose: {
+        x: 0.4,
+        y: 0.2,
+        heading: 0.1,
+        uncertainty: 0.3,
+        updatedAt: '2026-08-25T00:00:00.000Z',
+      },
+    },
+    paths: [],
+    objects: [],
+    autonomy: {
+      available: false,
+      blockedReason: 'Validation physique requise.',
+    },
+  });
   await page.route('**/api/robot/state', async (route) =>
     route.fulfill({ json: robotState }),
   );
+  await page.route('**/api/robot/map', async (route) =>
+    route.fulfill({ json: robotMap() }),
+  );
+  await page.route('**/api/robot/mapping/*', async (route) => {
+    const action = route.request().url().split('/').at(-1);
+    mappingStatus =
+      action === 'pause'
+        ? 'paused'
+        : action === 'stop'
+          ? 'inactive'
+          : 'recording';
+    await route.fulfill({ json: { accepted: true, map: robotMap() } });
+  });
   await page.route('**/api/robot/actuators', async (route) => {
     const actuators = route
       .request()
@@ -758,10 +804,14 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   await expect(
     page.getByRole('combobox', { name: 'Mode du robot' }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole('button', { name: 'Cartographie' }),
-  ).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Manuel' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Carto' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Autonome' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Carte' }).click();
+  await expect(
+    page.getByRole('img', { name: 'Vue du dessus de la cartographie' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Fermer la carte' }).click();
   const wheels = page.getByRole('switch', { name: 'Roues' });
   const cameraServos = page.getByRole('switch', { name: 'Caméra' });
   await expect(wheels).not.toBeChecked();

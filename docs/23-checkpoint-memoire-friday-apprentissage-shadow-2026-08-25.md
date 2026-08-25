@@ -2,8 +2,8 @@
 
 Date : 25 août 2026
 
-Statut : **verticale logicielle livrée ; cartographie volumétrique et autonomie
-physique toujours verrouillées**
+Statut : **verticale logicielle livrée ; Carto 2D observatrice ajoutée,
+cartographie volumétrique et autonomie physique toujours verrouillées**
 
 ## Ce qui est implanté
 
@@ -28,7 +28,10 @@ physique toujours verrouillées**
 - algorithme d’apprentissage conservateur de type bandit contextuel
   (approximation diagonale de LinUCB), récompense de navigation bornée et
   propositions limitées à de faibles corrections de direction, puissance et
-  durée.
+  durée ;
+- migration SQLite 21 et mode `Carto` manuel : trajectoire approximative à
+  partir des commandes et de leur temps, pose incertaine, objets confirmés et
+  vue du dessus tactile. Aucune image n’est persistée.
 
 ## Challenge de l’apprentissage par renforcement
 
@@ -49,7 +52,8 @@ de commande Robot.
 
 ## Ce qui reste volontairement non livré
 
-- SLAM monoculaire, reconstruction 3D et calcul de volumétrie en arrière-plan ;
+- SLAM monoculaire, correction de boucle, reconstruction 3D et calcul de
+  volumétrie en arrière-plan ;
 - identification automatique fiable des pièces ;
 - état réel d’une lumière, tant qu’un détecteur spécialisé et calibré ne le
   confirme pas ;
@@ -57,14 +61,17 @@ de commande Robot.
 - navigation vers une cible, évitement domestique et exploration autonome ;
 - application en ligne d’une politique apprise.
 
-Les boutons `Cartographie` et `Autonome` restent désactivés. Cette limitation
-est un garde-fou produit, pas une lacune d’interface.
+`Carto` fonctionne uniquement en observateur pendant le mode manuel. Le bouton
+`Autonome` et l’exécution de `Va là` restent verrouillés. Cette limitation est
+un garde-fou produit, pas une lacune d’interface.
 
 ## Autorités techniques
 
 - mémoire : `apps/hub/src/robot/robot-memory.ts` ;
 - lecture Friday : `apps/hub/src/assistant/friday-memory.ts` ;
 - apprentissage : `apps/hub/src/robot/robot-learning.ts` ;
+- cartographie : `apps/hub/src/robot/robot-mapping.ts` et
+  `apps/web/src/RobotMapView.tsx` ;
 - migration : `apps/hub/src/db/database.ts` ;
 - routes : `apps/hub/src/app.ts` ;
 - interface : `apps/web/src/AssistantView.tsx` et
@@ -73,7 +80,7 @@ est un garde-fou produit, pas une lacune d’interface.
 ## Validation
 
 `pnpm verify` réussit le 25 août 2026 : formatage, lint, types, 21 tests Python,
-246 tests TypeScript (22 contrats, 15 domaine, 122 hub et 87 PWA), builds PWA et
+252 tests TypeScript (22 contrats, 15 domaine, 126 hub et 89 PWA), builds PWA et
 hub, puis 25 scénarios Chrome mobile. Aucune recette physique de mouvement ou
 de qualité de reconnaissance n’est déduite de ces tests automatisés. Le mode
 Friday et la mémoire restent à valider séparément sur l’A17 après redémarrage

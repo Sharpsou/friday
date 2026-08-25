@@ -208,11 +208,22 @@ propriétaire et mode compatible.
 L’armement n’a plus de bouton séparé dans la PWA. Le passage du switch `Roues`
 à ON appelle d’abord `/actuators`, force si nécessaire le mode `manual`, puis
 `/arm`; l’autorisation de 60 s est renouvelée toutes les 45 s tant que le switch
-reste actif. Elle ne commande jamais les moteurs à elle seule. Le sélecteur de
-mode technique n’est plus affiché. `Cartographie` et `Autonome` sont seulement
-des indicateurs `À venir` désactivés, sans commande associée. Le switch OFF,
+reste actif. Elle ne commande jamais les moteurs à elle seule. Les boutons
+`Manuel` et `Autonome` sont maintenant explicites. `Autonome` reste désactivé
+et le hub refuse aussi ce mode. En manuel, `Carto` enregistre une trajectoire
+vectorielle approximative sans aucune image ; déplacer la caméra met la session
+en pause et sa reprise impose le preset central. `Carte` ouvre la vue tactile,
+et `Va là` ne crée qu’un aperçu refusé sans commande moteur. Le switch OFF,
 `ARRÊT`, une fermeture de page, un changement de mode ou un redémarrage du Pi
 arrêtent toujours le mouvement.
+
+Après un redémarrage du hub, toute session Carto qui enregistrait passe en
+pause. Ne jamais interpréter la pose affichée comme une mesure métrique : sans
+encodeurs ni IMU, elle est déduite de la direction, de la puissance et du temps
+entre impulsions, et dérive. Carto conserve au plus 2 000 points par session et
+10 000 par foyer. Les tables ne contiennent aucun champ image, JPEG ou
+miniature. Ne pas contourner ces bornes ni brancher le Chat, un LLM ou la
+politique d’apprentissage shadow sur `/drive`.
 
 La téléopération expose un curseur de puissance commun aux quatre directions,
 borné de 10 à 35 %, initialisé à 20 % et mémorisé dans la PWA. Toute hausse
@@ -272,8 +283,9 @@ Dans la PWA, seule la case `Reco` pilote l'affichage des boîtes. La décocher n
 coupe pas le moteur d'inférence ; elle masque seulement la dernière observation.
 Avec le réglage par défaut `FRAME_STRIDE=2`, la vision traite une image sur deux
 et conserve la dernière surimpression jusqu'au résultat suivant, au plus deux
-secondes. `Cartographie` et `Autonome` sont désactivés et ne doivent produire
-aucun appel réseau.
+secondes. `Carto` peut mémoriser la géométrie et les objets confirmés pendant
+une téléopération ; aucune frame n’est persistée. `Autonome` et l’exécution de
+mission restent désactivés.
 
 - Objets/personnes : jeux d'images consentis, précision/rappel par classe,
   faux positifs, latence p50/p95, faible lumière et mouvement.
