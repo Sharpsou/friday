@@ -783,9 +783,9 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
             <dt>Alimentation</dt>
             <dd>
               {state?.telemetry.underVoltageActive
-                ? 'Sous-tension active'
+                ? `Seuil Pi détecté${state.telemetry.throttledCode ? ` (${state.telemetry.throttledCode})` : ''} · informatif`
                 : state?.telemetry.underVoltageOccurred
-                  ? 'Sous-tension mémorisée'
+                  ? 'Seuil Pi mémorisé · informatif'
                   : 'Normale'}
             </dd>
           </div>

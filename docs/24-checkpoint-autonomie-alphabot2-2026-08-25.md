@@ -88,7 +88,7 @@ restent actives.
 ## Validation et exploitation
 
 `pnpm verify` réussit le 25 août 2026 : formatage, lint, types, 21 tests
-Python, 261 tests TypeScript (22 contrats, 15 domaine, 135 hub et 89 PWA),
+Python, 262 tests TypeScript (22 contrats, 15 domaine, 136 hub et 89 PWA),
 builds PWA/hub et 25 scénarios Chrome mobile. Les tests couvrent Dyna-Q,
 shaping, persistance, masques IR/personne,
 cartographie tête seule roues coupées, non-reprise après redémarrage, API,
@@ -108,10 +108,13 @@ actualisé tourne donc provisoirement sous le compte `pi` (PID consigné dans
 redémarrage. Il faut exécuter `sudo systemctl restart friday-robot` lors du
 prochain accès interactif afin de rétablir la supervision immédiate.
 
-La télémétrie de clôture indique `0x50005`, donc une sous-tension active. La
-boucle autonome entre dans `recovering` avant toute action moteur et réessaie
-automatiquement ; elle ne doit pas être physiquement recettée tant que le bit
-actif n’a pas disparu.
+La télémétrie de clôture indique `0x50005`. Depuis la correction souple, ce bit
+reste purement informatif : il ne bloque ni locomotion, ni caméra, ni
+apprentissage et n’augmente plus artificiellement l’incertitude de la carte.
+`vcgencmd` expose seulement un seuil binaire susceptible d’être franchi pendant
+un appel de courant servo ou moteur ; il ne permet pas de définir une alerte de
+« batterie vraiment plus basse ». Une telle alerte exigera une mesure de tension
+dédiée. L’arrêt faute de batterie reste accepté comme choix utilisateur.
 
 Correction de déploiement : le premier essai du bouton renvoyait `Mode
 invalide`, car `controller.py` et `hardware.py` avaient été actualisés tandis

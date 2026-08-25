@@ -315,11 +315,9 @@ export class RobotAutonomyService {
     try {
       let state = await this.robot.state();
       this.mapping.observe(state);
-      if (state.telemetry.underVoltageActive)
-        throw new RobotAutonomyError(
-          'robot_under_voltage',
-          'Sous-tension active.',
-        );
+      // vcgencmd exposes a threshold bit, not a voltage magnitude. Servo and
+      // motor current peaks can set it during otherwise usable operation, so
+      // it remains diagnostic telemetry and never gates autonomous actions.
       if (state.operatingMode !== 'autonomous')
         state = await this.robot.setMode('autonomous');
       if (

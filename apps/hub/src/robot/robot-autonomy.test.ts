@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { openDatabase } from '../db/database.js';
 import { RobotAutonomyService } from './robot-autonomy.js';
@@ -6,6 +6,21 @@ import { RobotMappingService } from './robot-mapping.js';
 import { SimulatedRobotController } from './robot-controller.js';
 
 const HOUSEHOLD_ID = '1030b4f6-1e0f-48fa-adab-865750ce597d';
+
+class UnderVoltageRobotController extends SimulatedRobotController {
+  override async state() {
+    const state = await super.state();
+    return {
+      ...state,
+      telemetry: {
+        ...state.telemetry,
+        throttledCode: '0x50005',
+        underVoltageActive: true,
+        underVoltageOccurred: true,
+      },
+    };
+  }
+}
 
 describe('RobotAutonomyService', () => {
   const closeCallbacks: Array<() => Promise<void> | void> = [];
@@ -90,5 +105,38 @@ describe('RobotAutonomyService', () => {
         .prepare('SELECT status, stop_reason FROM robot_autonomy_runs')
         .get(),
     ).toMatchObject({ status: 'completed', stop_reason: 'hub_restart' });
+  });
+
+  it('keeps learning and camera exploration active when the Pi voltage bit is set', async () => {
+    const database = openDatabase(':memory:');
+    const robot = new UnderVoltageRobotController();
+    closeCallbacks.push(async () => {
+      await robot.close();
+      database.close();
+    });
+    await robot.setActuators({
+      wheelsEnabled: false,
+      cameraServosEnabled: true,
+    });
+    const mapping = new RobotMappingService(database, HOUSEHOLD_ID);
+    const autonomy = new RobotAutonomyService(
+      database,
+      HOUSEHOLD_ID,
+      robot,
+      mapping,
+    );
+
+    await autonomy.start({ powerPercent: 20, steeringTrimPercent: 0 });
+    await vi.waitFor(() =>
+      expect(autonomy.status().episodeCount).toBeGreaterThan(0),
+    );
+    expect(autonomy.status()).toMatchObject({ status: 'exploring' });
+    expect(
+      autonomy
+        .journal()
+        .entries.some((entry) => entry.message.includes('Sous-tension')),
+    ).toBe(false);
+
+    await autonomy.stop();
   });
 });

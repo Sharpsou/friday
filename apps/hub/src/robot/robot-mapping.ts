@@ -416,7 +416,6 @@ export class RobotMappingService {
         runtime.uncertainty +
           Math.abs(distance) * 0.35 +
           Math.abs(turn) * 0.25 +
-          (state.telemetry.underVoltageActive ? 1 : 0) +
           0.01,
       ),
       updated_at: new Date().toISOString(),
