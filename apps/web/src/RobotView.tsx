@@ -10,6 +10,8 @@ import {
 
 import type {
   RobotDirection,
+  RobotAutonomyStatus,
+  RobotCognitionJournalEntry,
   RobotMapSnapshot,
   RobotMemorySummary,
   RobotState,
@@ -24,6 +26,8 @@ import {
   getRobotState,
   getRobotMemory,
   getRobotMap,
+  getRobotAutonomy,
+  getRobotCognitionJournal,
   haltRobot,
   lookRobotCamera,
   renameRobotMemoryEntity,
@@ -32,6 +36,8 @@ import {
   setRobotActuators,
   stopRobot,
   stopRobotOnPageExit,
+  startRobotAutonomy,
+  stopRobotAutonomy,
 } from './sync/robot-client.js';
 import {
   CAMERA_NEUTRAL_TILT,
@@ -77,6 +83,8 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
   const [state, setState] = useState<RobotState | null>(null);
   const [memory, setMemory] = useState<RobotMemorySummary | null>(null);
   const [map, setMap] = useState<RobotMapSnapshot | null>(null);
+  const [autonomy, setAutonomy] = useState<RobotAutonomyStatus | null>(null);
+  const [cognition, setCognition] = useState<RobotCognitionJournalEntry[]>([]);
   const [mapVisible, setMapVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -93,6 +101,7 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
   const powerPercentRef = useRef(powerPercent);
   const armInFlightRef = useRef(false);
   const mountedRef = useRef(true);
+  const operatingModeRef = useRef<RobotState['operatingMode']>('manual');
 
   useEffect(() => {
     powerPercentRef.current = powerPercent;
@@ -111,6 +120,7 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
 
   const updateState = useCallback((next: RobotState) => {
     if (mountedRef.current) {
+      operatingModeRef.current = next.operatingMode;
       setState(next);
       setError(null);
     }
@@ -119,9 +129,12 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
   useEffect(() => {
     const refreshMap = () => {
       if (document.visibilityState === 'visible')
-        void getRobotMap()
-          .then((next) => {
-            if (mountedRef.current) setMap(next);
+        void Promise.all([getRobotMap(), getRobotAutonomy()])
+          .then(([nextMap, nextAutonomy]) => {
+            if (mountedRef.current) {
+              setMap(nextMap);
+              setAutonomy(nextAutonomy);
+            }
           })
           .catch(() => undefined);
     };
@@ -181,7 +194,7 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     const onVisibility = () => {
       setPageVisible(document.visibilityState === 'visible');
       if (document.visibilityState === 'hidden') {
-        stopDriveLoop(true, true);
+        stopDriveLoop(operatingModeRef.current === 'manual', true);
       } else {
         refresh();
       }
@@ -199,7 +212,7 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
       window.removeEventListener('pointercancel', onPointerRelease);
       document.removeEventListener('visibilitychange', onVisibility);
       stopDriveLoop(false);
-      stopRobotOnPageExit();
+      if (operatingModeRef.current === 'manual') stopRobotOnPageExit();
     };
   }, [showError, stopDriveLoop, updateState]);
 
@@ -214,6 +227,20 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     };
     refreshMemory();
     const timer = window.setInterval(refreshMemory, 5_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible')
+        void getRobotCognitionJournal()
+          .then((entries) => {
+            if (mountedRef.current) setCognition(entries);
+          })
+          .catch(() => undefined);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 5_000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -272,6 +299,7 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
       !state?.available ||
       !state.connected ||
       !state.actuators.wheelsEnabled ||
+      state.operatingMode !== 'manual' ||
       !pageVisible
     )
       return;
@@ -286,6 +314,7 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     state?.actuators.wheelsEnabled,
     state?.available,
     state?.connected,
+    state?.operatingMode,
   ]);
 
   const nudgeCamera = async (panDelta: number, tiltDelta: number) => {
@@ -306,8 +335,23 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
   const changeMode = async (mode: 'manual' | 'autonomous') => {
     setBusy(true);
     try {
-      updateState(await setRobotMode(mode));
-      setMap(await getRobotMap());
+      if (mode === 'autonomous') {
+        const response = await startRobotAutonomy(
+          powerPercent,
+          steeringTrimPercent,
+        );
+        updateState(response.state);
+        setMap(response.map);
+        setAutonomy(response.autonomy);
+      } else if (autonomy?.status !== 'inactive') {
+        const response = await stopRobotAutonomy();
+        updateState(response.state);
+        setMap(response.map);
+        setAutonomy(response.autonomy);
+      } else {
+        updateState(await setRobotMode('manual'));
+        setMap(await getRobotMap());
+      }
     } catch (cause) {
       showError(cause);
     } finally {
@@ -350,9 +394,11 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
         [actuator]: enabled,
       });
       if (actuator === 'wheelsEnabled' && enabled) {
-        if (actuatorState.operatingMode !== 'manual')
-          await setRobotMode('manual');
-        updateState(await armRobot());
+        updateState(
+          actuatorState.operatingMode === 'manual'
+            ? await armRobot()
+            : actuatorState,
+        );
       } else updateState(actuatorState);
     } catch (cause) {
       showError(cause);
@@ -385,6 +431,7 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     isOwner &&
     state?.capabilities.includes('camera_look') === true &&
     state.actuators.cameraServosEnabled &&
+    state.operatingMode === 'manual' &&
     !state.moving &&
     !busy;
 
@@ -395,6 +442,17 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
         isOwner={isOwner}
         onClose={() => setMapVisible(false)}
         onError={showError}
+        onNavigate={async (targetPointId) => {
+          const response = await startRobotAutonomy(
+            powerPercent,
+            steeringTrimPercent,
+            targetPointId,
+          );
+          updateState(response.state);
+          setMap(response.map);
+          setAutonomy(response.autonomy);
+          setMapVisible(false);
+        }}
       />
     );
 
@@ -509,6 +567,19 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
           ? `${Math.round(map.mapping.storageBytes / 1_024).toString()} Kio`
           : '—'}
       </small>
+      {autonomy && autonomy.status !== 'inactive' ? (
+        <small className="robot-map-status" role="status">
+          Autonomie · {autonomy.status} · {autonomy.goal ?? 'observation'} ·{' '}
+          {autonomy.action ?? 'attente'} · confiance{' '}
+          {Math.round(autonomy.confidence * 100).toString()} % ·{' '}
+          {autonomy.episodeCount.toString()} expériences
+        </small>
+      ) : null}
+      {cognition[0] ? (
+        <small className="robot-map-status">
+          Friday · {cognition[0].message}
+        </small>
+      ) : null}
 
       <section className="robot-camera-panel" aria-label="Caméra du robot">
         <div className="robot-camera">

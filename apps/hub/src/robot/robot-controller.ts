@@ -141,7 +141,7 @@ export class SimulatedRobotController implements RobotController {
       throw new RobotCommandRejectedError('Roues désactivées.');
     if (this.#armedUntil <= Date.now())
       throw new RobotCommandRejectedError('Conduite non armée.');
-    if (!['manual', 'calibration'].includes(this.#operatingMode))
+    if (!['manual', 'calibration', 'autonomous'].includes(this.#operatingMode))
       throw new RobotCommandRejectedError(
         'La téléopération est interdite dans ce mode.',
       );
@@ -240,6 +240,8 @@ export class SimulatedRobotController implements RobotController {
         'vision_markers',
         'signal_buzzer',
         'signal_lights',
+        'map_observer',
+        'autonomous_exploration',
       ],
       operatingMode: this.#operatingMode,
       controlExpiresAt:

@@ -105,12 +105,37 @@ describe('RobotMappingService', () => {
     const pointId = started.paths[0]?.points[0]?.id;
     expect(pointId).toBeTruthy();
 
-    expect(() => mapping.setMode('autonomous')).toThrowError(RobotMappingError);
+    expect(() => mapping.setMode('autonomous')).not.toThrow();
+    expect(mapping.snapshot().operatingMode).toBe('autonomous');
     expect(
       mapping.previewMission(pointId ?? crypto.randomUUID()),
     ).toMatchObject({ allowed: false });
     expect(mapping.previewMission(crypto.randomUUID())).toMatchObject({
       allowed: false,
+    });
+  });
+
+  it('unlocks a destination only after a completed map has enough geometry', () => {
+    const database = openDatabase(':memory:');
+    databases.push(database);
+    const mapping = new RobotMappingService(database, HOUSEHOLD);
+    mapping.start(state());
+    for (let index = 0; index < 200; index += 1)
+      mapping.recordDrive(drive('forward'), state(index + 2));
+    const completed = mapping.stop();
+    const pointId = completed.paths[0]?.points.at(-1)?.id;
+
+    expect(completed.paths[0]?.points.length).toBeGreaterThanOrEqual(20);
+    expect(
+      mapping.previewMission(pointId ?? crypto.randomUUID()),
+    ).toMatchObject({
+      allowed: true,
+      blockedReason: null,
+    });
+    expect(
+      mapping.navigationTarget(pointId ?? crypto.randomUUID()),
+    ).toMatchObject({
+      id: pointId,
     });
   });
 

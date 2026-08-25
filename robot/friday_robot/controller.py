@@ -62,7 +62,7 @@ class RobotController:
             now = utc_now()
             if not self._armed_until or self._armed_until <= now:
                 raise CommandRejected("Conduite non armée.")
-            if self._operating_mode not in {"manual", "calibration"}:
+            if self._operating_mode not in {"manual", "calibration", "autonomous"}:
                 raise CommandRejected("Téléopération interdite dans ce mode.")
             try:
                 self._hardware.drive(direction, float(intensity), float(steering))

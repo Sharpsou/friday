@@ -1,6 +1,6 @@
 # Checkpoint Robot Friday — AlphaBot2-Pi actualisé au 25 août 2026
 
-Statut : **source canonique de reprise du prototype AlphaBot2**
+Statut : **checkpoint matériel et téléopération ; l’autonomie courante est dans le [checkpoint 24](24-checkpoint-autonomie-alphabot2-2026-08-25.md)**
 
 Ce document décrit le dernier état consolidé. Le
 [journal d’implémentation](21-journal-implementation-alphabot2-2026-08-24.md)
@@ -12,14 +12,16 @@ runbook prévalent sur les passages historiques du journal.
 
 ## 1. Verdict
 
-Le prototype zéro est utilisable en téléopération réelle, mais il n’est pas un
-robot autonome. Le Raspberry Pi, la caméra CSI, les capteurs passifs, les roues
+Le prototype zéro est utilisable en téléopération réelle. Depuis le checkpoint
+24, une autonomie Carto logicielle à faible vitesse est aussi implantée, mais
+sa recette physique reste à effectuer. Le Raspberry Pi, la caméra CSI, les
+capteurs passifs, les roues
 et les deux servos sont intégrés à Friday. Une détection générique
 objets/personnes par YOLO26s tourne sur le PC et produit des surimpressions sans
 commander les actionneurs. Une cartographie 2D approximative, strictement
-observatrice, peut maintenant
-accompagner la téléopération. Le LiDAR, la pince, l’identité consentie, le SLAM
-métrique, l’évitement fiable et la navigation autonome ne sont pas implémentés.
+observatrice en manuel, peut maintenant accompagner la téléopération. Le LiDAR,
+la pince, l’identité consentie, le SLAM métrique et l’évitement fiable ne sont
+pas implémentés ; la navigation actuelle reste approximative et monoculaire.
 
 Le matériel présente encore deux limites physiques : le servo panoramique
 tremble par intermittence et des sous-tensions ont été enregistrées. Le code

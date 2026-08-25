@@ -46,7 +46,10 @@ import {
   PushResponseSchema,
   RobotArmRequestSchema,
   RobotActuatorsRequestSchema,
+  RobotAutonomyResponseSchema,
+  RobotAutonomyStartRequestSchema,
   RobotCameraLookRequestSchema,
+  RobotCognitionJournalSchema,
   RobotCommandResponseSchema,
   RobotDriveRequestSchema,
   RobotMemoryRenameRequestSchema,
@@ -107,6 +110,10 @@ import {
   RobotUnavailableError,
 } from './robot/robot-controller.js';
 import { RobotMemoryService } from './robot/robot-memory.js';
+import {
+  RobotAutonomyError,
+  RobotAutonomyService,
+} from './robot/robot-autonomy.js';
 import {
   RobotMappingError,
   RobotMappingService,
@@ -250,6 +257,13 @@ export async function buildHub(options: BuildHubOptions) {
   const robot = options.robotController ?? new DisabledRobotController();
   const robotMemory = new RobotMemoryService(database, HOUSEHOLD_ID);
   const robotMapping = new RobotMappingService(database, HOUSEHOLD_ID);
+  const robotAutonomy = new RobotAutonomyService(
+    database,
+    HOUSEHOLD_ID,
+    robot,
+    robotMapping,
+    assistantEngine,
+  );
   const publicOrigin = options.publicOrigin ?? 'http://localhost';
   const closedAuth = new ClosedAuthService({
     ...(options.authAttemptLimit
@@ -313,6 +327,12 @@ export async function buildHub(options: BuildHubOptions) {
       });
     }
     if (error instanceof RobotMappingError) {
+      return (reply.code(409) as { send(payload: unknown): unknown }).send({
+        error: error.code,
+        message: error.message,
+      });
+    }
+    if (error instanceof RobotAutonomyError) {
       return (reply.code(409) as { send(payload: unknown): unknown }).send({
         error: error.code,
         message: error.message,
@@ -383,6 +403,71 @@ export async function buildHub(options: BuildHubOptions) {
     try {
       await closedAuth.requireSession(request.headers);
       return RobotMapSnapshotSchema.parse(robotMapping.snapshot());
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/autonomy', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return robotAutonomy.status();
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/cognition-journal', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return RobotCognitionJournalSchema.parse(robotAutonomy.journal());
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/autonomy/start', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotAutonomyStartRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_robot_autonomy_start' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      const state = await robotAutonomy.start({
+        powerPercent: body.data.powerPercent,
+        steeringTrimPercent: body.data.steeringTrimPercent,
+        ...(body.data.targetPointId
+          ? { targetPointId: body.data.targetPointId }
+          : {}),
+      });
+      return RobotAutonomyResponseSchema.parse({
+        accepted: true,
+        state,
+        map: robotMapping.snapshot(),
+        autonomy: robotAutonomy.status(),
+      });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/autonomy/stop', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      const state = await robotAutonomy.stop();
+      return RobotAutonomyResponseSchema.parse({
+        accepted: true,
+        state,
+        map: robotMapping.snapshot(),
+        autonomy: robotAutonomy.status(),
+      });
     } catch (error) {
       return sendRobotError(error, reply);
     }
@@ -503,6 +588,11 @@ export async function buildHub(options: BuildHubOptions) {
         return reply.code(403).send({ error: 'robot_owner_required' });
       if (!acceptsRobotCommandRate(session.deviceId, 10))
         return reply.code(429).send({ error: 'robot_rate_limited' });
+      if ((await robot.state()).operatingMode !== 'manual')
+        return reply.code(409).send({
+          error: 'robot_manual_required',
+          message: 'La téléopération est disponible uniquement en mode Manuel.',
+        });
       // The hub is the clock authority shared with the Pi. Preserve the
       // short, schema-bounded motor pulse while giving the command enough
       // transport time to reach a loaded Pi. The embedded watchdog still
@@ -583,6 +673,17 @@ export async function buildHub(options: BuildHubOptions) {
       const session = await closedAuth.requireSession(request.headers);
       if (session.member.role !== 'owner')
         return reply.code(403).send({ error: 'robot_owner_required' });
+      if (body.data.mode === 'autonomous') {
+        const state = await robotAutonomy.start({
+          powerPercent: 20,
+          steeringTrimPercent: 0,
+        });
+        return RobotCommandResponseSchema.parse({ accepted: true, state });
+      }
+      if (robotAutonomy.status().status !== 'inactive') {
+        const state = await robotAutonomy.stop('manual_mode');
+        return RobotCommandResponseSchema.parse({ accepted: true, state });
+      }
       robotMapping.setMode(body.data.mode);
       return RobotCommandResponseSchema.parse({
         accepted: true,
@@ -598,9 +699,13 @@ export async function buildHub(options: BuildHubOptions) {
       return reply.code(403).send({ error: 'untrusted_origin' });
     try {
       await closedAuth.requireSession(request.headers);
+      const state =
+        robotAutonomy.status().status === 'inactive'
+          ? await robot.stop()
+          : await robotAutonomy.stop('emergency_stop');
       return RobotCommandResponseSchema.parse({
         accepted: true,
-        state: await robot.stop(),
+        state,
       });
     } catch (error) {
       return sendRobotError(error, reply);
@@ -1358,7 +1463,7 @@ export async function buildHub(options: BuildHubOptions) {
       return InferenceStatusSchema.parse(
         assistantEngine.getInferenceStatus?.() ?? {
           active: null,
-          queued: { assistant: 0, watch: 0 },
+          queued: { assistant: 0, robot: 0, watch: 0 },
         },
       );
     } catch (error) {
@@ -1673,6 +1778,7 @@ export async function buildHub(options: BuildHubOptions) {
   }
 
   app.addHook('onClose', async () => {
+    await robotAutonomy.close();
     await robot.close();
     await watch.stop();
     await assistant.stop();

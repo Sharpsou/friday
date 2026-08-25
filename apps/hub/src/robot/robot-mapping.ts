@@ -148,9 +148,6 @@ export class RobotMappingService {
       (total, session) => total + session.storage_bytes,
       0,
     );
-    const certified = sessions.some(
-      (session) => session.status === 'certified',
-    );
     return RobotMapSnapshotSchema.parse({
       version: 1,
       operatingMode: runtime.operating_mode,
@@ -175,10 +172,8 @@ export class RobotMappingService {
       paths,
       objects,
       autonomy: {
-        available: false,
-        blockedReason: certified
-          ? 'Validation physique et rejeu visuel shadow requis.'
-          : 'Un aller-retour cartographié et certifié est requis.',
+        available: true,
+        blockedReason: null,
       },
     });
   }
@@ -234,6 +229,56 @@ export class RobotMappingService {
         state.vision?.frameId ?? null,
         now,
       );
+      this.recordMapCell(runtime, Boolean(state.vision));
+    })();
+    return this.snapshot();
+  }
+
+  startAutonomous(state: RobotState): RobotMapSnapshot {
+    if (!state.cameraAvailable)
+      throw new RobotMappingError(
+        'robot_mapping_camera_required',
+        'La caméra doit être disponible pour explorer.',
+      );
+    this.assertNavigationCameraPose(state);
+    const active = this.activeSession();
+    if (active) {
+      this.updateActiveStatus('recording');
+      return this.snapshot();
+    }
+    this.purgeExpiredDrafts();
+    if (this.householdPointCount() >= MAX_HOUSEHOLD_POINTS)
+      throw new RobotMappingError(
+        'robot_mapping_quota_reached',
+        'Le quota de points Carto est atteint. Supprimez un ancien brouillon.',
+      );
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.database.transaction(() => {
+      this.database
+        .prepare(
+          `INSERT INTO robot_mapping_sessions(
+             id, household_id, name, status, point_count, storage_bytes,
+             started_at, created_at, updated_at
+           ) VALUES (?, ?, ?, 'recording', 0, 0, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          this.householdId,
+          `Exploration autonome ${now.slice(0, 16)}`,
+          now,
+          now,
+          now,
+        );
+      this.insertPoint(
+        id,
+        0,
+        this.runtime(),
+        null,
+        state.vision?.frameId ?? null,
+        now,
+      );
+      this.recordMapCell(this.runtime(), Boolean(state.vision));
     })();
     return this.snapshot();
   }
@@ -270,18 +315,55 @@ export class RobotMappingService {
 
   setMode(mode: RobotOperatingMode): void {
     if (mode !== 'manual' && mode !== 'autonomous') return;
-    if (mode === 'autonomous')
-      throw new RobotMappingError(
-        'robot_autonomy_not_validated',
-        'Le mode Autonome reste verrouillé jusqu’à la recette physique.',
-      );
-    this.stop();
+    if (mode === 'manual') this.stop();
     this.database
       .prepare(
-        `UPDATE robot_map_runtime SET operating_mode = 'manual', updated_at = ?
+        `UPDATE robot_map_runtime SET operating_mode = ?, updated_at = ?
           WHERE household_id = ?`,
       )
-      .run(new Date().toISOString(), this.householdId);
+      .run(mode, new Date().toISOString(), this.householdId);
+  }
+
+  autonomyContext(): {
+    mapSessionId: string | null;
+    novelty: 'high' | 'known' | 'low';
+    objectCount: number;
+    pointCount: number;
+    potential: number;
+    uncertainty: number;
+  } {
+    const runtime = this.runtime();
+    const cell = this.database
+      .prepare(
+        `SELECT visit_count, visual_observation_count FROM robot_map_cells
+          WHERE household_id = ? AND cell_x = ? AND cell_y = ?`,
+      )
+      .get(
+        this.householdId,
+        Math.round(runtime.x / 0.2),
+        Math.round(runtime.y / 0.2),
+      ) as
+      { visit_count: number; visual_observation_count: number } | undefined;
+    const visits = cell?.visit_count ?? 0;
+    const active = this.activeSession();
+    const objectCount = (
+      this.database
+        .prepare(
+          `SELECT count(*) AS count FROM robot_memory_entities
+            WHERE household_id = ? AND status = 'confirmed'
+              AND map_x IS NOT NULL`,
+        )
+        .get(this.householdId) as { count: number }
+    ).count;
+    return {
+      mapSessionId: active?.id ?? null,
+      novelty: visits <= 1 ? 'high' : visits <= 4 ? 'known' : 'low',
+      objectCount,
+      pointCount: active?.point_count ?? 0,
+      potential:
+        1 / (1 + visits) + 0.1 / (1 + (cell?.visual_observation_count ?? 0)),
+      uncertainty: runtime.uncertainty,
+    };
   }
 
   observe(state: RobotState): void {
@@ -295,6 +377,7 @@ export class RobotMappingService {
           WHERE household_id = ?`,
       )
       .run(frame.frameId, frame.observedAt, this.householdId);
+    this.recordMapCell(runtime, true);
     this.anchorConfirmedObjects(state, runtime);
   }
 
@@ -355,6 +438,7 @@ export class RobotMappingService {
         );
       const active = this.activeSession();
       if (!active || active.status !== 'recording') return;
+      this.recordMapCell(next, Boolean(state.vision));
       const last = this.lastPoint(active.id);
       if (
         active.point_count >= MAX_SESSION_POINTS ||
@@ -383,20 +467,28 @@ export class RobotMappingService {
   previewMission(targetPointId: string): RobotMissionPreview {
     const point = this.database
       .prepare(
-        `SELECT p.id FROM robot_map_points p
+        `SELECT p.id, s.point_count, s.status FROM robot_map_points p
           JOIN robot_mapping_sessions s ON s.id = p.session_id
-         WHERE p.id = ? AND p.household_id = ? AND s.status = 'certified'`,
+         WHERE p.id = ? AND p.household_id = ?`,
       )
-      .get(targetPointId, this.householdId) as { id: string } | undefined;
+      .get(targetPointId, this.householdId) as
+      { id: string; point_count: number; status: string } | undefined;
     const now = Date.now();
+    const allowed = Boolean(
+      point &&
+      point.point_count >= 20 &&
+      (point.status === 'explored' || point.status === 'certified'),
+    );
     const preview = {
       previewId: randomUUID(),
       targetPointId,
       expiresAt: new Date(now + 15_000).toISOString(),
-      allowed: false,
-      blockedReason: point
-        ? 'Validation physique et rejeu shadow requis.'
-        : 'Cette destination n’appartient pas à un trajet certifié.',
+      allowed,
+      blockedReason: allowed
+        ? null
+        : point
+          ? 'Il faut au moins 20 points sur un trajet terminé avant d’y retourner.'
+          : 'Cette destination n’appartient pas à la carte.',
     };
     const targetExists = this.database
       .prepare(
@@ -409,17 +501,41 @@ export class RobotMappingService {
           `INSERT INTO robot_mission_previews(
              id, household_id, target_point_id, allowed, blocked_reason,
              created_at, expires_at
-           ) VALUES (?, ?, ?, 0, ?, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           preview.previewId,
           this.householdId,
           preview.targetPointId,
+          preview.allowed ? 1 : 0,
           preview.blockedReason,
           new Date(now).toISOString(),
           preview.expiresAt,
         );
     return RobotMissionPreviewSchema.parse(preview);
+  }
+
+  navigationTarget(targetPointId: string): {
+    id: string;
+    x: number;
+    y: number;
+  } {
+    const preview = this.previewMission(targetPointId);
+    if (!preview.allowed)
+      throw new RobotMappingError(
+        'robot_navigation_target_unavailable',
+        preview.blockedReason ?? 'Destination indisponible.',
+      );
+    return this.database
+      .prepare(
+        `SELECT id, x, y FROM robot_map_points
+          WHERE id = ? AND household_id = ?`,
+      )
+      .get(targetPointId, this.householdId) as {
+      id: string;
+      x: number;
+      y: number;
+    };
   }
 
   private assertNavigationCameraPose(state: RobotState): void {
@@ -565,6 +681,29 @@ export class RobotMappingService {
           WHERE household_id = ? AND status = 'draft' AND updated_at < ?`,
       )
       .run(this.householdId, cutoff);
+  }
+
+  private recordMapCell(pose: RuntimeRow, visual: boolean): void {
+    this.database
+      .prepare(
+        `INSERT INTO robot_map_cells(
+           household_id, cell_x, cell_y, visit_count,
+           visual_observation_count, uncertainty, last_seen_at
+         ) VALUES (?, ?, ?, 1, ?, ?, ?)
+         ON CONFLICT(household_id, cell_x, cell_y) DO UPDATE SET
+           visit_count = visit_count + 1,
+           visual_observation_count = visual_observation_count + excluded.visual_observation_count,
+           uncertainty = excluded.uncertainty,
+           last_seen_at = excluded.last_seen_at`,
+      )
+      .run(
+        this.householdId,
+        Math.round(pose.x / 0.2),
+        Math.round(pose.y / 0.2),
+        visual ? 1 : 0,
+        pose.uncertainty,
+        pose.updated_at,
+      );
   }
 }
 

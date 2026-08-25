@@ -9,7 +9,7 @@
     "eval:grocery-classification": "tsx src/groceries/evaluate-grocery-classification.ts",
     "seed:budget": "tsx src/budget/budget-seed.ts",
     "start": "node dist/main.js",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=4",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

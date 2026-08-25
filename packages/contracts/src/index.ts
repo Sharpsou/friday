@@ -25,6 +25,7 @@ export const RobotCapabilitySchema = z.enum([
   'signal_lights',
   'map_observer',
   'autonomous_route_replay',
+  'autonomous_exploration',
 ]);
 export const RobotOperatingModeSchema = z.enum([
   'manual',
@@ -104,7 +105,7 @@ export const RobotMemorySummarySchema = z
       .strict(),
     learning: z
       .object({
-        mode: z.enum(['disabled', 'shadow']),
+        mode: z.enum(['disabled', 'shadow', 'online']),
         policyStatus: z.enum([
           'insufficient_data',
           'candidate',
@@ -211,6 +212,101 @@ export const RobotMissionPreviewSchema = z
     allowed: z.boolean(),
     blockedReason: z.string().trim().min(1).max(240).nullable(),
   })
+  .strict();
+export const RobotAutonomyGoalSchema = z.enum([
+  'calibrate_motion',
+  'consolidate_route',
+  'continue_current_goal',
+  'explore_frontier',
+  'improve_observation',
+  'navigate_to_target',
+  'revisit_object',
+  'verify_area',
+]);
+export const RobotAutonomyActionSchema = z.enum([
+  'look_center',
+  'look_down',
+  'look_left',
+  'look_right',
+  'look_up',
+  'reverse_escape',
+  'turn_left',
+  'turn_right',
+  'wait_observe',
+  'forward_10_left',
+  'forward_10_right',
+  'forward_10_straight',
+  'forward_12_left',
+  'forward_12_right',
+  'forward_12_straight',
+  'forward_15_left',
+  'forward_15_right',
+  'forward_15_straight',
+  'forward_18_left',
+  'forward_18_right',
+  'forward_18_straight',
+  'forward_20_left',
+  'forward_20_right',
+  'forward_20_straight',
+]);
+export const RobotAutonomyStatusSchema = z
+  .object({
+    status: z.enum([
+      'inactive',
+      'exploring',
+      'navigating',
+      'analyzing',
+      'recovering',
+      'fault',
+    ]),
+    runId: UuidSchema.nullable(),
+    mapSessionId: UuidSchema.nullable(),
+    startedAt: UtcInstantSchema.nullable(),
+    updatedAt: UtcInstantSchema,
+    goal: RobotAutonomyGoalSchema.nullable(),
+    action: RobotAutonomyActionSchema.nullable(),
+    availableActions: z.array(RobotAutonomyActionSchema).max(32),
+    confidence: z.number().min(0).max(1),
+    speedPercent: z.number().min(0).max(20),
+    reward: z.number().min(-100).max(100).nullable(),
+    tdError: z.number().min(-100).max(100).nullable(),
+    reason: z.string().trim().min(1).max(300).nullable(),
+    episodeCount: z.number().int().nonnegative(),
+  })
+  .strict();
+export const RobotAutonomyStartRequestSchema = z
+  .object({
+    powerPercent: z.number().int().min(10).max(35),
+    steeringTrimPercent: z.number().int().min(-10).max(10),
+    targetPointId: UuidSchema.optional(),
+  })
+  .strict();
+export const RobotAutonomyResponseSchema = z
+  .object({
+    accepted: z.literal(true),
+    autonomy: RobotAutonomyStatusSchema,
+    map: RobotMapSnapshotSchema,
+    state: z.lazy(() => RobotStateSchema),
+  })
+  .strict();
+export const RobotCognitionJournalEntrySchema = z
+  .object({
+    id: UuidSchema,
+    kind: z.enum([
+      'analysis_requested',
+      'goal_accepted',
+      'goal_rejected',
+      'learning',
+      'recovery',
+      'status',
+    ]),
+    message: z.string().trim().min(1).max(500),
+    goal: RobotAutonomyGoalSchema.nullable(),
+    createdAt: UtcInstantSchema,
+  })
+  .strict();
+export const RobotCognitionJournalSchema = z
+  .object({ entries: z.array(RobotCognitionJournalEntrySchema).max(100) })
   .strict();
 export const RobotTelemetrySchema = z
   .object({
@@ -1378,7 +1474,11 @@ export const AssistantQueueSummarySchema = z
   })
   .strict();
 
-export const InferenceWorkloadKindSchema = z.enum(['assistant', 'watch']);
+export const InferenceWorkloadKindSchema = z.enum([
+  'assistant',
+  'robot',
+  'watch',
+]);
 export const InferenceStatusSchema = z
   .object({
     active: z
@@ -1391,6 +1491,7 @@ export const InferenceStatusSchema = z
     queued: z
       .object({
         assistant: z.number().int().nonnegative(),
+        robot: z.number().int().nonnegative(),
         watch: z.number().int().nonnegative(),
       })
       .strict(),
@@ -1977,6 +2078,12 @@ export type RobotMapObject = z.infer<typeof RobotMapObjectSchema>;
 export type RobotMapPath = z.infer<typeof RobotMapPathSchema>;
 export type RobotMapSnapshot = z.infer<typeof RobotMapSnapshotSchema>;
 export type RobotMissionPreview = z.infer<typeof RobotMissionPreviewSchema>;
+export type RobotAutonomyGoal = z.infer<typeof RobotAutonomyGoalSchema>;
+export type RobotAutonomyAction = z.infer<typeof RobotAutonomyActionSchema>;
+export type RobotAutonomyStatus = z.infer<typeof RobotAutonomyStatusSchema>;
+export type RobotCognitionJournalEntry = z.infer<
+  typeof RobotCognitionJournalEntrySchema
+>;
 export type RobotTelemetry = z.infer<typeof RobotTelemetrySchema>;
 export type RobotState = z.infer<typeof RobotStateSchema>;
 export type RobotArmRequest = z.infer<typeof RobotArmRequestSchema>;

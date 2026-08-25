@@ -1,5 +1,8 @@
 import {
   RobotCommandResponseSchema,
+  RobotAutonomyResponseSchema,
+  RobotAutonomyStatusSchema,
+  RobotCognitionJournalSchema,
   RobotMemorySummarySchema,
   RobotMapSnapshotSchema,
   RobotMappingActionResponseSchema,
@@ -11,6 +14,8 @@ import {
   type RobotDriveRequest,
   type RobotOperatingMode,
   type RobotState,
+  type RobotAutonomyStatus,
+  type RobotCognitionJournalEntry,
   type RobotMemorySummary,
   type RobotMapSnapshot,
   type RobotMissionPreview,
@@ -106,6 +111,77 @@ export async function getRobotMap(): Promise<RobotMapSnapshot> {
   if (!response.ok)
     throw new RobotClientError('Carte Robot indisponible.', response.status);
   return RobotMapSnapshotSchema.parse(payload);
+}
+
+export async function getRobotAutonomy(): Promise<RobotAutonomyStatus> {
+  const response = await fetch('/api/robot/autonomy', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok)
+    throw new RobotClientError('Autonomie indisponible.', response.status);
+  return RobotAutonomyStatusSchema.parse(payload);
+}
+
+export async function getRobotCognitionJournal(): Promise<
+  RobotCognitionJournalEntry[]
+> {
+  const response = await fetch('/api/robot/cognition-journal', {
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok)
+    throw new RobotClientError('Journal Friday indisponible.', response.status);
+  return RobotCognitionJournalSchema.parse(payload).entries;
+}
+
+export async function startRobotAutonomy(
+  powerPercent: number,
+  steeringTrimPercent: number,
+  targetPointId?: string,
+) {
+  const response = await fetch('/api/robot/autonomy/start', {
+    method: 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      powerPercent,
+      steeringTrimPercent,
+      ...(targetPointId ? { targetPointId } : {}),
+    }),
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      typeof payload === 'object' &&
+      payload !== null &&
+      'message' in payload &&
+      typeof payload.message === 'string'
+        ? payload.message
+        : 'Impossible de démarrer le mode autonome.';
+    throw new RobotClientError(message, response.status);
+  }
+  return RobotAutonomyResponseSchema.parse(payload);
+}
+
+export async function stopRobotAutonomy() {
+  const response = await fetch('/api/robot/autonomy/stop', {
+    method: 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok)
+    throw new RobotClientError(
+      'Impossible d’arrêter le mode autonome.',
+      response.status,
+    );
+  return RobotAutonomyResponseSchema.parse(payload);
 }
 
 export async function setRobotMapping(

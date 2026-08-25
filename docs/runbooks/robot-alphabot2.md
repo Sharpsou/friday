@@ -1,10 +1,14 @@
 # Runbook — Robot Friday AlphaBot2-Pi
 
 Lire d’abord le
-[checkpoint canonique](../22-checkpoint-robot-alphabot2-2026-08-24.md). Le
+[checkpoint autonomie canonique](../24-checkpoint-autonomie-alphabot2-2026-08-25.md),
+puis le [checkpoint matériel](../22-checkpoint-robot-alphabot2-2026-08-24.md). Le
 [journal du 24 août](../21-journal-implementation-alphabot2-2026-08-24.md)
 conserve des états historiques qui ne doivent pas être pris pour la
 configuration actuelle.
+
+> Les passages plus bas qui décrivent `Autonome`, `Va là` ou l’apprentissage
+> en ligne comme verrouillés sont historiques et remplacés par le checkpoint 24. Ne pas les utiliser pour décider de l’état produit courant.
 
 ## État livré
 

@@ -245,7 +245,8 @@ class SimulatedHardware:
     capabilities = [
         "teleop", "camera_look", "camera_stream", "line_follow",
         "vision_objects", "vision_people", "vision_markers",
-        "signal_buzzer", "signal_lights",
+        "signal_buzzer", "signal_lights", "map_observer",
+        "autonomous_exploration",
     ]
 
     def __init__(self, camera_url: str | None = None) -> None:
@@ -337,7 +338,8 @@ class AlphaBot2Hardware:
 
     capabilities = [
         "teleop", "camera_look", "camera_stream", "line_follow",
-        "signal_buzzer", "signal_lights",
+        "signal_buzzer", "signal_lights", "map_observer",
+        "autonomous_exploration",
     ]
 
     def __init__(self, camera_url: str | None = None) -> None:

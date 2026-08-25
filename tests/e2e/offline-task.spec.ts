@@ -249,7 +249,7 @@ test('the private Watch digest is readable offline and keeps article feedback', 
           kind: 'watch',
           startedAt: '2026-08-12T09:02:00.000Z',
         },
-        queued: { assistant: 1, watch: 0 },
+        queued: { assistant: 1, robot: 0, watch: 0 },
       },
     }),
   );

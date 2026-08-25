@@ -23,11 +23,13 @@ export default function RobotMapView({
   isOwner,
   onClose,
   onError,
+  onNavigate,
 }: {
   snapshot: RobotMapSnapshot;
   isOwner: boolean;
   onClose: () => void;
   onError: (cause: unknown) => void;
+  onNavigate: (targetPointId: string) => Promise<void>;
 }) {
   const groupRef = useRef<SVGGElement>(null);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
@@ -129,9 +131,10 @@ export default function RobotMapView({
       const preview = await previewRobotMission(selectedPointId);
       setMissionMessage(
         preview.allowed
-          ? 'Trajet prêt à confirmer.'
+          ? 'Destination acceptée, départ en cours.'
           : (preview.blockedReason ?? 'Trajet verrouillé.'),
       );
+      if (preview.allowed) await onNavigate(selectedPointId);
     } catch (cause) {
       onError(cause);
     }

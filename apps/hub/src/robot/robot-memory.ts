@@ -144,9 +144,13 @@ export class RobotMemoryService {
         ),
         lastSeenAt: presence?.last_seen_at ?? null,
       },
-      mapping: { enabled: false, status: 'disabled' },
+      mapping: { enabled: true, status: 'observer' },
       learning: {
-        mode: learning ? 'shadow' : 'disabled',
+        mode: learning
+          ? learning.mode === 'shadow'
+            ? 'shadow'
+            : 'online'
+          : 'disabled',
         policyStatus: learningModeStatus(learning?.mode),
         episodeCount: learning?.episode_count ?? 0,
       },

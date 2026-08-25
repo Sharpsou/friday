@@ -213,7 +213,7 @@ describe('Friday hub', () => {
     expect(map.json()).toMatchObject({
       operatingMode: 'manual',
       mapping: { status: 'inactive', storageBytes: 0 },
-      autonomy: { available: false },
+      autonomy: { available: true },
     });
 
     const autonomous = await app.inject({
@@ -224,7 +224,7 @@ describe('Friday hub', () => {
     });
     expect(autonomous.statusCode, autonomous.body).toBe(409);
     expect(autonomous.json()).toMatchObject({
-      error: 'robot_autonomy_not_validated',
+      error: 'robot_autonomy_actuator_required',
     });
 
     const cameraStream = await app.inject({
@@ -342,6 +342,65 @@ describe('Friday hub', () => {
       },
     });
     expect(crossSite.statusCode).toBe(403);
+  });
+
+  it('runs autonomous Carto without browser wheel control and keeps head exploration available', async () => {
+    const app = await buildHub({
+      databasePath: ':memory:',
+      publicOrigin: 'https://friday.test',
+      robotController: new SimulatedRobotController(),
+    });
+    apps.push(app);
+    const cookie = await bootstrap(app);
+    await app.inject({
+      method: 'POST',
+      url: '/api/robot/actuators',
+      headers: { cookie },
+      payload: { wheelsEnabled: false, cameraServosEnabled: true },
+    });
+
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/robot/autonomy/start',
+      headers: { cookie },
+      payload: { powerPercent: 20, steeringTrimPercent: -2 },
+    });
+    expect(started.statusCode, started.body).toBe(200);
+    expect(started.json()).toMatchObject({
+      autonomy: { status: 'exploring' },
+      map: { mapping: { status: 'recording' } },
+      state: { operatingMode: 'autonomous' },
+    });
+
+    const status = await app.inject({
+      method: 'GET',
+      url: '/api/robot/autonomy',
+      headers: { cookie },
+    });
+    expect(status.statusCode, status.body).toBe(200);
+    expect(
+      status
+        .json()
+        .availableActions.some((action: string) => action.startsWith('look_')),
+    ).toBe(true);
+    expect(
+      status
+        .json()
+        .availableActions.some((action: string) =>
+          action.startsWith('forward_'),
+        ),
+    ).toBe(false);
+
+    const stopped = await app.inject({
+      method: 'POST',
+      url: '/api/robot/autonomy/stop',
+      headers: { cookie },
+    });
+    expect(stopped.statusCode, stopped.body).toBe(200);
+    expect(stopped.json()).toMatchObject({
+      autonomy: { status: 'inactive' },
+      state: { operatingMode: 'manual' },
+    });
   });
 
   it('transcribes an authenticated grocery photo without storing or classifying it', async () => {

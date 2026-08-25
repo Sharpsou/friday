@@ -4,9 +4,10 @@
 > construit une carte 2D légère à partir des commandes acceptées, du temps entre
 > impulsions et des objets confirmés, sans conserver les images. La carte
 > tactile affiche trajectoires, pose/incertitude et noms d’objets. Les boutons
-> `Manuel` et `Autonome` sont explicites, mais `Autonome` et l’exécution de
-> `Va là` restent verrouillés jusqu’aux recettes physiques. Voir le checkpoint
-> Robot.
+> `Manuel` et `Autonome` sont explicites. L’autonomie Carto Dyna-Q à 10–20 % et
+> `Va là` sur trajet suffisamment renseigné sont implantés ; ils ne reprennent
+> jamais après redémarrage du hub et leur recette physique reste à faire. Voir
+> le [checkpoint autonomie](24-checkpoint-autonomie-alphabot2-2026-08-25.md).
 
 > Mise à jour du 24 août 2026 : le prototype AlphaBot2 réel est téléopérable
 > depuis l’onglet Robot. Son état canonique, ses limites physiques et sa reprise
@@ -111,7 +112,7 @@ Chemin : `D:\prog\friday`
 - le candidat avec les destinations distinctes `Agenda` et `Courses` a été redémarré sur `https://192.168.1.14:8443` le 9 août 2026 ; le healthcheck réussit et `/api/auth/state` confirme un foyer initialisé (`bootstrapRequired: false`) sans ouvrir de session à un client non authentifié ;
 - l’accès extérieur retenu pour une reprise ultérieure est une route Tailscale privée limitée à `192.168.1.14/32`, sans ouverture de box ni changement d’origine ; sa mise en œuvre et l’enrôlement local uniquement sont documentés mais en pause ;
 - une sauvegarde pré-migration 12 intègre a été créée hors dépôt le 10 août 2026 ; la migration de retrait 13 conserve ce filet de restauration tout en supprimant les tables Web devenues inutiles ;
-- le prototype AlphaBot2 réel et l’onglet Robot compact sont intégrés ; YOLO26s ONNX détecte objets/personnes sur le PC dans un Worker isolé, sans identité ni droit d'action, et partage l'unique capture CSI avec la vidéo PWA ; les objets confirmés sont mémorisés localement et interrogeables, tandis que cartographie, politique apprise et autonomie restent verrouillées ; voir le [checkpoint Robot](22-checkpoint-robot-alphabot2-2026-08-24.md) puis le [checkpoint mémoire Friday](23-checkpoint-memoire-friday-apprentissage-shadow-2026-08-25.md) ;
+- le prototype AlphaBot2 réel et l’onglet Robot compact sont intégrés ; YOLO26s ONNX détecte objets/personnes sur le PC dans un Worker isolé et partage l’unique capture CSI. Les objets confirmés sont mémorisés et interrogeables. Carto autonome, Dyna-Q persistant, conseil Friday borné et navigation `Va là` sont implantés sans reprise après redémarrage ; voir le [checkpoint autonomie](24-checkpoint-autonomie-alphabot2-2026-08-25.md) ;
 - terminer/rouvrir et date/agenda, notamment hors ligne, ont été validés sur l’A17 par l’utilisateur le 8 août 2026 ; la recette physique responsable/filtre reste à confirmer ;
 - raccourcis Windows opérationnels pour lancer/recetter, lancer ou redémarrer sans navigateur, arrêter le hub et configurer l’accès A17 ;
 - `.analysis/` contient uniquement des artefacts temporaires issus de l’audit ;

@@ -55,10 +55,20 @@ describe('OllamaAssistantEngine', () => {
     );
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
 
+    const robot = engine.planRobotExploration(
+      {
+        currentGoal: 'explore_frontier',
+        mapNovelty: 'low',
+        objectCount: 2,
+        pointCount: 50,
+        uncertainty: 1.5,
+      },
+      new AbortController().signal,
+    );
     const chat = engine.answer([message], new AbortController().signal);
     expect(engine.getInferenceStatus()).toMatchObject({
       active: { kind: 'watch' },
-      queued: { assistant: 1, watch: 0 },
+      queued: { assistant: 1, robot: 1, watch: 0 },
     });
     resolvers[0]?.(
       new Response(
@@ -87,7 +97,7 @@ describe('OllamaAssistantEngine', () => {
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
     expect(engine.getInferenceStatus()).toMatchObject({
       active: { kind: 'assistant' },
-      queued: { assistant: 0, watch: 0 },
+      queued: { assistant: 0, robot: 1, watch: 0 },
     });
     resolvers[1]?.(
       new Response(JSON.stringify({ message: { content: 'Bonjour' } }), {
@@ -99,9 +109,31 @@ describe('OllamaAssistantEngine', () => {
       content: 'Bonjour',
       thinkingUsed: false,
     });
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+    expect(engine.getInferenceStatus()).toMatchObject({
+      active: { kind: 'robot' },
+      queued: { assistant: 0, robot: 0, watch: 0 },
+    });
+    resolvers[2]?.(
+      new Response(
+        JSON.stringify({
+          message: {
+            content: JSON.stringify({
+              goal: 'improve_observation',
+              reason: 'La zone a été beaucoup revisitée.',
+            }),
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    await expect(robot).resolves.toEqual({
+      goal: 'improve_observation',
+      reason: 'La zone a été beaucoup revisitée.',
+    });
     expect(engine.getInferenceStatus()).toEqual({
       active: null,
-      queued: { assistant: 0, watch: 0 },
+      queued: { assistant: 0, robot: 0, watch: 0 },
     });
   });
 
