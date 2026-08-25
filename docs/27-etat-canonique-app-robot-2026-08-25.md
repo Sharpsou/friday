@@ -4,7 +4,8 @@ Date : 25 août 2026
 
 Statut : **source de vérité d’implémentation pour la reprise**
 
-Référence auditée : commit applicatif `08cafa1`, base réelle SQLite 24, Dexie 7.
+Référence auditée : commit applicatif `08cafa1`, puis évolution `Récup` du
+25 août 2026 ; base réelle SQLite 25, Dexie 7.
 Ce document consolide l’état présent ; les checkpoints antérieurs conservent
 les raisons, incidents et mesures de leur étape.
 
@@ -22,7 +23,7 @@ Friday est un monorepo pnpm TypeScript :
 - calculs lourds Robot sur le PC, hors de la boucle matérielle du Pi.
 
 La commande d’autorité est `pnpm verify`. Le dernier candidat vérifié passe :
-21 tests Python, 22 contrats, 15 domaine, 145 hub, 91 PWA et 25 parcours
+21 tests Python, 22 contrats, 15 domaine, 150 hub, 91 PWA et 25 parcours
 Playwright mobiles, puis les builds de production.
 
 ## 2. Application réellement présente
@@ -56,11 +57,14 @@ mutation métier ou d’actionneur.
 - migration 23 : points de vue, images-clés sélectives et liens objets ;
 - migration 24 : signatures de lieux, contraintes de poses, segments,
   événements de relocalisation et calibration d’odométrie ;
+- migration 25 : démonstrations de récupération humaine, intention explicite
+  ou reprise manuelle implicite, verdict et score ;
 - Dexie 7 : schéma navigateur actuel.
 
 Les migrations appliquées ne sont jamais réécrites. La base active a été
-migrée en 24 avec intégrité `ok`. Le snapshot cohérent pré-migration 24 est
-`D:\FridayData\backups\friday-pre-relocalisation-visuelle-20260825-2035.sqlite`.
+migrée en 25 avec intégrité `ok`. Le snapshot cohérent pré-migration 25 est
+`D:\FridayData\backups\friday-pre-human-recovery-20260825-211114.sqlite`
+(migration 24, intégrité `ok`).
 
 ## 4. AlphaBot2 réellement présent
 
@@ -91,6 +95,10 @@ reprend ni mission ni exploration autonome.
   choisir naturellement des observations caméra parmi les presets autorisés.
 - `Va là` : cible sur un trajet suffisamment documenté ; suspendue lorsque la
   pose est perdue ou en relocalisation.
+- `Récup` : arrête l’autonomie et donne immédiatement le joystick à
+  l’utilisateur. `Rendre la main` réévalue la manœuvre avant de l’injecter
+  dans Dyna-Q. Un clic ordinaire sur `Manuel` ouvre aussi une observation,
+  mais comme signal faible.
 - Friday peut conseiller un objectif abstrait borné ; il ne choisit jamais une
   puissance, une durée, une direction ou un angle servo.
 
@@ -99,6 +107,15 @@ dépasser les limites matérielles. La récompense utilise nouveauté de carte,
 qualité des points de vue, objets confirmés, sortie de blocage et progrès vers
 une cible. La localisation et le graphe de poses restent l’autorité ; le signal
 de confiance n’est qu’une composante de récompense.
+
+Une reprise humaine n’est donc jamais assimilée mécaniquement à une action
+optimale. Le signal explicite `Récup` doit comporter un déplacement mesurable,
+préserver la localisation et ne pas créer de nouvel obstacle. Le signal faible
+`Manuel` doit en plus être confirmé par un obstacle dégagé ou un progrès de
+carte. Les commandes sont ramenées aux actions autonomes bornées ; une action
+hors du masque capteurs est conservée dans l’historique mais non apprise. La
+fenêtre dure au plus cinq minutes et cent commandes, compressées en douze
+étapes. Voir le [checkpoint 29](29-checkpoint-recuperation-humaine-2026-08-25.md).
 
 ## 6. Carte, mémoire et déplacement physique à la main
 

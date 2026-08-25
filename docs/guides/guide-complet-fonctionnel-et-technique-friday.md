@@ -4,7 +4,7 @@ Date de référence : 25 août 2026
 
 Public : lecteur à l’aise avec Python, R et SQL, mais débutant en TypeScript/React
 
-État décrit : candidat local vérifié avec migrations SQLite 1–24 et Dexie 1–7
+État décrit : candidat local vérifié avec migrations SQLite 1–25 et Dexie 1–7
 
 Pour une reprise rapide et les limites physiques, consulter d’abord
 [l’état canonique App + Robot](../27-etat-canonique-app-robot-2026-08-25.md).
@@ -575,7 +575,7 @@ PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL; -- sauf base :memory:
 ```
 
-Les migrations sont numérotées 1 à 24 et enregistrées dans `schema_migrations`. Une migration entière est transactionnelle. Les migrations 20 à 24 ajoutent progressivement mémoire Robot/mode Friday, Carto, autonomie, images-clés et relocalisation visuelle.
+Les migrations sont numérotées 1 à 25 et enregistrées dans `schema_migrations`. Une migration entière est transactionnelle. Les migrations 20 à 24 ajoutent progressivement mémoire Robot/mode Friday, Carto, autonomie, images-clés et relocalisation visuelle ; la 25 conserve les démonstrations humaines `Récup` et leur verdict d’apprentissage.
 
 Principales familles de tables :
 
@@ -888,7 +888,7 @@ Commencer par `packages/domain` si vous voulez lire du TypeScript sans React, HT
 | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | [`apps/hub/src/main.ts`](../../apps/hub/src/main.ts)                                                                         | variables d’environnement, TLS, chemin DB et écoute réseau                |
 | [`apps/hub/src/app.ts`](../../apps/hub/src/app.ts)                                                                           | construction Fastify, CSP, routes, validation, auth et fichiers statiques |
-| [`apps/hub/src/db/database.ts`](../../apps/hub/src/db/database.ts)                                                           | ouverture SQLite et migrations 1–24                                       |
+| [`apps/hub/src/db/database.ts`](../../apps/hub/src/db/database.ts)                                                           | ouverture SQLite et migrations 1–25                                       |
 | [`apps/hub/src/sync/sync-service.ts`](../../apps/hub/src/sync/sync-service.ts)                                               | idempotence, révisions, upserts, journal et pull                          |
 | [`apps/hub/src/auth/auth-service.ts`](../../apps/hub/src/auth/auth-service.ts)                                               | Better Auth, foyer fermé, appareils, approbation, révocation et audit     |
 | [`apps/hub/src/groceries/grocery-classification-service.ts`](../../apps/hub/src/groceries/grocery-classification-service.ts) | job persistant et application des rayons                                  |

@@ -3054,6 +3054,12 @@ textarea:focus-visible {
   color: #ffd28c;
 }
 
+.robot-mode-controls button.is-recovery,
+.robot-map-status.is-recovery {
+  border-color: rgb(255 190 80 / 75%);
+  color: #ffd28c;
+}
+
 .robot-mode-controls button:disabled {
   cursor: not-allowed;
   opacity: 0.58;

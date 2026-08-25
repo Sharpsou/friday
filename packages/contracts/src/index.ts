@@ -350,6 +350,14 @@ export const RobotAutonomyStatusSchema = z
     tdError: z.number().min(-100).max(100).nullable(),
     reason: z.string().trim().min(1).max(300).nullable(),
     episodeCount: z.number().int().nonnegative(),
+    humanRecovery: z
+      .object({
+        explicit: z.boolean(),
+        commandCount: z.number().int().nonnegative().max(100),
+        startedAt: UtcInstantSchema,
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 export const RobotAutonomyStartRequestSchema = z

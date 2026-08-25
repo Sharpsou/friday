@@ -37,7 +37,7 @@ import {
   stopRobot,
   stopRobotOnPageExit,
   startRobotAutonomy,
-  stopRobotAutonomy,
+  startRobotHumanRecovery,
 } from './sync/robot-client.js';
 import {
   CAMERA_NEUTRAL_TILT,
@@ -342,14 +342,31 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
         setMap(response.map);
         setAutonomy(response.autonomy);
       } else if (autonomy?.status !== 'inactive') {
-        const response = await stopRobotAutonomy();
-        updateState(response.state);
-        setMap(response.map);
-        setAutonomy(response.autonomy);
+        updateState(await setRobotMode('manual'));
+        const [nextMap, nextAutonomy] = await Promise.all([
+          getRobotMap(),
+          getRobotAutonomy(),
+        ]);
+        setMap(nextMap);
+        setAutonomy(nextAutonomy);
       } else {
         updateState(await setRobotMode('manual'));
         setMap(await getRobotMap());
       }
+    } catch (cause) {
+      showError(cause);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startRecovery = async () => {
+    setBusy(true);
+    try {
+      const response = await startRobotHumanRecovery();
+      updateState(response.state);
+      setMap(response.map);
+      setAutonomy(response.autonomy);
     } catch (cause) {
       showError(cause);
     } finally {
@@ -517,8 +534,19 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
           type="button"
           onClick={() => void changeMode('autonomous')}
         >
-          Autonome
+          {autonomy?.humanRecovery ? 'Rendre la main' : 'Autonome'}
         </button>
+        {state?.operatingMode === 'autonomous' &&
+        autonomy?.status !== 'inactive' ? (
+          <button
+            className="is-recovery"
+            disabled={!isOwner || busy}
+            type="button"
+            onClick={() => void startRecovery()}
+          >
+            Récup
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => setMapVisible(true)}
@@ -579,6 +607,12 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
           {autonomy.action ?? 'attente'} · confiance{' '}
           {Math.round(autonomy.confidence * 100).toString()} % ·{' '}
           {autonomy.episodeCount.toString()} expériences
+        </small>
+      ) : null}
+      {autonomy?.humanRecovery ? (
+        <small className="robot-map-status is-recovery" role="status">
+          Récup · {autonomy.humanRecovery.commandCount.toString()} commande(s)
+          manuelle(s) · rends la main quand le robot est dégagé
         </small>
       ) : null}
       {cognition[0] ? (

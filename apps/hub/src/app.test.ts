@@ -402,6 +402,30 @@ describe('Friday hub', () => {
         ),
     ).toBe(false);
 
+    const recovery = await app.inject({
+      method: 'POST',
+      url: '/api/robot/autonomy/recovery',
+      headers: { cookie },
+      payload: {},
+    });
+    expect(recovery.statusCode, recovery.body).toBe(200);
+    expect(recovery.json()).toMatchObject({
+      autonomy: {
+        status: 'inactive',
+        humanRecovery: { explicit: true, commandCount: 0 },
+      },
+      state: { operatingMode: 'manual' },
+    });
+
+    const resumed = await app.inject({
+      method: 'POST',
+      url: '/api/robot/autonomy/start',
+      headers: { cookie },
+      payload: { powerPercent: 20, steeringTrimPercent: -2 },
+    });
+    expect(resumed.statusCode, resumed.body).toBe(200);
+    expect(resumed.json().autonomy.humanRecovery).toBeNull();
+
     const stopped = await app.inject({
       method: 'POST',
       url: '/api/robot/autonomy/stop',

@@ -13,6 +13,7 @@ import {
 
 import type { RobotController } from './robot-controller.js';
 import {
+  ROBOT_SPEEDS,
   RobotDynaAgent,
   availableRobotActions,
   potentialShapingReward,
@@ -28,6 +29,9 @@ import { RobotMemoryService } from './robot-memory.js';
 const LOOP_DELAY_MS = 260;
 const DRIVE_DURATION_MS = 140;
 const POLICY_VERSION = 2;
+const HUMAN_RECOVERY_WINDOW_MS = 5 * 60_000;
+const MAX_HUMAN_RECOVERY_COMMANDS = 100;
+const MAX_HUMAN_RECOVERY_STEPS = 12;
 
 interface RunRow {
   goal: string | null;
@@ -45,6 +49,28 @@ interface RunRow {
 interface PolicyRow {
   id: string;
   parameters_json: string;
+}
+
+interface HumanRecoveryStep {
+  action: RobotLearningAction;
+  durationMs: number;
+  nextObservation: RobotLearningObservation;
+  observation: RobotLearningObservation;
+}
+
+interface HumanRecoverySession {
+  commandCount: number;
+  explicit: boolean;
+  id: string;
+  lastObservation: RobotLearningObservation;
+  sourceAction: RobotLearningAction | null;
+  sourceContext: ReturnType<RobotMappingService['autonomyContext']>;
+  sourceObservation: RobotLearningObservation;
+  sourcePose: { heading: number; x: number; y: number };
+  sourceRunId: string;
+  startedAt: string;
+  steps: HumanRecoveryStep[];
+  totalDurationMs: number;
 }
 
 export interface RobotExplorationAdvisor {
@@ -80,7 +106,9 @@ export class RobotAutonomyService {
   private lastTdError: number | null = null;
   private policyId: string | null = null;
   private run: RunRow | null = null;
+  private humanRecovery: HumanRecoverySession | null = null;
   private timer: NodeJS.Timeout | null = null;
+  private stepPromise: Promise<void> | null = null;
   private target: { id: string; x: number; y: number } | null = null;
   private unavailableCount = 0;
 
@@ -104,6 +132,13 @@ export class RobotAutonomyService {
             AND status IN ('exploring', 'navigating', 'analyzing', 'recovering')`,
       )
       .run(now, now, this.householdId);
+    this.database
+      .prepare(
+        `UPDATE robot_human_recovery_demonstrations
+            SET status = 'rejected', reason = 'hub_restart', ended_at = ?
+          WHERE household_id = ? AND status = 'collecting'`,
+      )
+      .run(now, this.householdId);
   }
 
   status(): RobotAutonomyStatus {
@@ -138,6 +173,13 @@ export class RobotAutonomyService {
           ? 'Liaison robot momentanément indisponible, nouvelle tentative en cours.'
           : null,
       episodeCount: this.run?.step_count ?? 0,
+      humanRecovery: this.humanRecovery
+        ? {
+            explicit: this.humanRecovery.explicit,
+            commandCount: this.humanRecovery.commandCount,
+            startedAt: this.humanRecovery.startedAt,
+          }
+        : null,
     });
   }
 
@@ -262,7 +304,8 @@ export class RobotAutonomyService {
       );
     this.active = true;
     this.target = target;
-    this.lastObservation = this.observe(readyState);
+    this.applyHumanRecovery(state);
+    this.lastObservation = this.observe(await this.robot.state());
     this.writeJournal(
       'status',
       `Exploration autonome démarrée à ${Math.min(20, input.powerPercent).toString()} % ; Carto enregistre automatiquement.`,
@@ -273,9 +316,11 @@ export class RobotAutonomyService {
   }
 
   async stop(reason = 'explicit_stop'): Promise<RobotState> {
+    if (reason === 'manual_mode') await this.prepareHumanRecovery(false);
     this.active = false;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.stepPromise) await this.stepPromise.catch(() => undefined);
     let state = await this.robot.stop();
     if (state.operatingMode !== 'manual')
       state = await this.robot.setMode('manual');
@@ -301,6 +346,272 @@ export class RobotAutonomyService {
     return state;
   }
 
+  async beginHumanRecovery(): Promise<RobotState> {
+    if (!this.active || !this.run)
+      throw new RobotAutonomyError(
+        'robot_human_recovery_inactive',
+        'Récup est disponible pendant une exploration autonome.',
+      );
+    await this.prepareHumanRecovery(true);
+    return this.stop('human_recovery');
+  }
+
+  observeManualDrive(command: RobotDriveRequest, state: RobotState): void {
+    const recovery = this.humanRecovery;
+    if (!recovery) return;
+    if (
+      Date.now() - Date.parse(recovery.startedAt) > HUMAN_RECOVERY_WINDOW_MS ||
+      recovery.commandCount >= MAX_HUMAN_RECOVERY_COMMANDS
+    ) {
+      this.rejectHumanRecovery('expired');
+      return;
+    }
+    const action = manualDriveAction(command);
+    const nextObservation = {
+      ...this.observe(state),
+      lastAction: action,
+    };
+    const previous = recovery.steps.at(-1);
+    if (previous?.action === action) {
+      previous.durationMs += command.maxDurationMs;
+      previous.nextObservation = nextObservation;
+    } else if (recovery.steps.length < MAX_HUMAN_RECOVERY_STEPS) {
+      recovery.steps.push({
+        action,
+        durationMs: command.maxDurationMs,
+        observation: recovery.lastObservation,
+        nextObservation,
+      });
+    }
+    recovery.lastObservation = nextObservation;
+    recovery.commandCount += 1;
+    recovery.totalDurationMs += command.maxDurationMs;
+    this.database
+      .prepare(
+        `UPDATE robot_human_recovery_demonstrations
+            SET commands_json = ?, command_count = ?, total_duration_ms = ?
+          WHERE id = ? AND status = 'collecting'`,
+      )
+      .run(
+        JSON.stringify(
+          recovery.steps.map((step) => ({
+            action: step.action,
+            durationMs: step.durationMs,
+          })),
+        ),
+        recovery.commandCount,
+        recovery.totalDurationMs,
+        recovery.id,
+      );
+  }
+
+  private async prepareHumanRecovery(explicit: boolean): Promise<void> {
+    if (!this.run || !this.lastObservation || this.humanRecovery) return;
+    const sourceObservation = this.observe(await this.robot.state());
+    const pose = this.mapping.snapshot().localization.pose;
+    const recovery: HumanRecoverySession = {
+      id: randomUUID(),
+      explicit,
+      sourceRunId: this.run.id,
+      sourceAction: this.lastAction,
+      sourceObservation: structuredClone(sourceObservation),
+      sourceContext: this.mapping.autonomyContext(),
+      sourcePose: { x: pose.x, y: pose.y, heading: pose.heading },
+      lastObservation: structuredClone(sourceObservation),
+      commandCount: 0,
+      totalDurationMs: 0,
+      steps: [],
+      startedAt: new Date().toISOString(),
+    };
+    this.humanRecovery = recovery;
+    this.database
+      .prepare(
+        `INSERT INTO robot_human_recovery_demonstrations(
+           id, household_id, source_run_id, trigger_kind, status,
+           source_state, source_action, start_x, start_y, start_heading,
+           started_at
+         ) VALUES (?, ?, ?, ?, 'collecting', ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        recovery.id,
+        this.householdId,
+        recovery.sourceRunId,
+        explicit ? 'explicit_recovery' : 'manual_takeover',
+        robotStateKey(recovery.sourceObservation),
+        recovery.sourceAction,
+        recovery.sourcePose.x,
+        recovery.sourcePose.y,
+        recovery.sourcePose.heading,
+        recovery.startedAt,
+      );
+  }
+
+  private applyHumanRecovery(endState: RobotState): void {
+    const recovery = this.humanRecovery;
+    if (!recovery || !this.agent || !this.run) return;
+    if (
+      Date.now() - Date.parse(recovery.startedAt) >
+      HUMAN_RECOVERY_WINDOW_MS
+    ) {
+      this.rejectHumanRecovery('expired');
+      return;
+    }
+    const pose = this.mapping.snapshot().localization.pose;
+    const context = this.mapping.autonomyContext();
+    const endObservation = this.observe(endState);
+    const distance = Math.hypot(
+      pose.x - recovery.sourcePose.x,
+      pose.y - recovery.sourcePose.y,
+    );
+    const headingChange = Math.abs(
+      normalizeAngle(pose.heading - recovery.sourcePose.heading),
+    );
+    const obstacleCleared =
+      (recovery.sourceObservation.irLeftClear === false ||
+        recovery.sourceObservation.irRightClear === false) &&
+      endObservation.irLeftClear !== false &&
+      endObservation.irRightClear !== false;
+    const newlyBlocked =
+      (recovery.sourceObservation.irLeftClear !== false &&
+        endObservation.irLeftClear === false) ||
+      (recovery.sourceObservation.irRightClear !== false &&
+        endObservation.irRightClear === false);
+    const mapProgress =
+      context.potential > recovery.sourceContext.potential + 0.02 ||
+      context.objectCount > recovery.sourceContext.objectCount ||
+      context.viewpointCount > recovery.sourceContext.viewpointCount;
+    const localizationUsable =
+      context.localizationStatus !== 'lost' &&
+      context.localizationStatus !== 'relocalizing' &&
+      context.localizationConfidence >=
+        Math.max(0.1, recovery.sourceContext.localizationConfidence - 0.25);
+    const meaningfulMotion =
+      recovery.commandCount > 0 &&
+      recovery.totalDurationMs >= 200 &&
+      (distance >= 0.025 || headingChange >= 0.12);
+    const safeSteps = recovery.steps.filter((step) =>
+      availableRobotActions(step.observation).includes(step.action),
+    );
+    const success =
+      meaningfulMotion &&
+      localizationUsable &&
+      !newlyBlocked &&
+      safeSteps.length > 0 &&
+      (recovery.explicit || obstacleCleared || mapProgress);
+    const score = Math.max(
+      0,
+      Math.min(
+        1,
+        (recovery.explicit ? 0.2 : 0) +
+          (obstacleCleared ? 0.35 : 0) +
+          (mapProgress ? 0.2 : 0) +
+          Math.min(0.2, distance * 2) +
+          Math.min(0.15, headingChange / Math.PI),
+      ),
+    );
+    if (!success) {
+      const reason =
+        recovery.commandCount === 0
+          ? 'no_manual_motion'
+          : !meaningfulMotion
+            ? 'motion_not_measurable'
+            : newlyBlocked
+              ? 'new_obstacle_detected'
+              : !localizationUsable
+                ? 'localization_degraded'
+                : safeSteps.length === 0
+                  ? 'actions_masked_by_safety'
+                  : 'no_objective_recovery_signal';
+      this.finishHumanRecovery('rejected', pose, score, reason);
+      this.writeJournal(
+        'learning',
+        `Récupération humaine observée mais non apprise (${humanRecoveryReason(reason)}).`,
+        this.run.goal,
+      );
+      return;
+    }
+
+    let lastTdError = 0;
+    for (const [index, step] of safeSteps.entries()) {
+      const final = index === safeSteps.length - 1;
+      lastTdError = this.agent.learn({
+        state: robotStateKey(step.observation),
+        action: step.action,
+        reward: final ? 0.25 + score * (recovery.explicit ? 0.55 : 0.35) : 0.03,
+        nextState: robotStateKey(step.nextObservation),
+        nextActions: availableRobotActions(step.nextObservation),
+      });
+    }
+    if (
+      recovery.explicit &&
+      recovery.sourceAction &&
+      isMotorAction(recovery.sourceAction) &&
+      recovery.sourceAction !== safeSteps[0]?.action &&
+      availableRobotActions(recovery.sourceObservation).includes(
+        recovery.sourceAction,
+      )
+    )
+      this.agent.learn({
+        state: robotStateKey(recovery.sourceObservation),
+        action: recovery.sourceAction,
+        reward: -0.15,
+        nextState: robotStateKey(recovery.sourceObservation),
+        nextActions: availableRobotActions(recovery.sourceObservation),
+        terminal: true,
+      });
+    this.lastReward = 0.25 + score * (recovery.explicit ? 0.55 : 0.35);
+    this.lastTdError = lastTdError;
+    this.finishHumanRecovery(
+      'applied',
+      pose,
+      score,
+      obstacleCleared
+        ? 'obstacle_cleared'
+        : mapProgress
+          ? 'map_progress'
+          : 'explicit_repositioning',
+    );
+    this.persistPolicy();
+    this.writeJournal(
+      'learning',
+      `Démonstration Récup apprise : ${safeSteps.map((step) => learningActionLabel(step.action)).join(' → ')} (confiance ${Math.round(score * 100).toString()} %).`,
+      this.run.goal,
+    );
+  }
+
+  private finishHumanRecovery(
+    status: 'applied' | 'rejected',
+    pose: { heading: number; x: number; y: number },
+    score: number,
+    reason: string,
+  ): void {
+    const recovery = this.humanRecovery;
+    if (!recovery) return;
+    this.database
+      .prepare(
+        `UPDATE robot_human_recovery_demonstrations
+            SET status = ?, end_x = ?, end_y = ?, end_heading = ?,
+                score = ?, reason = ?, ended_at = ?
+          WHERE id = ?`,
+      )
+      .run(
+        status,
+        pose.x,
+        pose.y,
+        pose.heading,
+        score,
+        reason,
+        new Date().toISOString(),
+        recovery.id,
+      );
+    this.humanRecovery = null;
+  }
+
+  private rejectHumanRecovery(reason: string): void {
+    const pose = this.mapping.snapshot().localization.pose;
+    this.finishHumanRecovery('rejected', pose, 0, reason);
+  }
+
   async close(): Promise<void> {
     if (!this.active) return;
     await this.stop('hub_shutdown').catch(() => undefined);
@@ -310,7 +621,14 @@ export class RobotAutonomyService {
 
   private schedule(delay: number): void {
     if (!this.active) return;
-    this.timer = setTimeout(() => void this.step(), delay);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      const promise = this.step();
+      this.stepPromise = promise;
+      void promise.finally(() => {
+        if (this.stepPromise === promise) this.stepPromise = null;
+      });
+    }, delay);
     this.timer.unref();
   }
 
@@ -829,6 +1147,59 @@ function actionSpeed(action: RobotLearningAction | null): number {
   if (action === 'turn_left' || action === 'turn_right') return 12;
   if (action === 'reverse_escape') return 10;
   return 0;
+}
+
+export function manualDriveAction(
+  command: Pick<RobotDriveRequest, 'direction' | 'intensity' | 'steering'>,
+): RobotLearningAction {
+  if (command.direction === 'left') return 'turn_left';
+  if (command.direction === 'right') return 'turn_right';
+  if (command.direction === 'backward') return 'reverse_escape';
+  const speed = ROBOT_SPEEDS.reduce((nearest, candidate) =>
+    Math.abs(candidate - Math.min(0.2, command.intensity)) <
+    Math.abs(nearest - Math.min(0.2, command.intensity))
+      ? candidate
+      : nearest,
+  );
+  const heading =
+    command.steering < -0.08
+      ? 'left'
+      : command.steering > 0.08
+        ? 'right'
+        : 'straight';
+  return `forward_${Math.round(speed * 100) as 10 | 12 | 15 | 18 | 20}_${heading}`;
+}
+
+function isMotorAction(action: RobotLearningAction): boolean {
+  return (
+    action.startsWith('forward_') ||
+    action === 'turn_left' ||
+    action === 'turn_right' ||
+    action === 'reverse_escape'
+  );
+}
+
+function learningActionLabel(action: RobotLearningAction): string {
+  if (action === 'turn_left') return 'tourner à gauche';
+  if (action === 'turn_right') return 'tourner à droite';
+  if (action === 'reverse_escape') return 'reculer';
+  if (action.startsWith('forward_')) {
+    const [, speed, heading] = action.split('_');
+    return `avancer ${heading === 'left' ? 'à gauche' : heading === 'right' ? 'à droite' : 'droit'} à ${speed ?? '10'} %`;
+  }
+  return action;
+}
+
+function humanRecoveryReason(reason: string): string {
+  const labels: Record<string, string> = {
+    actions_masked_by_safety: 'mouvement incompatible avec les capteurs',
+    localization_degraded: 'localisation dégradée',
+    motion_not_measurable: 'déplacement insuffisant',
+    new_obstacle_detected: 'nouvel obstacle détecté',
+    no_manual_motion: 'aucun déplacement manuel',
+    no_objective_recovery_signal: 'progrès non confirmé',
+  };
+  return labels[reason] ?? reason;
 }
 
 function goalReward(

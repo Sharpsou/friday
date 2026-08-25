@@ -40,7 +40,7 @@ La PWA possède sept destinations : Aujourd’hui, Agenda, Courses, Budget, Chat
 Veille et Robot. Les données Maison sont offline-first, chiffrées dans Dexie et
 synchronisées vers SQLite par outbox idempotente.
 
-- SQLite est en migration 24 ; Dexie en version 7.
+- SQLite est en migration 25 ; Dexie en version 7.
 - Authentification fermée et partage à deux implantés.
 - Agenda, Courses/En course/import photo, Budget, Chat et Veille sont présents.
 - Le Chat propose Local, Friday, Web léger et Web approfondi. Le mode Friday
@@ -59,6 +59,10 @@ sur le PC dans un Worker isolé.
 - modes Manuel et Autonome explicites ; Carto automatique en autonomie ;
 - exploration Dyna-Q persistante à 10–20 %, bornée par les capteurs et le
   watchdog Pi ; aucune reprise après redémarrage ;
+- bouton `Récup` en autonomie : passage manuel explicite, observation bornée
+  de la manœuvre puis apprentissage seulement après `Rendre la main` et
+  validation du résultat ; un simple passage par `Manuel` reste un signal
+  faible soumis à une preuve de progrès ;
 - caméra limitée aux presets issus du manuel, avec politique de points de vue
   apprenable ; Carto continue pendant un mouvement de tête ;
 - carte tactile avec trajectoires, incertitude, objets, zoom/déplacement et
@@ -82,15 +86,16 @@ preuve physique.
 Le candidat applicatif `08cafa1` a été vérifié et déployé le 25 août 2026 :
 
 - 21 tests Python ;
-- 22 tests contrats, 15 domaine, 145 hub et 91 PWA ;
+- 22 tests contrats, 15 domaine, 150 hub et 91 PWA ;
 - 25 scénarios Playwright mobiles ;
 - builds PWA/hub réussis ;
 - worker OpenCV 4.14.0 testé ;
 - health check `/api/health` et intégrité SQLite `ok` ;
-- base active migrée en 24 après sauvegarde cohérente de la migration 23.
+- base active migrée en 25 après sauvegarde cohérente de la migration 24.
 
-La sauvegarde est
-`D:\FridayData\backups\friday-pre-relocalisation-visuelle-20260825-2035.sqlite`.
+La sauvegarde pré-migration 25 est
+`D:\FridayData\backups\friday-pre-human-recovery-20260825-211114.sqlite`
+(migration 24, intégrité `ok`).
 
 ## 6. Démarrage d’une tâche
 

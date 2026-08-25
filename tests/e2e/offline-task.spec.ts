@@ -632,8 +632,10 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
       'camera_stream',
       'vision_objects',
       'vision_people',
+      'map_observer',
+      'autonomous_exploration',
     ],
-    operatingMode: 'manual',
+    operatingMode: 'manual' as 'autonomous' | 'manual',
     controlExpiresAt: null as string | null,
     cameraPose: { pan: 0, tilt: 0 },
     telemetry: {
@@ -671,7 +673,7 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   };
   const robotMap = () => ({
     version: 3,
-    operatingMode: 'manual' as const,
+    operatingMode: robotState.operatingMode,
     mapping: {
       status: mappingStatus,
       sessionId:
@@ -738,9 +740,43 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
       signatureQuotaBytes: 12_582_912,
     },
     autonomy: {
-      available: false,
-      blockedReason: 'Validation physique requise.',
+      available: true,
+      blockedReason: null,
     },
+  });
+  let humanRecovery: {
+    explicit: boolean;
+    commandCount: number;
+    startedAt: string;
+  } | null = null;
+  const robotAutonomy = () => ({
+    status:
+      robotState.operatingMode === 'autonomous'
+        ? ('exploring' as const)
+        : ('inactive' as const),
+    runId:
+      robotState.operatingMode === 'autonomous'
+        ? 'a89af9e6-4f63-4c4e-9bc5-585fce269f85'
+        : null,
+    mapSessionId: null,
+    startedAt:
+      robotState.operatingMode === 'autonomous'
+        ? '2026-08-25T00:00:00.000Z'
+        : null,
+    updatedAt: '2026-08-25T00:00:00.000Z',
+    goal:
+      robotState.operatingMode === 'autonomous'
+        ? ('explore_frontier' as const)
+        : null,
+    action: null,
+    availableActions: [],
+    confidence: 0,
+    speedPercent: 0,
+    reward: null,
+    tdError: null,
+    reason: null,
+    episodeCount: 0,
+    humanRecovery,
   });
   await page.route('**/api/robot/state', async (route) =>
     route.fulfill({ json: robotState }),
@@ -748,6 +784,38 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   await page.route('**/api/robot/map', async (route) =>
     route.fulfill({ json: robotMap() }),
   );
+  await page.route('**/api/robot/autonomy', async (route) =>
+    route.fulfill({ json: robotAutonomy() }),
+  );
+  await page.route('**/api/robot/autonomy/start', async (route) => {
+    robotState = { ...robotState, operatingMode: 'autonomous' };
+    humanRecovery = null;
+    mappingStatus = 'recording';
+    await route.fulfill({
+      json: {
+        accepted: true,
+        state: robotState,
+        map: robotMap(),
+        autonomy: robotAutonomy(),
+      },
+    });
+  });
+  await page.route('**/api/robot/autonomy/recovery', async (route) => {
+    robotState = { ...robotState, operatingMode: 'manual', moving: false };
+    humanRecovery = {
+      explicit: true,
+      commandCount: 0,
+      startedAt: '2026-08-25T00:00:00.000Z',
+    };
+    await route.fulfill({
+      json: {
+        accepted: true,
+        state: robotState,
+        map: robotMap(),
+        autonomy: robotAutonomy(),
+      },
+    });
+  });
   await page.route('**/api/robot/mapping/*', async (route) => {
     const action = route.request().url().split('/').at(-1);
     mappingStatus =
@@ -847,7 +915,7 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   ).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Manuel' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Carto' })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Autonome' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Autonome' })).toBeEnabled();
   await page.getByRole('button', { name: 'Carte' }).click();
   await expect(
     page.getByRole('img', { name: 'Vue du dessus de la cartographie' }),
@@ -948,6 +1016,13 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   expect(
     await camera.evaluate((image) => getComputedStyle(image).opacity),
   ).toBe('1');
+  await page.getByRole('button', { name: 'Autonome' }).click();
+  await expect(page.getByRole('button', { name: 'Récup' })).toBeVisible();
+  await page.getByRole('button', { name: 'Récup' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Rendre la main' }),
+  ).toBeVisible();
+  await expect(page.getByText(/Récup · 0 commande/u)).toBeVisible();
   if (process.env.FRIDAY_VISUAL_CAPTURE === '1') {
     await page.screenshot({
       path: 'output/playwright/robot-compact-360.png',

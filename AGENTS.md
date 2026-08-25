@@ -54,17 +54,17 @@ historiques 01–08 ou les anciens checkpoints Robot pour contredire le document
 ## État technique courant
 
 - Navigation : Aujourd’hui, Agenda, Courses, Budget, Chat, Veille, Robot.
-- SQLite 24 ; Dexie 7.
-- `pnpm verify` de référence : 21 tests Python, 22 contrats, 15 domaine, 145
+- SQLite 25 ; Dexie 7.
+- `pnpm verify` de référence : 21 tests Python, 22 contrats, 15 domaine, 150
   hub, 91 PWA, 25 Playwright et builds production.
 - Candidat déployé sur l’origine A17 ; health check et intégrité SQLite `ok`.
-- Sauvegarde pré-migration 24 :
-  `D:\FridayData\backups\friday-pre-relocalisation-visuelle-20260825-2035.sqlite`.
+- Sauvegarde pré-migration 25 :
+  `D:\FridayData\backups\friday-pre-human-recovery-20260825-211114.sqlite`.
 
 Le prototype AlphaBot2 réel est téléopérable et expose Manuel, Autonome, Carto,
 carte tactile, Dyna-Q à 10–20 %, politique caméra bornée, mémoire d’objets,
-images-clés sélectives, signatures ORB, fermeture de boucle, `Va là` et
-relocalisation après déplacement physique à la main. Aucun run ne reprend
+images-clés sélectives, signatures ORB, fermeture de boucle, `Va là`, `Récup`
+avec apprentissage humain validé et relocalisation après déplacement physique à la main. Aucun run ne reprend
 après redémarrage. La recette physique autonomie/relocalisation reste ouverte ;
 le servo pan tremble et l’AlphaBot2 n’a ni encodeur, IMU, LiDAR ni pince.
 

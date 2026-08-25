@@ -41,7 +41,7 @@ describe('hub database migrations', () => {
     database.close();
 
     expect(retiredTables).toEqual([]);
-    expect(latest.version).toBe(24);
+    expect(latest.version).toBe(25);
   });
 
   it('adds optional time and duration columns to a version 1 database', () => {
@@ -131,6 +131,7 @@ describe('hub database migrations', () => {
       { version: 22 },
       { version: 23 },
       { version: 24 },
+      { version: 25 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -160,7 +161,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 24 });
+    expect(migrations.at(-1)).toEqual({ version: 25 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -196,7 +197,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 24 });
+    expect(migrations.at(-1)).toEqual({ version: 25 });
   });
 
   it('adds the five budget stores and the idempotent seed marker', () => {
@@ -582,5 +583,27 @@ describe('hub database migrations', () => {
       segment_id: 'e10ccf3c-b3af-4ed1-a9af-2e1e76b83318',
     });
     expect(tables).toHaveLength(4);
+  });
+
+  it('adds an auditable ledger for bounded human recovery demonstrations', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 24);
+
+    migrateDatabase(database);
+
+    const table = database
+      .prepare(
+        `SELECT name FROM sqlite_master
+          WHERE type = 'table'
+            AND name = 'robot_human_recovery_demonstrations'`,
+      )
+      .get();
+    const migration = database
+      .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+      .get();
+    database.close();
+
+    expect(table).toEqual({ name: 'robot_human_recovery_demonstrations' });
+    expect(migration).toEqual({ version: 25 });
   });
 });

@@ -184,6 +184,28 @@ export async function stopRobotAutonomy() {
   return RobotAutonomyResponseSchema.parse(payload);
 }
 
+export async function startRobotHumanRecovery() {
+  const response = await fetch('/api/robot/autonomy/recovery', {
+    method: 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      typeof payload === 'object' &&
+      payload !== null &&
+      'message' in payload &&
+      typeof payload.message === 'string'
+        ? payload.message
+        : 'Impossible de passer en récupération manuelle.';
+    throw new RobotClientError(message, response.status);
+  }
+  return RobotAutonomyResponseSchema.parse(payload);
+}
+
 export async function setRobotMapping(
   action: 'pause' | 'relocalize' | 'resume' | 'start' | 'stop',
 ): Promise<RobotMapSnapshot> {

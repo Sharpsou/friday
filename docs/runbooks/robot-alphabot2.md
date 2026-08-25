@@ -234,6 +234,24 @@ retour au preset central. `Carte` ouvre la vue tactile et une destination
 arrêtent toujours le mouvement ; la boucle autonome continue en arrière-plan
 si la PWA se ferme, mais pas après un redémarrage du hub.
 
+Pendant une exploration, `Récup` signifie explicitement « la politique est
+coincée ». Le hub arrête la boucle, passe en manuel et commence une
+démonstration. Dégager le robot avec le joystick, puis appuyer sur `Rendre la
+main`. La séquence n’est apprise qu’après vérification du résultat : mouvement
+mesurable, localisation non dégradée, aucun nouvel obstacle et commande
+compatible avec le masque capteurs. Un passage direct par `Manuel` observe
+aussi la manœuvre, mais comme signal faible : il exige en plus qu’un obstacle
+soit dégagé ou que Carto mesure un progrès. Cela évite d’apprendre comme
+« meilleure solution » un passage manuel motivé par autre chose qu’un blocage.
+
+La collecte expire après cinq minutes ou cent commandes et compresse au plus
+douze étapes successives. Un retour immédiat sans mouvement, une localisation
+dégradée ou un recul que les capteurs avant ne rendent pas admissible est
+journalisé mais non injecté dans Dyna-Q. `ARRÊT` et le switch `Roues` restent
+des commandes de sécurité, jamais des démonstrations. Le verdict apparaît dans
+le journal Friday ; le détail persistant se trouve dans
+`robot_human_recovery_demonstrations` (migration 25).
+
 Après un redémarrage du hub, toute session Carto qui enregistrait passe en
 pause. Ne jamais interpréter la pose affichée comme une mesure métrique : sans
 encodeurs ni IMU, elle est déduite de la direction, de la puissance et du temps

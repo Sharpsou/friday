@@ -490,6 +490,25 @@ export async function buildHub(options: BuildHubOptions) {
     }
   });
 
+  app.post('/api/robot/autonomy/recovery', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      const state = await robotAutonomy.beginHumanRecovery();
+      return RobotAutonomyResponseSchema.parse({
+        accepted: true,
+        state,
+        map: robotMapping.snapshot(),
+        autonomy: robotAutonomy.status(),
+      });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
   const mutateMapping = async (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -629,6 +648,7 @@ export async function buildHub(options: BuildHubOptions) {
         expiresAt: new Date(forwardedAt + 1_800).toISOString(),
       });
       robotMapping.recordDrive(body.data, state);
+      robotAutonomy.observeManualDrive(body.data, state);
       return RobotCommandResponseSchema.parse({
         accepted: true,
         state,

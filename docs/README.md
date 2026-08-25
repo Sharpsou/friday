@@ -20,19 +20,19 @@ document 27 puis le code testé prévalent.
 
 ## Trouver le bon document
 
-| Besoin                           | Document                                                                                  |
-| -------------------------------- | ----------------------------------------------------------------------------------------- |
-| état global App + Robot          | [27 — état canonique](27-etat-canonique-app-robot-2026-08-25.md)                          |
-| développer ou vérifier           | [runbook développement](runbooks/development.md)                                          |
-| exploiter AlphaBot2              | [runbook Robot](runbooks/robot-alphabot2.md)                                              |
-| exploiter le Chat                | [runbook Assistant](runbooks/assistant-gemma.md)                                          |
-| exploiter la Veille              | [runbook Veille](runbooks/veille-rss.md)                                                  |
-| classer les courses              | [runbook classement](runbooks/classement-courses.md)                                      |
-| reprendre le Budget              | [runbook Budget](runbooks/reprise-budget.md)                                              |
-| sauvegarder/restaurer            | [runbook sauvegarde](runbooks/sauvegarde-restauration.md)                                 |
-| comprendre toute l’application   | [guide fonctionnel et technique](guides/guide-complet-fonctionnel-et-technique-friday.md) |
-| rejouer une validation téléphone | [recettes](recipes/)                                                                      |
-| comprendre une décision durable  | [ADR](adr/)                                                                               |
+| Besoin                           | Document                                                                                                             |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| état global App + Robot          | [27 — état canonique](27-etat-canonique-app-robot-2026-08-25.md)                                                     |
+| développer ou vérifier           | [runbook développement](runbooks/development.md)                                                                     |
+| exploiter AlphaBot2              | [runbook Robot](runbooks/robot-alphabot2.md) et [checkpoint Récup](29-checkpoint-recuperation-humaine-2026-08-25.md) |
+| exploiter le Chat                | [runbook Assistant](runbooks/assistant-gemma.md)                                                                     |
+| exploiter la Veille              | [runbook Veille](runbooks/veille-rss.md)                                                                             |
+| classer les courses              | [runbook classement](runbooks/classement-courses.md)                                                                 |
+| reprendre le Budget              | [runbook Budget](runbooks/reprise-budget.md)                                                                         |
+| sauvegarder/restaurer            | [runbook sauvegarde](runbooks/sauvegarde-restauration.md)                                                            |
+| comprendre toute l’application   | [guide fonctionnel et technique](guides/guide-complet-fonctionnel-et-technique-friday.md)                            |
+| rejouer une validation téléphone | [recettes](recipes/)                                                                                                 |
+| comprendre une décision durable  | [ADR](adr/)                                                                                                          |
 
 ## Statut des familles
 
@@ -40,7 +40,7 @@ document 27 puis le code testé prévalent.
 - **Décisions actives** : `09`, `10`, les ADR et le modèle de menace. Le
   document 10 est une feuille de route cumulative, pas un état live.
 - **Checkpoints de domaine** : `12`, `13`, `15-checkpoint`, `17`, `18` et
-  `22` à `26`. Ils expliquent une verticale ou une étape datée ; le document
+  `22` à `26` et `29`. Ils expliquent une verticale ou une étape datée ; le document
   27 tranche l’état global courant.
 - **Vision produit Robot** : `19` et ADR-014. Ils décrivent aussi la cible
   future et ne prouvent pas sa présence sur AlphaBot2.
