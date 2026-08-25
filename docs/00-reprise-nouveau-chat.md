@@ -1,5 +1,14 @@
 # Friday — point de reprise pour un nouveau chat
 
+> Mise à jour du 25 août 2026 : Carto dispose désormais d’une relocalisation
+> visuelle hybride. Les commandes de roues restent l’odométrie brute, tandis
+> que des signatures ORB compactes permettent de confirmer un lieu connu et de
+> fermer une boucle. Un déplacement physique sans commande crée un nouveau
+> segment au lieu d’un trait fictif ; les images vues pendant le transport ne
+> sont pas conservées. L’état, l’installation OpenCV et les limites de recette
+> sont consignés dans
+> [26-checkpoint-relocalisation-visuelle-2026-08-25.md](26-checkpoint-relocalisation-visuelle-2026-08-25.md).
+
 > Mise à jour du 25 août 2026 : le mode manuel expose désormais `Carto`. Il
 > construit une carte 2D légère à partir des commandes acceptées, du temps entre
 > impulsions et des objets confirmés. Depuis la migration 23, seules des

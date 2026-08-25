@@ -41,6 +41,7 @@ interface RecordedObject {
 }
 
 interface MapEstimate {
+  segmentId: string;
   uncertainty: number;
   x: number;
   y: number;
@@ -327,7 +328,7 @@ export class RobotMemoryService {
               SET confidence = ?, status = ?, sighting_count = ?,
                   viewpoint_keys_json = ?, last_seen_at = ?, last_x = ?,
                   last_y = ?, map_x = ?, map_y = ?, map_uncertainty = ?,
-                  updated_at = ? WHERE id = ?`,
+                  map_segment_id = ?, updated_at = ? WHERE id = ?`,
         )
         .run(
           averageConfidence,
@@ -340,6 +341,7 @@ export class RobotMemoryService {
           mapX,
           mapY,
           mapEstimate?.uncertainty ?? null,
+          mapEstimate?.segmentId ?? null,
           now,
           id,
         );
@@ -350,8 +352,8 @@ export class RobotMemoryService {
              id, household_id, room_id, kind, class_label, display_name,
              spatial_key, confidence, status, sighting_count,
              viewpoint_keys_json, first_seen_at, last_seen_at, last_x, last_y,
-             map_x, map_y, map_uncertainty, updated_at
-           ) VALUES (?, ?, ?, 'object', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             map_x, map_y, map_uncertainty, map_segment_id, updated_at
+           ) VALUES (?, ?, ?, 'object', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -371,6 +373,7 @@ export class RobotMemoryService {
           mapEstimate?.x ?? null,
           mapEstimate?.y ?? null,
           mapEstimate?.uncertainty ?? null,
+          mapEstimate?.segmentId ?? null,
           now,
         );
     }
@@ -404,13 +407,14 @@ export class RobotMemoryService {
 
   private mappingPose(): {
     heading: number;
+    segmentId: string;
     uncertainty: number;
     x: number;
     y: number;
   } | null {
     const active = this.database
       .prepare(
-        `SELECT r.x, r.y, r.heading, r.uncertainty
+        `SELECT r.x, r.y, r.heading, r.uncertainty, r.segment_id
            FROM robot_map_runtime r
           WHERE r.household_id = ? AND EXISTS(
             SELECT 1 FROM robot_mapping_sessions s
@@ -418,9 +422,15 @@ export class RobotMemoryService {
           )`,
       )
       .get(this.householdId) as
-      | { heading: number; uncertainty: number; x: number; y: number }
+      | {
+          heading: number;
+          segment_id: string;
+          uncertainty: number;
+          x: number;
+          y: number;
+        }
       | undefined;
-    return active ?? null;
+    return active ? { ...active, segmentId: active.segment_id } : null;
   }
 
   private persistRelevantKeyframe(
@@ -487,16 +497,23 @@ export class RobotMemoryService {
     if (eligibleObjects.length === 0) return;
     const runtime = this.database
       .prepare(
-        `SELECT x, y, heading FROM robot_map_runtime WHERE household_id = ?`,
+        `SELECT x, y, heading, segment_id FROM robot_map_runtime
+          WHERE household_id = ?`,
       )
-      .get(this.householdId) as { heading: number; x: number; y: number };
+      .get(this.householdId) as {
+      heading: number;
+      segment_id: string;
+      x: number;
+      y: number;
+    };
     const id = randomUUID();
     this.database
       .prepare(
         `INSERT INTO robot_memory_keyframes(
            id, household_id, frame_id, image_jpeg, image_width, image_height,
-           pan, tilt, map_x, map_y, map_heading, reason, observed_at, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           pan, tilt, map_x, map_y, map_heading, reason, observed_at, created_at,
+           segment_id
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -515,6 +532,7 @@ export class RobotMemoryService {
           : 'new_viewpoint',
         frame.observedAt,
         new Date().toISOString(),
+        runtime.segment_id,
       );
     const link = this.database.prepare(
       `INSERT OR IGNORE INTO robot_memory_keyframe_entities(keyframe_id, entity_id)
@@ -594,7 +612,13 @@ function quantizeSigned(value: number, buckets: number): number {
 }
 
 function estimateObjectPosition(
-  pose: { heading: number; uncertainty: number; x: number; y: number },
+  pose: {
+    heading: number;
+    segmentId: string;
+    uncertainty: number;
+    x: number;
+    y: number;
+  },
   pan: number,
   imageX: number,
   imageY: number,
@@ -603,6 +627,7 @@ function estimateObjectPosition(
   const angle = cameraHeading + (imageX - 0.5) * 1.05;
   const distance = 0.5 + (1 - imageY) * 1.2;
   return {
+    segmentId: pose.segmentId,
     x: pose.x + Math.cos(angle) * distance,
     y: pose.y + Math.sin(angle) * distance,
     uncertainty: Math.min(100, pose.uncertainty + 1),

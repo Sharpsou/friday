@@ -41,7 +41,7 @@ describe('hub database migrations', () => {
     database.close();
 
     expect(retiredTables).toEqual([]);
-    expect(latest.version).toBe(23);
+    expect(latest.version).toBe(24);
   });
 
   it('adds optional time and duration columns to a version 1 database', () => {
@@ -130,6 +130,7 @@ describe('hub database migrations', () => {
       { version: 21 },
       { version: 22 },
       { version: 23 },
+      { version: 24 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -159,7 +160,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 23 });
+    expect(migrations.at(-1)).toEqual({ version: 24 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -195,7 +196,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 23 });
+    expect(migrations.at(-1)).toEqual({ version: 24 });
   });
 
   it('adds the five budget stores and the idempotent seed marker', () => {
@@ -516,5 +517,70 @@ describe('hub database migrations', () => {
     database.close();
 
     expect(member).toEqual({ login_identifier: 'ancien-identifiant' });
+  });
+
+  it('adds visual localization without discarding version 23 map geometry', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 23);
+    const household = '1030b4f6-1e0f-48fa-adab-865750ce597d';
+    database
+      .prepare(
+        `INSERT INTO robot_mapping_sessions(
+           id, household_id, name, status, point_count, storage_bytes,
+           started_at, created_at, updated_at
+         ) VALUES (?, ?, 'Carte existante', 'explored', 1, 96, ?, ?, ?)`,
+      )
+      .run(
+        'e10ccf3c-b3af-4ed1-a9af-2e1e76b83318',
+        household,
+        '2026-08-25T12:00:00.000Z',
+        '2026-08-25T12:00:00.000Z',
+        '2026-08-25T12:00:00.000Z',
+      );
+    database
+      .prepare(
+        `INSERT INTO robot_map_points(
+           id, household_id, session_id, sequence, x, y, heading, uncertainty,
+           recorded_at
+         ) VALUES (?, ?, ?, 0, 1.2, -0.4, 0.3, 1, ?)`,
+      )
+      .run(
+        'a485a08b-1b02-4817-9a7d-6a9916f3cf55',
+        household,
+        'e10ccf3c-b3af-4ed1-a9af-2e1e76b83318',
+        '2026-08-25T12:00:00.000Z',
+      );
+    database
+      .prepare(
+        `INSERT INTO robot_map_runtime(
+           household_id, operating_mode, x, y, heading, uncertainty, updated_at
+         ) VALUES (?, 'manual', 1.2, -0.4, 0.3, 1, ?)`,
+      )
+      .run(household, '2026-08-25T12:00:00.000Z');
+
+    migrateDatabase(database);
+
+    const point = database
+      .prepare(
+        `SELECT raw_x, raw_y, raw_heading, segment_id
+           FROM robot_map_points WHERE household_id = ?`,
+      )
+      .get(household);
+    const tables = database
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'table'
+          AND name IN ('robot_place_signatures', 'robot_pose_constraints',
+                       'robot_localization_events', 'robot_odometry_calibration')`,
+      )
+      .all() as Array<{ name: string }>;
+    database.close();
+
+    expect(point).toEqual({
+      raw_x: 1.2,
+      raw_y: -0.4,
+      raw_heading: 0.3,
+      segment_id: 'e10ccf3c-b3af-4ed1-a9af-2e1e76b83318',
+    });
+    expect(tables).toHaveLength(4);
   });
 });

@@ -118,6 +118,7 @@ import {
   RobotMappingError,
   RobotMappingService,
 } from './robot/robot-mapping.js';
+import type { RobotPlaceRecognitionEngine } from './robot/robot-localization-engine.js';
 
 export interface BuildHubOptions {
   authAttemptLimit?: number;
@@ -142,6 +143,7 @@ export interface BuildHubOptions {
   authSecret?: string;
   webRoot?: string;
   robotController?: RobotController;
+  robotPlaceRecognition?: RobotPlaceRecognitionEngine;
 }
 
 const PullQuerySchema = z.object({
@@ -257,7 +259,17 @@ export async function buildHub(options: BuildHubOptions) {
   const robot: RobotController =
     options.robotController ?? new DisabledRobotController();
   const robotMemory = new RobotMemoryService(database, HOUSEHOLD_ID);
-  const robotMapping = new RobotMappingService(database, HOUSEHOLD_ID);
+  const robotMapping = new RobotMappingService(database, HOUSEHOLD_ID, {
+    ...(options.robotPlaceRecognition
+      ? { placeRecognition: options.robotPlaceRecognition }
+      : {}),
+    onLocalizationError(error) {
+      app.log.warn(
+        { error },
+        'Localisation visuelle du robot temporairement indisponible.',
+      );
+    },
+  });
   const robotAutonomy = new RobotAutonomyService(
     database,
     HOUSEHOLD_ID,
@@ -393,13 +405,11 @@ export async function buildHub(options: BuildHubOptions) {
     try {
       await closedAuth.requireSession(request.headers);
       const state = RobotStateSchema.parse(await robot.state());
-      robotMemory.observe(
-        state,
-        state.vision
-          ? (robot.visionKeyframe?.(state.vision.frameId) ?? null)
-          : null,
-      );
-      robotMapping.observe(state);
+      const keyframe = state.vision
+        ? (robot.visionKeyframe?.(state.vision.frameId) ?? null)
+        : null;
+      robotMemory.observe(state, keyframe);
+      robotMapping.observe(state, keyframe);
       return state;
     } catch (error) {
       return sendRobotError(error, reply);
@@ -483,7 +493,7 @@ export async function buildHub(options: BuildHubOptions) {
   const mutateMapping = async (
     request: FastifyRequest,
     reply: FastifyReply,
-    action: 'pause' | 'resume' | 'start' | 'stop',
+    action: 'pause' | 'relocalize' | 'resume' | 'start' | 'stop',
   ) => {
     try {
       const session = await closedAuth.requireSession(request.headers);
@@ -493,20 +503,28 @@ export async function buildHub(options: BuildHubOptions) {
         });
       const state = RobotStateSchema.parse(await robot.state());
       const map =
-        action === 'start'
-          ? robotMapping.start(state)
-          : action === 'pause'
-            ? robotMapping.pause()
-            : action === 'resume'
-              ? robotMapping.resume(state)
-              : robotMapping.stop();
+        action === 'relocalize'
+          ? robotMapping.requestRelocalization()
+          : action === 'start'
+            ? robotMapping.start(state)
+            : action === 'pause'
+              ? robotMapping.pause()
+              : action === 'resume'
+                ? robotMapping.resume(state)
+                : robotMapping.stop();
       return RobotMappingActionResponseSchema.parse({ accepted: true, map });
     } catch (error) {
       return sendRobotError(error, reply);
     }
   };
 
-  for (const action of ['start', 'pause', 'resume', 'stop'] as const) {
+  for (const action of [
+    'start',
+    'pause',
+    'resume',
+    'stop',
+    'relocalize',
+  ] as const) {
     app.post(`/api/robot/mapping/${action}`, async (request, reply) => {
       if (!acceptsTrustedMutationOrigin(request.headers))
         return reply.code(403).send({ error: 'untrusted_origin' });
@@ -1807,6 +1825,7 @@ export async function buildHub(options: BuildHubOptions) {
 
   app.addHook('onClose', async () => {
     await robotAutonomy.close();
+    await robotMapping.close();
     await robot.close();
     await watch.stop();
     await assistant.stop();

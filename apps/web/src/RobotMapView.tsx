@@ -25,12 +25,14 @@ export default function RobotMapView({
   onClose,
   onError,
   onNavigate,
+  onRelocalize,
 }: {
   snapshot: RobotMapSnapshot;
   isOwner: boolean;
   onClose: () => void;
   onError: (cause: unknown) => void;
   onNavigate: (targetPointId: string) => Promise<void>;
+  onRelocalize: () => Promise<void>;
 }) {
   const groupRef = useRef<SVGGElement>(null);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
@@ -52,6 +54,10 @@ export default function RobotMapView({
   const selectedObject = snapshot.objects.find(
     (object) => object.id === selectedObjectId,
   );
+  const latestLocalizationEvent = snapshot.localizationEvents[0] ?? null;
+  const previousRobot = latestLocalizationEvent
+    ? projectMapPoint(latestLocalizationEvent.oldPose, projection)
+    : null;
 
   const applyTransform = (next: Transform) => {
     transformRef.current = next;
@@ -157,9 +163,11 @@ export default function RobotMapView({
         <div>
           <strong>Carte de Friday</strong>
           <small>
-            {snapshot.localization.status} · incertitude{' '}
-            {snapshot.localization.pose.uncertainty.toFixed(1)} m ·{' '}
-            {snapshot.visualMemory.keyframeCount.toString()} images-clés
+            {localizationLabel(snapshot.localization.status)} · confiance{' '}
+            {Math.round(snapshot.localization.confidence * 100).toString()} % ·
+            incertitude {snapshot.localization.pose.uncertainty.toFixed(1)} m ·{' '}
+            {snapshot.visualMemory.keyframeCount.toString()} images-clés ·{' '}
+            {snapshot.visualMemory.signatureCount.toString()} repères
           </small>
         </div>
         <button type="button" onClick={onClose} aria-label="Fermer la carte">
@@ -220,6 +228,24 @@ export default function RobotMapView({
                 />
                 {path.points
                   .filter(
+                    (point, index) =>
+                      index > 0 &&
+                      path.points[index - 1]?.segmentId !== point.segmentId,
+                  )
+                  .map((point) => {
+                    const projected = projectMapPoint(point, projection);
+                    return (
+                      <circle
+                        className="robot-map-segment-break"
+                        cx={projected.x}
+                        cy={projected.y}
+                        key={`break-${point.id}`}
+                        r="9"
+                      />
+                    );
+                  })}
+                {path.points
+                  .filter(
                     (_, index) =>
                       index % 12 === 0 || index === path.points.length - 1,
                   )
@@ -246,6 +272,23 @@ export default function RobotMapView({
                   })}
               </g>
             ))}
+            {previousRobot && latestLocalizationEvent ? (
+              <g aria-label="Ancienne estimation avant correction">
+                <line
+                  className="robot-map-pose-correction"
+                  x1={previousRobot.x}
+                  y1={previousRobot.y}
+                  x2={robot.x}
+                  y2={robot.y}
+                />
+                <circle
+                  className="robot-map-old-pose"
+                  cx={previousRobot.x}
+                  cy={previousRobot.y}
+                  r="7"
+                />
+              </g>
+            ) : null}
             <circle
               className="robot-map-uncertainty"
               cx={robot.x}
@@ -321,6 +364,18 @@ export default function RobotMapView({
           >
             Regards {viewpointsVisible ? 'visibles' : 'masqués'}
           </button>
+          <button
+            type="button"
+            disabled={
+              !isOwner || !snapshot.localization.visualRecognitionAvailable
+            }
+            onClick={() => {
+              setMissionMessage('Friday recherche un lieu déjà connu.');
+              void onRelocalize().catch(onError);
+            }}
+          >
+            Je l’ai déplacé
+          </button>
         </div>
       </div>
       {selectedObject ? (
@@ -362,6 +417,21 @@ export default function RobotMapView({
           Va là
         </button>
       </footer>
+      {latestLocalizationEvent ? (
+        <p className="robot-map-localization-event">
+          {latestLocalizationEvent.kind === 'manual_relocation'
+            ? 'Repositionné après déplacement manuel'
+            : latestLocalizationEvent.kind === 'loop_closure'
+              ? 'Trajectoire corrigée par une boucle visuelle'
+              : latestLocalizationEvent.reason}{' '}
+          · {Math.round(latestLocalizationEvent.confidence * 100).toString()} %
+        </p>
+      ) : null}
+      {!snapshot.localization.visualRecognitionAvailable ? (
+        <p className="robot-map-blocked">
+          Relocalisation visuelle indisponible : l’odométrie continue seule.
+        </p>
+      ) : null}
       {missionMessage ? (
         <p className="robot-map-blocked">{missionMessage}</p>
       ) : null}
@@ -370,4 +440,14 @@ export default function RobotMapView({
       ) : null}
     </section>
   );
+}
+
+function localizationLabel(
+  status: RobotMapSnapshot['localization']['status'],
+): string {
+  if (status === 'estimated') return 'Localisé';
+  if (status === 'relocalizing') return 'Recherche de position';
+  if (status === 'uncertain') return 'Position incertaine';
+  if (status === 'lost') return 'Position perdue';
+  return 'Position inconnue';
 }

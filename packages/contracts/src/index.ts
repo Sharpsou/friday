@@ -143,6 +143,9 @@ export const RobotMapPointSchema = z
     y: z.number().min(-10_000).max(10_000),
     heading: z.number().min(-Math.PI).max(Math.PI),
     uncertainty: z.number().min(0).max(100),
+    segmentId: UuidSchema,
+    source: z.enum(['odometry', 'visual_loop', 'visual_relocalization']),
+    correctionRevision: z.number().int().nonnegative(),
     recordedAt: UtcInstantSchema,
   })
   .strict();
@@ -200,7 +203,18 @@ export const RobotMapSnapshotSchema = z
       .strict(),
     localization: z
       .object({
-        status: z.enum(['unknown', 'estimated', 'uncertain', 'lost']),
+        status: z.enum([
+          'unknown',
+          'estimated',
+          'uncertain',
+          'relocalizing',
+          'lost',
+        ]),
+        confidence: z.number().min(0).max(1),
+        source: z.enum(['odometry', 'visual_loop', 'visual_relocalization']),
+        correctionRevision: z.number().int().nonnegative(),
+        lastRelocalizedAt: UtcInstantSchema.nullable(),
+        visualRecognitionAvailable: z.boolean(),
         pose: RobotEstimatedPoseSchema,
       })
       .strict(),
@@ -212,8 +226,40 @@ export const RobotMapSnapshotSchema = z
         keyframeCount: z.number().int().nonnegative(),
         storageBytes: z.number().int().nonnegative(),
         quotaBytes: z.number().int().positive(),
+        signatureCount: z.number().int().nonnegative(),
+        signatureStorageBytes: z.number().int().nonnegative(),
+        signatureQuotaBytes: z.number().int().positive(),
       })
       .strict(),
+    localizationEvents: z
+      .array(
+        z
+          .object({
+            id: UuidSchema,
+            kind: z.enum([
+              'loop_closure',
+              'manual_relocation',
+              'lost',
+              'recovered',
+              'rejected',
+            ]),
+            oldPose: RobotEstimatedPoseSchema.pick({
+              x: true,
+              y: true,
+              heading: true,
+            }),
+            newPose: RobotEstimatedPoseSchema.pick({
+              x: true,
+              y: true,
+              heading: true,
+            }),
+            confidence: z.number().min(0).max(1),
+            reason: z.string().trim().min(1).max(500),
+            createdAt: UtcInstantSchema,
+          })
+          .strict(),
+      )
+      .max(20),
     autonomy: z
       .object({
         available: z.boolean(),

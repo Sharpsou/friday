@@ -182,6 +182,18 @@ else {
 }
 
 $env:FRIDAY_DATA_DIR = $dataDirectory
+$localizationPythonPath = Join-Path $dataDirectory 'robot\localization-venv\Scripts\python.exe'
+if (
+  $env:FRIDAY_ROBOT_MODE -eq 'alphabot2' -and
+  $env:FRIDAY_ROBOT_LOCALIZATION_ENABLED -ne 'false'
+) {
+  if (-not (Test-Path -LiteralPath $localizationPythonPath)) {
+    throw "La localisation visuelle n’est pas installée. Lancez infra\windows\Setup-FridayRobotLocalization.ps1."
+  }
+  $env:FRIDAY_ROBOT_LOCALIZATION_PYTHON = $localizationPythonPath
+  $env:FRIDAY_ROBOT_LOCALIZATION_WORKER_PATH =
+    Join-Path $workspacePath 'tools\robot-localization\worker.py'
+}
 $env:FRIDAY_PORT = '8443'
 $env:FRIDAY_PUBLIC_ORIGIN = if ($lanReady) { $phoneUrl } else { $localUrl }
 $trustedOrigins = @($localUrl)

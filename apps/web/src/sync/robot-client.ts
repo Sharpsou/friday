@@ -185,7 +185,7 @@ export async function stopRobotAutonomy() {
 }
 
 export async function setRobotMapping(
-  action: 'pause' | 'resume' | 'start' | 'stop',
+  action: 'pause' | 'relocalize' | 'resume' | 'start' | 'stop',
 ): Promise<RobotMapSnapshot> {
   const response = await fetch(`/api/robot/mapping/${action}`, {
     method: 'POST',

@@ -239,6 +239,30 @@ frame où une personne est détectée est exclue. Ne pas contourner ces bornes n
 brancher le Chat, un LLM ou la politique d’apprentissage sur une commande
 d’actionneur.
 
+La migration 24 ajoute des signatures ORB sans JPEG, bornées à 600 entrées et
+12 Mio. Elles sont calculées sur le PC par un worker OpenCV isolé. Après une
+première installation ou une recréation de l’environnement, lancer :
+
+```powershell
+infra\windows\Setup-FridayRobotLocalization.ps1
+```
+
+Le lanceur de recette sélectionne ensuite automatiquement l’interpréteur sous
+`D:\FridayData\robot\localization-venv`. Deux changements visuels cohérents
+sans nouvelle commande de roues déclenchent une recherche de position. Pendant
+les cinq premières secondes, les roues attendent mais les actions caméra sûres
+restent disponibles ; ensuite l’autonomie peut reprendre à 10 % si la pose
+reste perdue. Le bouton `Je l’ai déplacé` permet de déclencher immédiatement la
+même recherche. Une relocalisation manuelle doit apparaître sur la carte comme
+une rupture de segment, jamais comme une diagonale parcourue.
+
+Pour une recette physique, poser d’abord le robot face à un lieu déjà observé,
+attendre deux frames stables, le soulever sans commande de roues, puis le
+reposer face à un autre lieu connu. Contrôler `Recherche de position`, la
+nouvelle pose, la rupture de segment et l’absence de nouvelles images-clés
+pendant le transport. Le test n’autorise aucune rotation hors des presets
+caméra existants.
+
 La téléopération expose un curseur de puissance commun aux quatre directions,
 borné de 10 à 35 %, initialisé à 20 % et mémorisé dans la PWA. Toute hausse
 au-delà de 35 %, ajout d’un coup de couple ou calibration séparée des moteurs

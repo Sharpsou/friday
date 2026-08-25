@@ -1,9 +1,20 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { RobotDriveRequest, RobotState } from '@friday/contracts';
 
 import { openDatabase } from '../db/database.js';
-import { RobotMappingError, RobotMappingService } from './robot-mapping.js';
+import type {
+  RobotPlaceCandidate,
+  RobotPlaceRecognitionEngine,
+  RobotPlaceSignatureFeatures,
+} from './robot-localization-engine.js';
+import {
+  RobotMappingError,
+  RobotMappingService,
+  relaxPoseGraph,
+  type PoseGraphConstraint,
+  type PoseGraphRow,
+} from './robot-mapping.js';
 
 const HOUSEHOLD = '1030b4f6-1e0f-48fa-adab-865750ce597d';
 
@@ -59,10 +70,69 @@ function drive(direction: RobotDriveRequest['direction']): RobotDriveRequest {
   };
 }
 
+const FEATURES: RobotPlaceSignatureFeatures = {
+  descriptors: Buffer.alloc(50 * 32, 7).toString('base64'),
+  featureCount: 50,
+  keypoints: Array.from(
+    { length: 50 },
+    (_, index) =>
+      [(index % 10) / 10, Math.floor(index / 10) / 5, 0] as [
+        number,
+        number,
+        number,
+      ],
+  ),
+  perceptualHash: '0123456789abcdef',
+  quality: 120,
+};
+
+class MatchingPlaceEngine implements RobotPlaceRecognitionEngine {
+  async extract(): Promise<RobotPlaceSignatureFeatures> {
+    return FEATURES;
+  }
+
+  async match(
+    _probe: RobotPlaceSignatureFeatures,
+    candidates: RobotPlaceCandidate[],
+  ) {
+    return candidates.map((candidate) => ({
+      candidateId: candidate.id,
+      coverage: 4,
+      inlierRatio: 0.75,
+      inliers: 35,
+      rawMatches: 42,
+      rotationRad: 0,
+      score: 0.9,
+    }));
+  }
+
+  async close(): Promise<void> {}
+}
+
+class ChangingPlaceEngine extends MatchingPlaceEngine {
+  private extractionCount = 0;
+
+  override async extract(): Promise<RobotPlaceSignatureFeatures> {
+    this.extractionCount += 1;
+    return {
+      ...FEATURES,
+      perceptualHash:
+        this.extractionCount === 1
+          ? FEATURES.perceptualHash
+          : 'fedcba9876543210',
+    };
+  }
+
+  override async match() {
+    return [];
+  }
+}
+
 describe('RobotMappingService', () => {
   const databases: ReturnType<typeof openDatabase>[] = [];
 
   afterEach(() => {
+    vi.useRealTimers();
     for (const database of databases.splice(0)) database.close();
   });
 
@@ -168,5 +238,140 @@ describe('RobotMappingService', () => {
 
     expect(() => mapping.start(unsafeCamera)).toThrowError(RobotMappingError);
     expect(mapping.snapshot().mapping.status).toBe('inactive');
+  });
+
+  it('creates a disconnected segment when two known views confirm a manual move', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-25T12:00:00.000Z'));
+    const database = openDatabase(':memory:');
+    databases.push(database);
+    const mapping = new RobotMappingService(database, HOUSEHOLD, {
+      placeRecognition: new MatchingPlaceEngine(),
+    });
+    const first = state(1);
+    first.vision!.observedAt = new Date(Date.now() - 3_000).toISOString();
+    mapping.start(first);
+    mapping.observe(first, {
+      frameId: 1,
+      image: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+      observedAt: first.vision!.observedAt,
+    });
+    await mapping.waitForLocalization();
+    const originalSegment = mapping.snapshot().paths[0]!.points[0]!.segmentId;
+
+    database
+      .prepare(
+        `UPDATE robot_place_signatures SET map_x = 2, map_y = 1
+          WHERE household_id = ?`,
+      )
+      .run(HOUSEHOLD);
+    for (const frameId of [2, 3]) {
+      vi.advanceTimersByTime(2_100);
+      const moved = state(frameId);
+      moved.vision!.observedAt = new Date(
+        Date.now() + frameId * 600,
+      ).toISOString();
+      mapping.observe(moved, {
+        frameId,
+        image: Buffer.from([0xff, 0xd8, frameId, 0xff, 0xd9]),
+        observedAt: moved.vision!.observedAt,
+      });
+      await mapping.waitForLocalization();
+      expect(mapping.snapshot().visualMemory.signatureCount).toBe(1);
+    }
+
+    const snapshot = mapping.snapshot();
+    expect(snapshot.localization.source).toBe('visual_relocalization');
+    expect(snapshot.localization.pose).toMatchObject({ x: 2, y: 1 });
+    expect(snapshot.paths[0]!.points.at(-1)!.segmentId).not.toBe(
+      originalSegment,
+    );
+    expect(snapshot.localizationEvents[0]).toMatchObject({
+      kind: 'manual_relocation',
+    });
+    vi.useRealTimers();
+  });
+
+  it('relaxes a visual loop while preserving the first pose anchor', () => {
+    const rows: PoseGraphRow[] = [
+      {
+        id: 'start',
+        session_id: 'session',
+        sequence: 0,
+        segment_id: 'segment',
+        x: 0,
+        y: 0,
+        heading: 0,
+        raw_x: 0,
+        raw_y: 0,
+        raw_heading: 0,
+        direction: null,
+      },
+      {
+        id: 'end',
+        session_id: 'session',
+        sequence: 1,
+        segment_id: 'segment',
+        x: 1,
+        y: 0.4,
+        heading: 0.3,
+        raw_x: 1,
+        raw_y: 0.4,
+        raw_heading: 0.3,
+        direction: 'forward',
+      },
+    ];
+    const constraints: PoseGraphConstraint[] = [
+      {
+        sourceId: 'start',
+        targetId: 'end',
+        dx: 0,
+        dy: 0,
+        dheading: 0,
+        weight: 2,
+      },
+    ];
+
+    const optimized = relaxPoseGraph(rows, constraints, 30);
+
+    expect(optimized.get('start')).toMatchObject({ x: 0, y: 0, heading: 0 });
+    expect(
+      Math.hypot(optimized.get('end')!.x, optimized.get('end')!.y),
+    ).toBeLessThan(0.05);
+    expect(Math.abs(optimized.get('end')!.heading)).toBeLessThan(0.05);
+  });
+
+  it('detects a physical scene jump without storing images seen while carried', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-25T13:00:00.000Z'));
+    const database = openDatabase(':memory:');
+    databases.push(database);
+    const mapping = new RobotMappingService(database, HOUSEHOLD, {
+      placeRecognition: new ChangingPlaceEngine(),
+    });
+    mapping.start(state(1));
+    mapping.observe(state(1), {
+      frameId: 1,
+      image: Buffer.from([0xff, 0xd8, 1, 0xff, 0xd9]),
+      observedAt: new Date().toISOString(),
+    });
+    await mapping.waitForLocalization();
+
+    for (const frameId of [2, 3]) {
+      vi.advanceTimersByTime(2_100);
+      mapping.observe(state(frameId), {
+        frameId,
+        image: Buffer.from([0xff, 0xd8, frameId, 0xff, 0xd9]),
+        observedAt: new Date().toISOString(),
+      });
+      await mapping.waitForLocalization();
+    }
+
+    const snapshot = mapping.snapshot();
+    expect(snapshot.localization.status).toBe('relocalizing');
+    expect(snapshot.visualMemory.signatureCount).toBe(1);
+    expect(snapshot.localizationEvents[0]?.reason).toContain(
+      'déplacement physique probable',
+    );
   });
 });

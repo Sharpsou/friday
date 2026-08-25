@@ -9,6 +9,7 @@ import {
 } from './robot/robot-controller.js';
 import { VisionRobotController } from './robot/robot-vision.js';
 import { WorkerRobotVisionEngine } from './robot/robot-vision-worker-client.js';
+import { OpenCvPlaceRecognitionEngine } from './robot/robot-localization-engine.js';
 
 const host = process.env.FRIDAY_HOST ?? '127.0.0.1';
 const port = Number.parseInt(process.env.FRIDAY_PORT ?? '8443', 10);
@@ -60,6 +61,9 @@ if (
 const robotVisionEnabled =
   robotMode === 'alphabot2' &&
   process.env.FRIDAY_ROBOT_VISION_ENABLED !== 'false';
+const robotLocalizationEnabled =
+  robotVisionEnabled &&
+  process.env.FRIDAY_ROBOT_LOCALIZATION_ENABLED !== 'false';
 const robotVisionFrameStrideRaw = process.env.FRIDAY_ROBOT_VISION_FRAME_STRIDE;
 const robotVisionFrameStride = Number.parseInt(
   robotVisionFrameStrideRaw ?? '2',
@@ -119,6 +123,13 @@ const robotController = robotVisionEnabled
       },
     )
   : baseRobotController;
+const robotPlaceRecognition = robotLocalizationEnabled
+  ? new OpenCvPlaceRecognitionEngine(
+      process.env.FRIDAY_ROBOT_LOCALIZATION_WORKER_PATH ??
+        resolve('tools', 'robot-localization', 'worker.py'),
+      process.env.FRIDAY_ROBOT_LOCALIZATION_PYTHON ?? 'python',
+    )
+  : undefined;
 
 if (
   ollamaTimeoutRaw &&
@@ -181,6 +192,7 @@ const app = await buildHub({
   ...(photoTranscriptionTimeoutMs ? { photoTranscriptionTimeoutMs } : {}),
   publicOrigin,
   robotController,
+  ...(robotPlaceRecognition ? { robotPlaceRecognition } : {}),
   webRoot,
 });
 

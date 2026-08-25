@@ -670,7 +670,7 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
     },
   };
   const robotMap = () => ({
-    version: 2,
+    version: 3,
     operatingMode: 'manual' as const,
     mapping: {
       status: mappingStatus,
@@ -686,6 +686,11 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
     },
     localization: {
       status: 'estimated' as const,
+      confidence: 0.9,
+      source: 'odometry' as const,
+      correctionRevision: 0,
+      lastRelocalizedAt: null,
+      visualRecognitionAvailable: true,
       pose: {
         x: 0.4,
         y: 0.2,
@@ -694,6 +699,7 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
         updatedAt: '2026-08-25T00:00:00.000Z',
       },
     },
+    localizationEvents: [],
     paths: [],
     objects: [
       {
@@ -727,6 +733,9 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
       keyframeCount: 0,
       storageBytes: 0,
       quotaBytes: 16_777_216,
+      signatureCount: 0,
+      signatureStorageBytes: 0,
+      signatureQuotaBytes: 12_582_912,
     },
     autonomy: {
       available: false,

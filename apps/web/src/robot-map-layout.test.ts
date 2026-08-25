@@ -68,4 +68,18 @@ describe('robot map layout', () => {
       ),
     ).toMatch(/^M\d+\.\d \d+\.\d L\d+\.\d \d+\.\d$/u);
   });
+
+  it('starts a new SVG subpath after a manual relocation', () => {
+    const data = mapPathData(
+      [
+        { x: 0, y: 0, segmentId: 'first' },
+        { x: 1, y: 0, segmentId: 'first' },
+        { x: 4, y: 2, segmentId: 'second' },
+      ],
+      { scale: 10, offsetX: 0, offsetY: 100 },
+    );
+
+    expect(data.match(/M/gu)).toHaveLength(2);
+    expect(data).toBe('M0.0 100.0 L10.0 100.0 M40.0 80.0');
+  });
 });

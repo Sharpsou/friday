@@ -75,13 +75,18 @@ export function projectMapPoint(
 }
 
 export function mapPathData(
-  points: ReadonlyArray<{ x: number; y: number }>,
+  points: ReadonlyArray<{ segmentId?: string; x: number; y: number }>,
   projection: MapProjection,
 ): string {
   return points
     .map((point, index) => {
       const projected = projectMapPoint(point, projection);
-      return `${index === 0 ? 'M' : 'L'}${projected.x.toFixed(1)} ${projected.y.toFixed(1)}`;
+      const previous = points[index - 1];
+      const startsSegment =
+        index === 0 ||
+        (point.segmentId !== undefined &&
+          previous?.segmentId !== point.segmentId);
+      return `${startsSegment ? 'M' : 'L'}${projected.x.toFixed(1)} ${projected.y.toFixed(1)}`;
     })
     .join(' ');
 }

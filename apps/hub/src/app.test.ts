@@ -216,6 +216,17 @@ describe('Friday hub', () => {
       autonomy: { available: true },
     });
 
+    const relocalize = await app.inject({
+      method: 'POST',
+      url: '/api/robot/mapping/relocalize',
+      headers: { cookie },
+      payload: {},
+    });
+    expect(relocalize.statusCode, relocalize.body).toBe(409);
+    expect(relocalize.json()).toMatchObject({
+      error: 'robot_localization_unavailable',
+    });
+
     const autonomous = await app.inject({
       method: 'POST',
       url: '/api/robot/mode',

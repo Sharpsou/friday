@@ -358,7 +358,7 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
   };
 
   const changeMapping = async (
-    action: 'pause' | 'resume' | 'start' | 'stop',
+    action: 'pause' | 'relocalize' | 'resume' | 'start' | 'stop',
   ) => {
     if (!state) return;
     setBusy(true);
@@ -450,6 +450,9 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
           setMap(response.map);
           setAutonomy(response.autonomy);
           setMapVisible(false);
+        }}
+        onRelocalize={async () => {
+          setMap(await setRobotMapping('relocalize'));
         }}
       />
     );

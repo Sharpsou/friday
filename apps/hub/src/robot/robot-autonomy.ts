@@ -318,13 +318,11 @@ export class RobotAutonomyService {
     if (!this.active || !this.run || !this.agent) return;
     try {
       let state = await this.robot.state();
-      this.memory?.observe(
-        state,
-        state.vision
-          ? (this.robot.visionKeyframe?.(state.vision.frameId) ?? null)
-          : null,
-      );
-      this.mapping.observe(state);
+      let keyframe = state.vision
+        ? (this.robot.visionKeyframe?.(state.vision.frameId) ?? null)
+        : null;
+      this.memory?.observe(state, keyframe);
+      this.mapping.observe(state, keyframe);
       // vcgencmd exposes a threshold bit, not a voltage magnitude. Servo and
       // motor current peaks can set it during otherwise usable operation, so
       // it remains diagnostic telemetry and never gates autonomous actions.
@@ -349,13 +347,11 @@ export class RobotAutonomyService {
       this.lastAction = action;
       const previousVisionFrameId = state.vision?.frameId ?? -1;
       state = await this.execute(action, state);
-      this.memory?.observe(
-        state,
-        state.vision
-          ? (this.robot.visionKeyframe?.(state.vision.frameId) ?? null)
-          : null,
-      );
-      this.mapping.observe(state);
+      keyframe = state.vision
+        ? (this.robot.visionKeyframe?.(state.vision.frameId) ?? null)
+        : null;
+      this.memory?.observe(state, keyframe);
+      this.mapping.observe(state, keyframe);
       const nextContext = this.mapping.autonomyContext();
       const nextDistance = this.distanceToTarget();
       const nextObservation = this.observe(state);
@@ -364,6 +360,15 @@ export class RobotAutonomyService {
         potentialShapingReward(
           previousContext.potential,
           nextContext.potential,
+        ) +
+        Math.max(
+          -0.15,
+          Math.min(
+            0.15,
+            (nextContext.localizationConfidence -
+              previousContext.localizationConfidence) *
+              0.3,
+          ),
         ) +
         (nextContext.objectCount > previousContext.objectCount ? 1 : 0) +
         cameraQualityReward(
@@ -490,12 +495,24 @@ export class RobotAutonomyService {
     pose: { heading: number; x: number; y: number },
   ): RobotLearningAction[] {
     const available = availableRobotActions(observation);
+    const localization = this.mapping.autonomyContext().localizationStatus;
+    const passive = available.filter(
+      (action) => action === 'wait_observe' || action.startsWith('look_'),
+    );
+    if (localization === 'relocalizing') return passive;
+    if (localization === 'lost')
+      return available.filter(
+        (action) =>
+          action === 'wait_observe' ||
+          action.startsWith('look_') ||
+          action.startsWith('forward_10_') ||
+          action === 'turn_left' ||
+          action === 'turn_right' ||
+          action === 'reverse_escape',
+      );
     if (!this.target) return available;
     const error = normalizeAngle(
       Math.atan2(this.target.y - pose.y, this.target.x - pose.x) - pose.heading,
-    );
-    const passive = available.filter(
-      (action) => action === 'wait_observe' || action.startsWith('look_'),
     );
     if (Math.abs(error) > 0.3) {
       const turn = error > 0 ? 'turn_left' : 'turn_right';

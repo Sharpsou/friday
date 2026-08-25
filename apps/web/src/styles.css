@@ -3151,6 +3151,33 @@ textarea:focus-visible {
   stroke: var(--mint);
 }
 
+.robot-map-segment-break {
+  fill: color-mix(in srgb, var(--surface) 88%, transparent);
+  stroke: var(--warning, #c77b30);
+  stroke-dasharray: 3 3;
+  stroke-width: 3;
+}
+
+.robot-map-pose-correction {
+  stroke: var(--text-muted);
+  stroke-dasharray: 6 6;
+  stroke-width: 2;
+}
+
+.robot-map-old-pose {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 3;
+  stroke-width: 2;
+}
+
+.robot-map-localization-event {
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
 .robot-map-path + circle,
 .robot-map-path ~ circle[tabindex] {
   cursor: pointer;
