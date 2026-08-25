@@ -9,6 +9,7 @@ import {
   layoutMapLabels,
   mapPathData,
   projectMapPoint,
+  viewpointPathData,
 } from './robot-map-layout.js';
 import { previewRobotMission } from './sync/robot-client.js';
 
@@ -38,6 +39,8 @@ export default function RobotMapView({
     null,
   );
   const [objectsVisible, setObjectsVisible] = useState(true);
+  const [viewpointsVisible, setViewpointsVisible] = useState(true);
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [missionMessage, setMissionMessage] = useState<string | null>(null);
   const projection = useMemo(() => createMapProjection(snapshot), [snapshot]);
@@ -46,6 +49,9 @@ export default function RobotMapView({
     [projection, snapshot.objects],
   );
   const robot = projectMapPoint(snapshot.localization.pose, projection);
+  const selectedObject = snapshot.objects.find(
+    (object) => object.id === selectedObjectId,
+  );
 
   const applyTransform = (next: Transform) => {
     transformRef.current = next;
@@ -74,6 +80,11 @@ export default function RobotMapView({
   };
 
   const pointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (
+      event.target instanceof Element &&
+      event.target.closest('[data-map-interactive="true"]')
+    )
+      return;
     event.currentTarget.setPointerCapture(event.pointerId);
     pointersRef.current.set(event.pointerId, {
       x: event.clientX,
@@ -147,7 +158,8 @@ export default function RobotMapView({
           <strong>Carte de Friday</strong>
           <small>
             {snapshot.localization.status} · incertitude{' '}
-            {snapshot.localization.pose.uncertainty.toFixed(1)} m
+            {snapshot.localization.pose.uncertainty.toFixed(1)} m ·{' '}
+            {snapshot.visualMemory.keyframeCount.toString()} images-clés
           </small>
         </div>
         <button type="button" onClick={onClose} aria-label="Fermer la carte">
@@ -191,6 +203,15 @@ export default function RobotMapView({
             fill="url(#robot-map-grid)"
           />
           <g ref={groupRef}>
+            {viewpointsVisible
+              ? snapshot.viewpoints.map((viewpoint) => (
+                  <path
+                    className={`robot-map-viewpoint${viewpoint.hasKeyframe ? ' has-keyframe' : ''}`}
+                    d={viewpointPathData(viewpoint, projection)}
+                    key={viewpoint.id}
+                  />
+                ))
+              : null}
             {snapshot.paths.map((path) => (
               <g key={path.id}>
                 <path
@@ -214,6 +235,7 @@ export default function RobotMapView({
                         key={point.id}
                         r="7"
                         tabIndex={0}
+                        data-map-interactive="true"
                         onClick={(event) => {
                           event.stopPropagation();
                           setSelectedPointId(point.id);
@@ -243,11 +265,24 @@ export default function RobotMapView({
                   const point = projectMapPoint(object, projection);
                   return (
                     <circle
-                      className="robot-map-object"
+                      className={`robot-map-object${selectedObjectId === object.id ? ' is-selected' : ''}`}
                       cx={point.x}
                       cy={point.y}
                       key={object.id}
                       r="6"
+                      role="button"
+                      tabIndex={0}
+                      data-map-interactive="true"
+                      aria-label={`Voir ${object.displayName}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedObjectId(object.id);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        setSelectedObjectId(object.id);
+                      }}
                     />
                   );
                 })
@@ -280,8 +315,40 @@ export default function RobotMapView({
           >
             Objets {objectsVisible ? 'visibles' : 'masqués'}
           </button>
+          <button
+            type="button"
+            onClick={() => setViewpointsVisible((visible) => !visible)}
+          >
+            Regards {viewpointsVisible ? 'visibles' : 'masqués'}
+          </button>
         </div>
       </div>
+      {selectedObject ? (
+        <aside className="robot-map-object-detail">
+          {selectedObject.keyframeId ? (
+            <img
+              src={`/api/robot/memory/keyframes/${selectedObject.keyframeId}`}
+              alt={`Image-clé de ${selectedObject.displayName}`}
+            />
+          ) : (
+            <div className="robot-map-object-placeholder">Aucune image-clé</div>
+          )}
+          <div>
+            <strong>{selectedObject.displayName}</strong>
+            <span>
+              {selectedObject.classLabel} · confiance{' '}
+              {Math.round(selectedObject.confidence * 100).toString()} %
+            </span>
+            <span>
+              {selectedObject.sightingCount.toString()} observations ·{' '}
+              {selectedObject.viewpointCount.toString()} points de vue
+            </span>
+          </div>
+          <button type="button" onClick={() => setSelectedObjectId(null)}>
+            Fermer
+          </button>
+        </aside>
+      ) : null}
       <footer>
         <span>
           Pincez ou glissez · touchez un point du trajet pour choisir une

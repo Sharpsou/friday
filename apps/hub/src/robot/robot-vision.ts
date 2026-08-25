@@ -16,7 +16,11 @@ import * as ort from 'onnxruntime-node';
 import sharp from 'sharp';
 import { z } from 'zod';
 
-import type { RobotCameraStream, RobotController } from './robot-controller.js';
+import type {
+  RobotCameraStream,
+  RobotController,
+  RobotVisionKeyframe,
+} from './robot-controller.js';
 
 const SsdDetectorManifestSchema = z
   .object({
@@ -578,6 +582,7 @@ export class VisionRobotController implements RobotController {
   #frameId = 0;
   #inference: Promise<void> | null = null;
   #latest: RobotVisionFrame | null = null;
+  #latestKeyframe: RobotVisionKeyframe | null = null;
   #lastErrorAt = 0;
   readonly #cameraSubscribers = new Set<PassThrough>();
 
@@ -664,6 +669,14 @@ export class VisionRobotController implements RobotController {
     return {
       body,
       contentType: 'multipart/x-mixed-replace; boundary=FRAME',
+    };
+  }
+
+  visionKeyframe(frameId: number): RobotVisionKeyframe | null {
+    if (this.#latestKeyframe?.frameId !== frameId) return null;
+    return {
+      ...this.#latestKeyframe,
+      image: Buffer.from(this.#latestKeyframe.image),
     };
   }
 
@@ -756,6 +769,11 @@ export class VisionRobotController implements RobotController {
             trackId: null,
           })),
         });
+        this.#latestKeyframe = {
+          frameId,
+          image: Buffer.from(frame),
+          observedAt: observedAt.toISOString(),
+        };
       })
       .catch((error: unknown) => {
         if (!this.#closed) this.#reportError(error);

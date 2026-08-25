@@ -97,6 +97,26 @@ describe('RobotMappingService', () => {
     expect(resumed.mapping.status).toBe('paused');
   });
 
+  it('records distinct camera viewpoints as map directions, not extra path points', () => {
+    const database = openDatabase(':memory:');
+    databases.push(database);
+    const mapping = new RobotMappingService(database, HOUSEHOLD);
+    mapping.start(state());
+    const left = state(2);
+    left.cameraPose = { pan: 0.7, tilt: -0.1 };
+    mapping.observe(left);
+    const down = state(3);
+    down.cameraPose = { pan: 0, tilt: 0.6 };
+    mapping.observe(down);
+
+    const snapshot = mapping.snapshot();
+    expect(snapshot.viewpoints).toHaveLength(2);
+    expect(snapshot.viewpoints.map((viewpoint) => viewpoint.pan)).toEqual(
+      expect.arrayContaining([0.7, 0]),
+    );
+    expect(snapshot.paths[0]?.points).toHaveLength(1);
+  });
+
   it('keeps autonomous mode and mission previews fail-closed', () => {
     const database = openDatabase(':memory:');
     databases.push(database);

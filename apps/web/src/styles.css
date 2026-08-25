@@ -3131,6 +3131,18 @@ textarea:focus-visible {
   stroke-width: 7;
 }
 
+.robot-map-viewpoint {
+  fill: none;
+  stroke: rgb(110 190 255 / 24%);
+  stroke-linecap: round;
+  stroke-width: 3;
+}
+
+.robot-map-viewpoint.has-keyframe {
+  stroke: rgb(110 190 255 / 72%);
+  stroke-width: 5;
+}
+
 .robot-map-path.is-draft {
   stroke-dasharray: 12 10;
 }
@@ -3171,6 +3183,12 @@ textarea:focus-visible {
   stroke-width: 2;
 }
 
+.robot-map-object.is-selected {
+  fill: #fff;
+  stroke: #ffd28c;
+  stroke-width: 4;
+}
+
 .robot-map-label {
   paint-order: stroke;
   fill: #f4f8f6;
@@ -3188,6 +3206,62 @@ textarea:focus-visible {
   right: 8px;
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.robot-map-object-detail {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 8px;
+  background: rgb(var(--surface-rgb) / 78%);
+}
+
+.robot-map-object-detail img,
+.robot-map-object-placeholder {
+  width: 96px;
+  aspect-ratio: 4 / 3;
+  border-radius: 9px;
+  object-fit: cover;
+  background: #020908;
+}
+
+.robot-map-object-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.65rem;
+  text-align: center;
+}
+
+.robot-map-object-detail > div:not(.robot-map-object-placeholder) {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.robot-map-object-detail span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 520px) {
+  .robot-map-object-detail {
+    grid-template-columns: 82px minmax(0, 1fr);
+  }
+
+  .robot-map-object-detail img,
+  .robot-map-object-placeholder {
+    width: 82px;
+  }
+
+  .robot-map-object-detail > button {
+    grid-column: 1 / -1;
+  }
 }
 
 .robot-map-tools button {

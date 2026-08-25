@@ -23,10 +23,11 @@ import {
   type RobotLearningObservation,
 } from './robot-dyna.js';
 import { RobotMappingService } from './robot-mapping.js';
+import { RobotMemoryService } from './robot-memory.js';
 
 const LOOP_DELAY_MS = 260;
 const DRIVE_DURATION_MS = 140;
-const POLICY_VERSION = 1;
+const POLICY_VERSION = 2;
 
 interface RunRow {
   goal: string | null;
@@ -51,9 +52,11 @@ export interface RobotExplorationAdvisor {
     input: {
       currentGoal: RobotAutonomyGoal;
       mapNovelty: 'high' | 'known' | 'low';
+      keyframeCount: number;
       objectCount: number;
       pointCount: number;
       uncertainty: number;
+      viewpointCount: number;
     },
     signal: AbortSignal,
   ): Promise<{ goal: RobotAutonomyGoal; reason: string }>;
@@ -86,6 +89,7 @@ export class RobotAutonomyService {
     private readonly householdId: string,
     private readonly robot: RobotController,
     private readonly mapping: RobotMappingService,
+    private readonly memory?: RobotMemoryService,
     private readonly advisor?: RobotExplorationAdvisor,
   ) {
     const now = new Date().toISOString();
@@ -314,6 +318,12 @@ export class RobotAutonomyService {
     if (!this.active || !this.run || !this.agent) return;
     try {
       let state = await this.robot.state();
+      this.memory?.observe(
+        state,
+        state.vision
+          ? (this.robot.visionKeyframe?.(state.vision.frameId) ?? null)
+          : null,
+      );
       this.mapping.observe(state);
       // vcgencmd exposes a threshold bit, not a voltage magnitude. Servo and
       // motor current peaks can set it during otherwise usable operation, so
@@ -337,7 +347,14 @@ export class RobotAutonomyService {
       );
       const action = this.agent.choose(observation, actions);
       this.lastAction = action;
+      const previousVisionFrameId = state.vision?.frameId ?? -1;
       state = await this.execute(action, state);
+      this.memory?.observe(
+        state,
+        state.vision
+          ? (this.robot.visionKeyframe?.(state.vision.frameId) ?? null)
+          : null,
+      );
       this.mapping.observe(state);
       const nextContext = this.mapping.autonomyContext();
       const nextDistance = this.distanceToTarget();
@@ -349,6 +366,14 @@ export class RobotAutonomyService {
           nextContext.potential,
         ) +
         (nextContext.objectCount > previousContext.objectCount ? 1 : 0) +
+        cameraQualityReward(
+          action,
+          state,
+          previousContext.viewpointCount,
+          nextContext.viewpointCount,
+          nextContext.currentViewpointVisits,
+          (state.vision?.frameId ?? -1) > previousVisionFrameId,
+        ) +
         goalReward(
           this.run.goal as RobotAutonomyGoal,
           action,
@@ -418,12 +443,28 @@ export class RobotAutonomyService {
     if (action.startsWith('look_')) {
       const preset = action.slice(5) as RobotCameraPreset;
       const pose = CAMERA_PRESETS[preset];
-      return this.robot.look(cameraCommand(pose.pan, pose.tilt));
+      const previousFrameId = state.vision?.frameId ?? -1;
+      const moved = await this.robot.look(cameraCommand(pose.pan, pose.tilt));
+      return this.awaitFreshVision(previousFrameId, moved);
     }
     const command = driveCommand(action, this.run?.steering_trim_percent ?? 0);
     const next = await this.robot.drive(command);
     this.mapping.recordDrive(command, next);
     return next;
+  }
+
+  private async awaitFreshVision(
+    previousFrameId: number,
+    fallback: RobotState,
+  ): Promise<RobotState> {
+    const deadline = Date.now() + 1_800;
+    let latest = fallback;
+    while (this.active && Date.now() < deadline) {
+      latest = await this.robot.state();
+      if ((latest.vision?.frameId ?? -1) > previousFrameId) return latest;
+      await new Promise<void>((resolve) => setTimeout(resolve, 120));
+    }
+    return latest;
   }
 
   private async recover(error: unknown): Promise<void> {
@@ -508,10 +549,12 @@ export class RobotAutonomyService {
       const advice = await this.advisor.planRobotExploration(
         {
           currentGoal,
+          keyframeCount: this.mapping.snapshot().visualMemory.keyframeCount,
           mapNovelty: context.novelty,
           objectCount: context.objectCount,
           pointCount: context.pointCount,
           uncertainty: context.uncertainty,
+          viewpointCount: context.viewpointCount,
         },
         AbortSignal.timeout(90_000),
       );
@@ -698,10 +741,18 @@ export class RobotAutonomyService {
 const CAMERA_PRESETS: Record<RobotCameraPreset, { pan: number; tilt: number }> =
   {
     center: { pan: 0, tilt: 0.2 },
-    left: { pan: 0.5, tilt: 0.2 },
-    right: { pan: -0.5, tilt: 0.2 },
-    up: { pan: 0, tilt: 0.15 },
-    down: { pan: 0, tilt: 0.25 },
+    left: { pan: 0.45, tilt: 0.2 },
+    left_wide: { pan: 0.85, tilt: 0.2 },
+    right: { pan: -0.45, tilt: 0.2 },
+    right_wide: { pan: -0.85, tilt: 0.2 },
+    up: { pan: 0, tilt: 0 },
+    up_high: { pan: 0, tilt: -0.25 },
+    down: { pan: 0, tilt: 0.4 },
+    down_low: { pan: 0, tilt: 0.65 },
+    up_left: { pan: 0.65, tilt: -0.1 },
+    up_right: { pan: -0.65, tilt: -0.1 },
+    down_left: { pan: 0.65, tilt: 0.5 },
+    down_right: { pan: -0.65, tilt: 0.5 },
   };
 
 function nearestPreset(pan: number, tilt: number): RobotCameraPreset {
@@ -781,6 +832,35 @@ function goalReward(
   )
     return 0.04;
   return 0;
+}
+
+export function cameraQualityReward(
+  action: RobotLearningAction,
+  state: RobotState,
+  previousViewpointCount: number,
+  nextViewpointCount: number,
+  viewpointVisits: number,
+  freshVision: boolean,
+): number {
+  if (!action.startsWith('look_')) return 0;
+  if (!freshVision) return -0.04;
+  const objects =
+    state.vision?.detections.filter(
+      (detection) =>
+        detection.kind === 'object' && detection.confidence !== null,
+    ) ?? [];
+  const confidence =
+    objects.length === 0
+      ? 0
+      : objects.reduce(
+          (total, detection) => total + (detection.confidence ?? 0),
+          0,
+        ) / objects.length;
+  return (
+    (nextViewpointCount > previousViewpointCount ? 0.16 : 0) +
+    Math.min(0.08, confidence * 0.08) -
+    (viewpointVisits > 4 ? 0.05 : 0)
+  );
 }
 
 function normalizeAngle(value: number): number {

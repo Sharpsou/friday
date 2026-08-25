@@ -12,6 +12,7 @@ import {
 } from '@friday/contracts';
 
 const MAP_QUOTA_BYTES = 250 * 1024 * 1024;
+const VISUAL_MEMORY_QUOTA_BYTES = 16 * 1024 * 1024;
 const BYTES_PER_POINT = 96;
 const MAX_SESSION_POINTS = 2_000;
 const MAX_HOUSEHOLD_POINTS = 10_000;
@@ -117,12 +118,18 @@ export class RobotMappingService {
     const objects = (
       this.database
         .prepare(
-          `SELECT id, display_name, class_label, map_x, map_y,
-                  map_uncertainty, confidence, last_seen_at
-             FROM robot_memory_entities
-            WHERE household_id = ? AND status = 'confirmed'
-              AND map_x IS NOT NULL AND map_y IS NOT NULL
-            ORDER BY last_seen_at DESC LIMIT 100`,
+          `SELECT e.id, e.display_name, e.class_label, e.map_x, e.map_y,
+                  e.map_uncertainty, e.confidence, e.sighting_count,
+                  e.viewpoint_keys_json, e.last_seen_at,
+                  (SELECT ke.keyframe_id
+                     FROM robot_memory_keyframe_entities ke
+                     JOIN robot_memory_keyframes k ON k.id = ke.keyframe_id
+                    WHERE ke.entity_id = e.id
+                    ORDER BY k.observed_at DESC LIMIT 1) AS keyframe_id
+             FROM robot_memory_entities e
+            WHERE e.household_id = ? AND e.status = 'confirmed'
+              AND e.map_x IS NOT NULL AND e.map_y IS NOT NULL
+            ORDER BY e.last_seen_at DESC LIMIT 100`,
         )
         .all(this.householdId) as Array<{
         class_label: string;
@@ -130,9 +137,12 @@ export class RobotMappingService {
         display_name: string;
         id: string;
         last_seen_at: string;
+        keyframe_id: string | null;
         map_uncertainty: number | null;
         map_x: number;
         map_y: number;
+        sighting_count: number;
+        viewpoint_keys_json: string;
       }>
     ).map((object) => ({
       id: object.id,
@@ -142,14 +152,67 @@ export class RobotMappingService {
       y: object.map_y,
       uncertainty: object.map_uncertainty ?? 2,
       confidence: object.confidence,
+      sightingCount: object.sighting_count,
+      viewpointCount: (JSON.parse(object.viewpoint_keys_json) as string[])
+        .length,
+      keyframeId: object.keyframe_id,
       lastSeenAt: object.last_seen_at,
     }));
+    const viewpoints = (
+      this.database
+        .prepare(
+          `SELECT v.id, v.x, v.y, v.heading, v.pan, v.tilt,
+                  v.observation_count, v.last_seen_at,
+                  EXISTS(
+                    SELECT 1 FROM robot_memory_keyframes k
+                     WHERE k.household_id = v.household_id
+                       AND abs(k.map_x - v.x) < 0.11
+                       AND abs(k.map_y - v.y) < 0.11
+                       AND abs(k.pan - v.pan) < 0.13
+                       AND abs(k.tilt - v.tilt) < 0.18
+                  ) AS has_keyframe
+             FROM robot_map_viewpoints v
+            WHERE v.household_id = ?
+            ORDER BY v.last_seen_at DESC LIMIT 200`,
+        )
+        .all(this.householdId) as Array<{
+        has_keyframe: number;
+        heading: number;
+        id: string;
+        last_seen_at: string;
+        observation_count: number;
+        pan: number;
+        tilt: number;
+        x: number;
+        y: number;
+      }>
+    ).map((viewpoint) => ({
+      id: viewpoint.id,
+      x: viewpoint.x,
+      y: viewpoint.y,
+      heading: viewpoint.heading,
+      pan: viewpoint.pan,
+      tilt: viewpoint.tilt,
+      observationCount: viewpoint.observation_count,
+      hasKeyframe: Boolean(viewpoint.has_keyframe),
+      lastSeenAt: viewpoint.last_seen_at,
+    }));
+    const visualMemory = this.database
+      .prepare(
+        `SELECT COUNT(*) AS keyframe_count,
+                COALESCE(SUM(length(image_jpeg)), 0) AS storage_bytes
+           FROM robot_memory_keyframes WHERE household_id = ?`,
+      )
+      .get(this.householdId) as {
+      keyframe_count: number;
+      storage_bytes: number;
+    };
     const storageBytes = sessions.reduce(
       (total, session) => total + session.storage_bytes,
       0,
     );
     return RobotMapSnapshotSchema.parse({
-      version: 1,
+      version: 2,
       operatingMode: runtime.operating_mode,
       mapping: {
         status: active ? mapActiveStatus(active.status) : 'inactive',
@@ -171,6 +234,12 @@ export class RobotMappingService {
       },
       paths,
       objects,
+      viewpoints,
+      visualMemory: {
+        keyframeCount: visualMemory.keyframe_count,
+        storageBytes: visualMemory.storage_bytes,
+        quotaBytes: VISUAL_MEMORY_QUOTA_BYTES,
+      },
       autonomy: {
         available: true,
         blockedReason: null,
@@ -331,6 +400,8 @@ export class RobotMappingService {
     pointCount: number;
     potential: number;
     uncertainty: number;
+    viewpointCount: number;
+    currentViewpointVisits: number;
   } {
     const runtime = this.runtime();
     const cell = this.database
@@ -346,6 +417,29 @@ export class RobotMappingService {
       { visit_count: number; visual_observation_count: number } | undefined;
     const visits = cell?.visit_count ?? 0;
     const active = this.activeSession();
+    const viewpoint = this.database
+      .prepare(
+        `SELECT observation_count FROM robot_map_viewpoints
+          WHERE household_id = ? AND cell_x = ? AND cell_y = ?
+          ORDER BY last_seen_at DESC LIMIT 1`,
+      )
+      .get(
+        this.householdId,
+        Math.round(runtime.x / 0.2),
+        Math.round(runtime.y / 0.2),
+      ) as { observation_count: number } | undefined;
+    const viewpointCount = (
+      this.database
+        .prepare(
+          `SELECT COUNT(*) AS count FROM robot_map_viewpoints
+            WHERE household_id = ? AND cell_x = ? AND cell_y = ?`,
+        )
+        .get(
+          this.householdId,
+          Math.round(runtime.x / 0.2),
+          Math.round(runtime.y / 0.2),
+        ) as { count: number }
+    ).count;
     const objectCount = (
       this.database
         .prepare(
@@ -363,6 +457,8 @@ export class RobotMappingService {
       potential:
         1 / (1 + visits) + 0.1 / (1 + (cell?.visual_observation_count ?? 0)),
       uncertainty: runtime.uncertainty,
+      viewpointCount,
+      currentViewpointVisits: viewpoint?.observation_count ?? 0,
     };
   }
 
@@ -378,6 +474,7 @@ export class RobotMappingService {
       )
       .run(frame.frameId, frame.observedAt, this.householdId);
     this.recordMapCell(runtime, true);
+    this.recordViewpoint(state, runtime);
     this.anchorConfirmedObjects(state, runtime);
   }
 
@@ -704,6 +801,44 @@ export class RobotMappingService {
         pose.updated_at,
       );
   }
+
+  private recordViewpoint(state: RobotState, pose: RuntimeRow): void {
+    const frame = state.vision;
+    if (!frame) return;
+    this.database
+      .prepare(
+        `INSERT INTO robot_map_viewpoints(
+           id, household_id, cell_x, cell_y, pan_bucket, tilt_bucket,
+           x, y, heading, pan, tilt, observation_count, last_frame_id,
+           last_seen_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+         ON CONFLICT(household_id, cell_x, cell_y, pan_bucket, tilt_bucket)
+         DO UPDATE SET
+           x = excluded.x,
+           y = excluded.y,
+           heading = excluded.heading,
+           pan = excluded.pan,
+           tilt = excluded.tilt,
+           observation_count = observation_count + 1,
+           last_frame_id = excluded.last_frame_id,
+           last_seen_at = excluded.last_seen_at`,
+      )
+      .run(
+        randomUUID(),
+        this.householdId,
+        Math.round(pose.x / 0.2),
+        Math.round(pose.y / 0.2),
+        cameraBucket(state.cameraPose.pan, 9),
+        cameraBucket(state.cameraPose.tilt, 7),
+        pose.x,
+        pose.y,
+        pose.heading,
+        state.cameraPose.pan,
+        state.cameraPose.tilt,
+        frame.frameId,
+        frame.observedAt,
+      );
+  }
 }
 
 function mapPathStatus(
@@ -736,4 +871,11 @@ function normalizeHeading(value: number): number {
   while (normalized > Math.PI) normalized -= 2 * Math.PI;
   while (normalized < -Math.PI) normalized += 2 * Math.PI;
   return normalized;
+}
+
+function cameraBucket(value: number, bucketCount: number): number {
+  return Math.max(
+    0,
+    Math.min(bucketCount - 1, Math.floor(((value + 1) / 2) * bucketCount)),
+  );
 }

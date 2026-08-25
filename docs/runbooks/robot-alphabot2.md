@@ -221,9 +221,9 @@ L’armement n’a plus de bouton séparé dans la PWA. Le passage du switch `Ro
 `/arm`; l’autorisation de 60 s est renouvelée toutes les 45 s tant que le switch
 reste actif. Elle ne commande jamais les moteurs à elle seule. Les boutons
 `Manuel` et `Autonome` sont maintenant explicites. Depuis le checkpoint 24,
-`Autonome` démarre l’exploration continue et Carto automatiquement. En manuel, `Carto`
-enregistre une trajectoire vectorielle approximative sans aucune image ;
-déplacer la caméra conserve l’enregistrement, mais les roues attendent le
+`Autonome` démarre l’exploration continue et Carto automatiquement. En manuel,
+`Carto` enregistre une trajectoire vectorielle approximative et quelques
+images-clés bornées ; déplacer la caméra conserve l’enregistrement, mais les roues attendent le
 retour au preset central. `Carte` ouvre la vue tactile et une destination
 `Va là` admissible démarre ou réoriente l’autonomie. Le switch OFF et `ARRÊT`
 arrêtent toujours le mouvement ; la boucle autonome continue en arrière-plan
@@ -233,9 +233,11 @@ Après un redémarrage du hub, toute session Carto qui enregistrait passe en
 pause. Ne jamais interpréter la pose affichée comme une mesure métrique : sans
 encodeurs ni IMU, elle est déduite de la direction, de la puissance et du temps
 entre impulsions, et dérive. Carto conserve au plus 2 000 points par session et
-10 000 par foyer. Les tables ne contiennent aucun champ image, JPEG ou
-miniature. Ne pas contourner ces bornes ni brancher le Chat, un LLM ou la
-politique d’apprentissage shadow sur `/drive`.
+10 000 par foyer. La migration 23 autorise uniquement des images-clés JPEG
+pertinentes : au plus 48, 3 par objet, 256 Kio chacune et 16 Mio au total ; une
+frame où une personne est détectée est exclue. Ne pas contourner ces bornes ni
+brancher le Chat, un LLM ou la politique d’apprentissage sur une commande
+d’actionneur.
 
 La téléopération expose un curseur de puissance commun aux quatre directions,
 borné de 10 à 35 %, initialisé à 20 % et mémorisé dans la PWA. Toute hausse
@@ -296,8 +298,8 @@ coupe pas le moteur d'inférence ; elle masque seulement la dernière observatio
 Avec le réglage par défaut `FRAME_STRIDE=2`, la vision traite une image sur deux
 et conserve la dernière surimpression jusqu'au résultat suivant, au plus deux
 secondes. `Carto` peut mémoriser la géométrie et les objets confirmés pendant
-une téléopération ; aucune frame n’est persistée. `Autonome` et l’exécution de
-mission restent désactivés.
+une téléopération. Seules les images-clés répondant aux critères de la migration
+23 sont persistées. `Autonome` et l’exécution de mission suivent le checkpoint 24.
 
 - Objets/personnes : jeux d'images consentis, précision/rappel par classe,
   faux positifs, latence p50/p95, faible lumière et mouvement.

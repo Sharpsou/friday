@@ -22,6 +22,7 @@ export function createMapProjection(snapshot: RobotMapSnapshot): MapProjection {
     snapshot.localization.pose,
     ...snapshot.paths.flatMap((path) => path.points),
     ...snapshot.objects,
+    ...(snapshot.viewpoints ?? []),
   ];
   const minX = Math.min(...world.map((point) => point.x));
   const maxX = Math.max(...world.map((point) => point.x));
@@ -38,6 +39,29 @@ export function createMapProjection(snapshot: RobotMapSnapshot): MapProjection {
     offsetX: MAP_WIDTH / 2 - ((minX + maxX) / 2) * scale,
     offsetY: MAP_HEIGHT / 2 + ((minY + maxY) / 2) * scale,
   };
+}
+
+export function viewpointPathData(
+  viewpoint: {
+    heading: number;
+    pan: number;
+    tilt: number;
+    x: number;
+    y: number;
+  },
+  projection: MapProjection,
+): string {
+  const start = projectMapPoint(viewpoint, projection);
+  const angle = viewpoint.heading + viewpoint.pan * (Math.PI / 2);
+  const length = 0.42 * (1 - Math.min(0.35, Math.abs(viewpoint.tilt) * 0.2));
+  const end = projectMapPoint(
+    {
+      x: viewpoint.x + Math.cos(angle) * length,
+      y: viewpoint.y + Math.sin(angle) * length,
+    },
+    projection,
+  );
+  return `M${start.x.toFixed(1)} ${start.y.toFixed(1)} L${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
 }
 
 export function projectMapPoint(

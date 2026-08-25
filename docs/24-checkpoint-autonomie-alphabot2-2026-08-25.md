@@ -32,6 +32,8 @@ de comportement réel dans l’appartement.
 - En mode manuel, déplacer la caméra ne met plus Carto en pause : les nouvelles
   orientations enrichissent les observations. Les roues restent simplement
   indisponibles tant que la tête n’est pas revenue au preset central.
+- Le checkpoint 25 remplace les cinq seules cibles autonomes par treize
+  orientations apprenables et ajoute une récompense de qualité visuelle.
 
 ## Apprentissage techniquement retenu
 
@@ -83,16 +85,16 @@ approximative sans encodeur, IMU ou LiDAR.
 ## Stockage
 
 La migration 22 ajoute runs autonomes, cellules cartographiques et journal
-cognitif. Carto ne persiste aucune vidéo, image, miniature ou JPEG : seulement
-géométrie compacte, identifiant de frame, objets confirmés et métriques
-d’apprentissage. Les limites de 2 000 points par session et 10 000 par foyer
-restent actives.
+cognitif. Depuis la migration 23, Carto ne persiste toujours aucune vidéo mais
+peut conserver des JPEG clés liés aux objets, avec un plafond de 48 images et
+16 Mio. Les limites de 2 000 points par session et 10 000 par foyer restent
+actives.
 
 ## Validation et exploitation
 
-`pnpm verify` réussit le 25 août 2026 : formatage, lint, types, 21 tests
-Python, 262 tests TypeScript (22 contrats, 15 domaine, 136 hub et 89 PWA),
-builds PWA/hub et 25 scénarios Chrome mobile. Les tests couvrent Dyna-Q,
+Le checkpoint 25 porte la dernière vérification complète : 21 tests Python,
+268 tests TypeScript (22 contrats, 15 domaine, 141 hub et 90 PWA), builds
+PWA/hub et 25 scénarios Chrome mobile. Les tests couvrent Dyna-Q,
 shaping, persistance, masques IR/personne,
 cartographie tête seule roues coupées, non-reprise après redémarrage, API,
 priorité Chat, seuil `Va là` et runtime Python.

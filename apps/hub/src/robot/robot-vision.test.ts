@@ -102,6 +102,9 @@ describe('Robot vision', () => {
       },
     });
     expect(engine.detect).toHaveBeenCalledOnce();
+    expect(
+      controller.visionKeyframe(state.vision?.frameId ?? -1)?.image,
+    ).toEqual(expect.any(Buffer));
     await controller.close();
     expect(engine.close).toHaveBeenCalledOnce();
   });

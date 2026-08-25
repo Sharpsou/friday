@@ -56,10 +56,12 @@ export interface AssistantEngine {
   planRobotExploration?(
     input: {
       currentGoal: RobotAutonomyGoal;
+      keyframeCount: number;
       mapNovelty: 'high' | 'known' | 'low';
       objectCount: number;
       pointCount: number;
       uncertainty: number;
+      viewpointCount: number;
     },
     signal: AbortSignal,
   ): Promise<{ goal: RobotAutonomyGoal; reason: string }>;
@@ -846,10 +848,12 @@ export class OllamaAssistantEngine implements AssistantEngine {
   async planRobotExploration(
     input: {
       currentGoal: RobotAutonomyGoal;
+      keyframeCount: number;
       mapNovelty: 'high' | 'known' | 'low';
       objectCount: number;
       pointCount: number;
       uncertainty: number;
+      viewpointCount: number;
     },
     signal: AbortSignal,
   ): Promise<{ goal: RobotAutonomyGoal; reason: string }> {

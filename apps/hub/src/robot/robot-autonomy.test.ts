@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { openDatabase } from '../db/database.js';
-import { RobotAutonomyService } from './robot-autonomy.js';
+import { RobotAutonomyService, cameraQualityReward } from './robot-autonomy.js';
 import { RobotMappingService } from './robot-mapping.js';
 import { SimulatedRobotController } from './robot-controller.js';
 
@@ -27,6 +27,24 @@ describe('RobotAutonomyService', () => {
 
   afterEach(async () => {
     for (const close of closeCallbacks.splice(0).reverse()) await close();
+  });
+
+  it('rewards an informative new camera viewpoint over a repeated one', async () => {
+    const robot = new SimulatedRobotController();
+    closeCallbacks.push(() => robot.close());
+    const state = await robot.state();
+
+    expect(
+      cameraQualityReward('look_up_left', state, 2, 3, 1, true),
+    ).toBeGreaterThan(
+      cameraQualityReward('look_up_left', state, 3, 3, 6, true),
+    );
+    expect(
+      cameraQualityReward('forward_10_straight', state, 2, 3, 1, true),
+    ).toBe(0);
+    expect(cameraQualityReward('look_up', state, 2, 2, 1, false)).toBeLessThan(
+      0,
+    );
   });
 
   it('maps with camera presets when wheels are disabled and persists learning', async () => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { RobotState } from '@friday/contracts';
 
 import { openDatabase } from '../db/database.js';
+import { RobotMappingService } from './robot-mapping.js';
 import { RobotMemoryService } from './robot-memory.js';
 
 describe('RobotMemoryService', () => {
@@ -45,7 +46,72 @@ describe('RobotMemoryService', () => {
     expect(summary.anonymousPresence.active).toBe(true);
     database.close();
   });
+
+  it('keeps one bounded image-key linked to a confirmed mapped object', () => {
+    const database = openDatabase(':memory:');
+    const household = 'household-test';
+    const memory = new RobotMemoryService(database, household);
+    const mapping = new RobotMappingService(database, household);
+    const now = Date.now();
+    const first = state(1, now, 0);
+    mapping.start(first);
+    memory.observe(first, jpeg(1));
+    memory.observe(state(2, now + 20, 0), jpeg(2));
+    const confirmed = state(3, now + 40, 0.5);
+    confirmed.vision!.detections[0]!.x = 0;
+    memory.observe(confirmed, jpeg(3));
+    mapping.observe(confirmed);
+
+    const snapshot = mapping.snapshot();
+    expect(snapshot.visualMemory).toMatchObject({ keyframeCount: 1 });
+    expect(snapshot.visualMemory.storageBytes).toBeLessThan(1_024);
+    expect(snapshot.objects[0]).toMatchObject({
+      sightingCount: 3,
+      viewpointCount: 2,
+    });
+    const keyframeId = snapshot.objects[0]?.keyframeId;
+    expect(keyframeId).toBeTruthy();
+    expect(memory.keyframe(keyframeId ?? '')?.image).toEqual(jpeg(3).image);
+    database.close();
+  });
+
+  it('never persists a visual keyframe when a person is in the image', () => {
+    const database = openDatabase(':memory:');
+    const household = 'household-test';
+    const memory = new RobotMemoryService(database, household);
+    const mapping = new RobotMappingService(database, household);
+    const now = Date.now();
+    const first = state(1, now, 0);
+    mapping.start(first);
+    memory.observe(first, jpeg(1));
+    memory.observe(state(2, now + 20, 0), jpeg(2));
+    const mixed = state(3, now + 40, 0.5);
+    mixed.vision!.detections[0]!.x = 0;
+    mixed.vision!.detections.push({
+      confidence: 0.9,
+      height: 0.5,
+      id: 'person-3',
+      kind: 'person',
+      label: 'Personne',
+      trackId: null,
+      width: 0.3,
+      x: 0.6,
+      y: 0.2,
+    });
+    memory.observe(mixed, jpeg(3));
+
+    expect(mapping.snapshot().visualMemory.keyframeCount).toBe(0);
+    database.close();
+  });
 });
+
+function jpeg(frameId: number) {
+  return {
+    frameId,
+    image: Buffer.from([0xff, 0xd8, frameId, 0xff, 0xd9]),
+    observedAt: new Date().toISOString(),
+  };
+}
 
 function state(frameId: number, now: number, pan: number): RobotState {
   return {

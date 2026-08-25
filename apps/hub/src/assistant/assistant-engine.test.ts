@@ -58,10 +58,12 @@ describe('OllamaAssistantEngine', () => {
     const robot = engine.planRobotExploration(
       {
         currentGoal: 'explore_frontier',
+        keyframeCount: 1,
         mapNovelty: 'low',
         objectCount: 2,
         pointCount: 50,
         uncertainty: 1.5,
+        viewpointCount: 4,
       },
       new AbortController().signal,
     );

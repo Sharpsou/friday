@@ -254,7 +254,8 @@ export async function buildHub(options: BuildHubOptions) {
     options.exaMcpSearchClient ?? new ExaMcpSearchClient(),
   );
   const watch = new WatchService(database, assistantEngine, undefined, tavily);
-  const robot = options.robotController ?? new DisabledRobotController();
+  const robot: RobotController =
+    options.robotController ?? new DisabledRobotController();
   const robotMemory = new RobotMemoryService(database, HOUSEHOLD_ID);
   const robotMapping = new RobotMappingService(database, HOUSEHOLD_ID);
   const robotAutonomy = new RobotAutonomyService(
@@ -262,6 +263,7 @@ export async function buildHub(options: BuildHubOptions) {
     HOUSEHOLD_ID,
     robot,
     robotMapping,
+    robotMemory,
     assistantEngine,
   );
   const publicOrigin = options.publicOrigin ?? 'http://localhost';
@@ -391,7 +393,12 @@ export async function buildHub(options: BuildHubOptions) {
     try {
       await closedAuth.requireSession(request.headers);
       const state = RobotStateSchema.parse(await robot.state());
-      robotMemory.observe(state);
+      robotMemory.observe(
+        state,
+        state.vision
+          ? (robot.visionKeyframe?.(state.vision.frameId) ?? null)
+          : null,
+      );
       robotMapping.observe(state);
       return state;
     } catch (error) {
@@ -742,6 +749,27 @@ export async function buildHub(options: BuildHubOptions) {
         .header('X-Accel-Buffering', 'no')
         .type(stream.contentType)
         .send(stream.body);
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/memory/keyframes/:id', async (request, reply) => {
+    const params = z
+      .object({ id: z.string().uuid() })
+      .safeParse(request.params);
+    if (!params.success)
+      return reply.code(400).send({ error: 'invalid_robot_keyframe' });
+    try {
+      await closedAuth.requireSession(request.headers);
+      const keyframe = robotMemory.keyframe(params.data.id);
+      if (!keyframe)
+        return reply.code(404).send({ error: 'robot_keyframe_not_found' });
+      return reply
+        .header('content-disposition', 'inline')
+        .header('x-robot-observed-at', keyframe.observedAt)
+        .type('image/jpeg')
+        .send(keyframe.image);
     } catch (error) {
       return sendRobotError(error, reply);
     }

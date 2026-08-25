@@ -19,6 +19,12 @@ export interface RobotCameraStream {
   contentType: string;
 }
 
+export interface RobotVisionKeyframe {
+  frameId: number;
+  image: Buffer;
+  observedAt: string;
+}
+
 export interface RobotController {
   state(): Promise<RobotState>;
   arm(durationMs: number): Promise<RobotState>;
@@ -29,6 +35,7 @@ export interface RobotController {
   halt(): Promise<RobotState>;
   stop(): Promise<RobotState>;
   openCameraStream(signal: AbortSignal): Promise<RobotCameraStream>;
+  visionKeyframe?(frameId: number): RobotVisionKeyframe | null;
   close(): Promise<void>;
 }
 

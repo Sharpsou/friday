@@ -2,16 +2,37 @@ export const ROBOT_SPEEDS = [0.1, 0.12, 0.15, 0.18, 0.2] as const;
 export type RobotLearningAction =
   | 'look_center'
   | 'look_down'
+  | 'look_down_left'
+  | 'look_down_low'
+  | 'look_down_right'
   | 'look_left'
+  | 'look_left_wide'
   | 'look_right'
+  | 'look_right_wide'
   | 'look_up'
+  | 'look_up_high'
+  | 'look_up_left'
+  | 'look_up_right'
   | 'reverse_escape'
   | 'turn_left'
   | 'turn_right'
   | 'wait_observe'
   | `forward_${10 | 12 | 15 | 18 | 20}_${'left' | 'right' | 'straight'}`;
 
-export type RobotCameraPreset = 'center' | 'down' | 'left' | 'right' | 'up';
+export type RobotCameraPreset =
+  | 'center'
+  | 'down'
+  | 'down_left'
+  | 'down_low'
+  | 'down_right'
+  | 'left'
+  | 'left_wide'
+  | 'right'
+  | 'right_wide'
+  | 'up'
+  | 'up_high'
+  | 'up_left'
+  | 'up_right';
 
 export interface RobotLearningObservation {
   cameraMoving: boolean;
@@ -59,10 +80,18 @@ export interface RobotDynaOptions {
 
 const HEAD_ACTIONS: RobotLearningAction[] = [
   'look_left',
+  'look_left_wide',
   'look_center',
   'look_right',
+  'look_right_wide',
   'look_up',
+  'look_up_high',
   'look_down',
+  'look_down_low',
+  'look_up_left',
+  'look_up_right',
+  'look_down_left',
+  'look_down_right',
 ];
 const SPEED_LABELS = [10, 12, 15, 18, 20] as const;
 const FORWARD_ACTIONS = SPEED_LABELS.flatMap((speed) =>
@@ -77,7 +106,7 @@ export function availableRobotActions(
   const actions: RobotLearningAction[] = ['wait_observe'];
   if (observation.cameraServosEnabled && !observation.moving) {
     for (const action of HEAD_ACTIONS)
-      if (!action.endsWith(observation.cameraPreset)) actions.push(action);
+      if (action !== `look_${observation.cameraPreset}`) actions.push(action);
   }
   if (!observation.wheelsEnabled || observation.cameraMoving) return actions;
   if (observation.irLeftClear === false && observation.irRightClear !== false)

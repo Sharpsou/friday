@@ -2,12 +2,17 @@
 
 > Mise à jour du 25 août 2026 : le mode manuel expose désormais `Carto`. Il
 > construit une carte 2D légère à partir des commandes acceptées, du temps entre
-> impulsions et des objets confirmés, sans conserver les images. La carte
+> impulsions et des objets confirmés. Depuis la migration 23, seules des
+> images-clés très sélectives peuvent être liées aux objets. La carte
 > tactile affiche trajectoires, pose/incertitude et noms d’objets. Les boutons
 > `Manuel` et `Autonome` sont explicites. L’autonomie Carto Dyna-Q à 10–20 % et
 > `Va là` sur trajet suffisamment renseigné sont implantés ; ils ne reprennent
 > jamais après redémarrage du hub et leur recette physique reste à faire. Voir
 > le [checkpoint autonomie](24-checkpoint-autonomie-alphabot2-2026-08-25.md).
+> La politique caméra dispose maintenant de treize orientations apprenables et
+> récompense les nouveaux points de vue. Carto conserve au plus 48 images-clés
+> sans personne détectée, liées aux objets confirmés et visibles dans la carte.
+> Voir le [checkpoint Carto visuelle](25-checkpoint-carto-visuelle-apprentissage-camera-2026-08-25.md).
 
 > Mise à jour du 24 août 2026 : le prototype AlphaBot2 réel est téléopérable
 > depuis l’onglet Robot. Son état canonique, ses limites physiques et sa reprise

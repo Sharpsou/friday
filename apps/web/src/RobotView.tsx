@@ -563,7 +563,12 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
         {map?.mapping.status ?? 'indisponible'} ·{' '}
         {map
           ? `${Math.round(map.mapping.storageBytes / 1_024).toString()} Kio`
+          : '—'}{' '}
+        · images-clés {map?.visualMemory.keyframeCount.toString() ?? '0'} (
+        {map
+          ? `${Math.round(map.visualMemory.storageBytes / 1_024).toString()} Kio`
           : '—'}
+        )
       </small>
       {autonomy && autonomy.status !== 'inactive' ? (
         <small className="robot-map-status" role="status">

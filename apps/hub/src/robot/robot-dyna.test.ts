@@ -30,8 +30,29 @@ describe('RobotDynaAgent', () => {
     });
 
     expect(actions).toContain('look_left');
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'look_left_wide',
+        'look_right_wide',
+        'look_up_high',
+        'look_down_low',
+        'look_up_left',
+        'look_down_right',
+      ]),
+    );
     expect(actions).not.toContain('turn_left');
     expect(actions.some((action) => action.startsWith('forward_'))).toBe(false);
+  });
+
+  it('excludes only the current head target, not a diagonal sharing its name', () => {
+    const actions = availableRobotActions({
+      ...observation,
+      cameraPreset: 'left',
+      wheelsEnabled: false,
+    });
+
+    expect(actions).not.toContain('look_left');
+    expect(actions).toContain('look_down_left');
   });
 
   it('masks forward motion around a person without prescribing a turn', () => {

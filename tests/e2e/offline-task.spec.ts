@@ -670,7 +670,7 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
     },
   };
   const robotMap = () => ({
-    version: 1,
+    version: 2,
     operatingMode: 'manual' as const,
     mapping: {
       status: mappingStatus,
@@ -695,7 +695,39 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
       },
     },
     paths: [],
-    objects: [],
+    objects: [
+      {
+        id: '70c7847d-e8eb-4e42-bab4-d553338138c3',
+        displayName: 'Lit',
+        classLabel: 'bed',
+        x: 0.8,
+        y: 0.4,
+        uncertainty: 1.2,
+        confidence: 0.91,
+        sightingCount: 5,
+        viewpointCount: 3,
+        keyframeId: null,
+        lastSeenAt: '2026-08-25T00:00:00.000Z',
+      },
+    ],
+    viewpoints: [
+      {
+        id: '785a3690-4fb0-41f0-b34d-1cbf9bc5d417',
+        x: 0.4,
+        y: 0.2,
+        heading: 0.1,
+        pan: 0.5,
+        tilt: 0.2,
+        observationCount: 2,
+        hasKeyframe: false,
+        lastSeenAt: '2026-08-25T00:00:00.000Z',
+      },
+    ],
+    visualMemory: {
+      keyframeCount: 0,
+      storageBytes: 0,
+      quotaBytes: 16_777_216,
+    },
     autonomy: {
       available: false,
       blockedReason: 'Validation physique requise.',
@@ -810,6 +842,14 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   await page.getByRole('button', { name: 'Carte' }).click();
   await expect(
     page.getByRole('img', { name: 'Vue du dessus de la cartographie' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Regards visibles' }),
+  ).toBeVisible();
+  await expect(page.getByText(/0 images-clés/u)).toBeVisible();
+  await page.getByRole('button', { name: 'Voir Lit' }).click();
+  await expect(
+    page.getByText('5 observations · 3 points de vue'),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Fermer la carte' }).click();
   const wheels = page.getByRole('switch', { name: 'Roues' });

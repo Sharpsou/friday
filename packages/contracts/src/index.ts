@@ -155,6 +155,22 @@ export const RobotMapObjectSchema = z
     y: z.number().min(-10_000).max(10_000),
     uncertainty: z.number().min(0).max(100),
     confidence: z.number().min(0).max(1),
+    sightingCount: z.number().int().positive(),
+    viewpointCount: z.number().int().positive(),
+    keyframeId: UuidSchema.nullable(),
+    lastSeenAt: UtcInstantSchema,
+  })
+  .strict();
+export const RobotMapViewpointSchema = z
+  .object({
+    id: UuidSchema,
+    x: z.number().min(-10_000).max(10_000),
+    y: z.number().min(-10_000).max(10_000),
+    heading: z.number().min(-Math.PI).max(Math.PI),
+    pan: z.number().min(-1).max(1),
+    tilt: z.number().min(-1).max(1),
+    observationCount: z.number().int().positive(),
+    hasKeyframe: z.boolean(),
     lastSeenAt: UtcInstantSchema,
   })
   .strict();
@@ -190,6 +206,14 @@ export const RobotMapSnapshotSchema = z
       .strict(),
     paths: z.array(RobotMapPathSchema).max(20),
     objects: z.array(RobotMapObjectSchema).max(100),
+    viewpoints: z.array(RobotMapViewpointSchema).max(200),
+    visualMemory: z
+      .object({
+        keyframeCount: z.number().int().nonnegative(),
+        storageBytes: z.number().int().nonnegative(),
+        quotaBytes: z.number().int().positive(),
+      })
+      .strict(),
     autonomy: z
       .object({
         available: z.boolean(),
@@ -226,9 +250,17 @@ export const RobotAutonomyGoalSchema = z.enum([
 export const RobotAutonomyActionSchema = z.enum([
   'look_center',
   'look_down',
+  'look_down_left',
+  'look_down_low',
+  'look_down_right',
   'look_left',
+  'look_left_wide',
   'look_right',
+  'look_right_wide',
   'look_up',
+  'look_up_high',
+  'look_up_left',
+  'look_up_right',
   'reverse_escape',
   'turn_left',
   'turn_right',
@@ -2076,6 +2108,7 @@ export type RobotEstimatedPose = z.infer<typeof RobotEstimatedPoseSchema>;
 export type RobotMapPoint = z.infer<typeof RobotMapPointSchema>;
 export type RobotMapObject = z.infer<typeof RobotMapObjectSchema>;
 export type RobotMapPath = z.infer<typeof RobotMapPathSchema>;
+export type RobotMapViewpoint = z.infer<typeof RobotMapViewpointSchema>;
 export type RobotMapSnapshot = z.infer<typeof RobotMapSnapshotSchema>;
 export type RobotMissionPreview = z.infer<typeof RobotMissionPreviewSchema>;
 export type RobotAutonomyGoal = z.infer<typeof RobotAutonomyGoalSchema>;

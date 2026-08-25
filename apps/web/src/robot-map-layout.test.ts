@@ -7,6 +7,7 @@ import {
   layoutMapLabels,
   mapPathData,
   projectMapPoint,
+  viewpointPathData,
 } from './robot-map-layout.js';
 
 const snapshot = {
@@ -43,6 +44,9 @@ describe('robot map layout', () => {
       y: index * 0.2,
       uncertainty: 0.2,
       confidence: 1 - index / 100,
+      sightingCount: 3,
+      viewpointCount: 2,
+      keyframeId: null,
       lastSeenAt: new Date().toISOString(),
     }));
     const labels = layoutMapLabels(
@@ -54,5 +58,14 @@ describe('robot map layout', () => {
     expect(new Set(labels.map((label) => label.object.id)).size).toBe(
       labels.length,
     );
+  });
+
+  it('renders an observed direction from robot heading and camera pan', () => {
+    expect(
+      viewpointPathData(
+        { x: 0, y: 0, heading: 0, pan: 0.5, tilt: 0.2 },
+        createMapProjection(snapshot),
+      ),
+    ).toMatch(/^M\d+\.\d \d+\.\d L\d+\.\d \d+\.\d$/u);
   });
 });
