@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AssistantMessage } from '@friday/contracts';
 
 import {
+  normalizeSourceCitations,
   OllamaAssistantEngine,
   sanitizeConversationTitle,
 } from './assistant-engine.js';
@@ -27,6 +28,15 @@ const message: AssistantMessage = {
 };
 
 describe('OllamaAssistantEngine', () => {
+  it('normalizes grouped source references and removes unknown ones', () => {
+    expect(
+      normalizeSourceCitations(
+        'Un fait [S1, S2], un autre [S2; 3] et une erreur [S9].',
+        3,
+      ),
+    ).toBe('Un fait [S1][S2], un autre [S2][S3] et une erreur.');
+  });
+
   it('serializes Watch and Chat work and exposes the shared queue', async () => {
     const resolvers: Array<(response: Response) => void> = [];
     const fetcher = vi.fn<typeof fetch>().mockImplementation(
@@ -55,22 +65,10 @@ describe('OllamaAssistantEngine', () => {
     );
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
 
-    const robot = engine.planRobotExploration(
-      {
-        currentGoal: 'explore_frontier',
-        keyframeCount: 1,
-        mapNovelty: 'low',
-        objectCount: 2,
-        pointCount: 50,
-        uncertainty: 1.5,
-        viewpointCount: 4,
-      },
-      new AbortController().signal,
-    );
     const chat = engine.answer([message], new AbortController().signal);
     expect(engine.getInferenceStatus()).toMatchObject({
       active: { kind: 'watch' },
-      queued: { assistant: 1, robot: 1, watch: 0 },
+      queued: { assistant: 1, watch: 0 },
     });
     resolvers[0]?.(
       new Response(
@@ -99,7 +97,7 @@ describe('OllamaAssistantEngine', () => {
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
     expect(engine.getInferenceStatus()).toMatchObject({
       active: { kind: 'assistant' },
-      queued: { assistant: 0, robot: 1, watch: 0 },
+      queued: { assistant: 0, watch: 0 },
     });
     resolvers[1]?.(
       new Response(JSON.stringify({ message: { content: 'Bonjour' } }), {
@@ -111,31 +109,9 @@ describe('OllamaAssistantEngine', () => {
       content: 'Bonjour',
       thinkingUsed: false,
     });
-    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
-    expect(engine.getInferenceStatus()).toMatchObject({
-      active: { kind: 'robot' },
-      queued: { assistant: 0, robot: 0, watch: 0 },
-    });
-    resolvers[2]?.(
-      new Response(
-        JSON.stringify({
-          message: {
-            content: JSON.stringify({
-              goal: 'improve_observation',
-              reason: 'La zone a été beaucoup revisitée.',
-            }),
-          },
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
-    );
-    await expect(robot).resolves.toEqual({
-      goal: 'improve_observation',
-      reason: 'La zone a été beaucoup revisitée.',
-    });
     expect(engine.getInferenceStatus()).toEqual({
       active: null,
-      queued: { assistant: 0, robot: 0, watch: 0 },
+      queued: { assistant: 0, watch: 0 },
     });
   });
 
@@ -319,6 +295,10 @@ describe('OllamaAssistantEngine', () => {
     expect(dossier.length).toBeLessThan(65_000);
     expect(dossier).toContain('[S1] Source 1');
     expect(dossier).toContain('[S30] Source 30');
+    expect(dossier).toContain('Date déclarée: inconnue');
+    expect(dossier).toContain('Format: page Web');
+    expect(dossier).not.toContain('PREUVE:');
+    expect(dossier).not.toContain('EVENT:');
   });
 
   it('audits Web claims with Qwen and only patches disputed sentences', async () => {
@@ -328,24 +308,22 @@ describe('OllamaAssistantEngine', () => {
           message: {
             content: JSON.stringify({
               coverage: 'partial',
-              edits: [
+              verdicts: [
                 {
                   segmentId: 'C1',
                   status: 'contradicted',
                   replacement:
                     'Les deux noyaux de LID-1166 sont séparés d’environ 4 900 années-lumière [S1].',
                   citations: ['S1'],
-                  reason:
-                    'La mesure décrit une séparation, pas la distance à la Terre.',
+                  duplicateOf: '',
                 },
                 {
                   segmentId: 'C2',
-                  status: 'partially_supported',
+                  status: 'needs_edit',
                   replacement:
                     'TWA 7 b a été présentée comme une planète candidate détectée par imagerie directe [S2].',
                   citations: ['S2'],
-                  reason:
-                    'La source conserve explicitement le statut de candidat.',
+                  duplicateOf: '',
                 },
                 {
                   segmentId: 'C3',
@@ -353,8 +331,14 @@ describe('OllamaAssistantEngine', () => {
                   replacement:
                     'Webb a fourni la première détection claire de CO₂ dans une atmosphère d’exoplanète avec WASP-39 b en 2022 [S3].',
                   citations: ['S3'],
-                  reason:
-                    'La citation initiale ne soutient pas cette affirmation.',
+                  duplicateOf: '',
+                },
+                {
+                  segmentId: 'C4',
+                  status: 'not_factual',
+                  replacement: '',
+                  citations: [],
+                  duplicateOf: '',
                 },
               ],
             }),
@@ -406,6 +390,13 @@ describe('OllamaAssistantEngine', () => {
       content:
         'Les deux noyaux de LID-1166 sont séparés d’environ 4 900 années-lumière [S1]. TWA 7 b a été présentée comme une planète candidate détectée par imagerie directe [S2]. Webb a fourni la première détection claire de CO₂ dans une atmosphère d’exoplanète avec WASP-39 b en 2022 [S3]. Cette réponse conserve une conclusion utile et nuancée.',
       thinkingUsed: false,
+      verification: {
+        checkedSegments: 4,
+        correctedSegments: 3,
+        coverage: 'partial',
+        redundantSegments: 0,
+        removedSegments: 0,
+      },
     });
 
     const body = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as {
@@ -440,9 +431,12 @@ describe('OllamaAssistantEngine', () => {
     expect(body.messages.at(-1)?.content).not.toContain(
       'ignore all previous instructions',
     );
+    expect(body.messages.at(-1)?.content).toContain('"format":"web_page"');
     expect(body.messages.at(-1)?.content).toContain(
-      '"sourceClass":"institutional"',
+      '"publishedAt":"2026-07-01T00:00:00.000Z"',
     );
+    expect(body.messages.at(-1)?.content).not.toContain('sourceClass');
+    expect(body.messages.at(-1)?.content).not.toContain('eventGroup');
     expect(body.messages.at(-1)?.content).toContain(
       'first clear evidence of carbon dioxide',
     );
@@ -478,11 +472,151 @@ describe('OllamaAssistantEngine', () => {
       content:
         'Un fait correctement cité [S1]. Un ajout avec une citation inventée.',
       thinkingUsed: false,
+      verification: {
+        checkedSegments: 0,
+        correctedSegments: 0,
+        coverage: 'partial',
+        redundantSegments: 0,
+        removedSegments: 0,
+      },
     });
     const body = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as {
       messages: Array<{ content: string }>;
     };
     expect(body.messages.at(-1)?.content).not.toContain('dateDeVerification');
+  });
+
+  it('rejects an otherwise valid audit that omits a draft segment', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: {
+            content: JSON.stringify({
+              coverage: 'complete',
+              verdicts: [
+                {
+                  segmentId: 'C1',
+                  status: 'needs_edit',
+                  replacement: 'Le premier fait est corrigé [S1].',
+                  duplicateOf: '',
+                  citations: ['S1'],
+                },
+              ],
+            }),
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const engine = new OllamaAssistantEngine({ fetch: fetcher });
+    const draft =
+      'Le premier fait reste à vérifier [S1]. Le second fait est soutenu [S1].';
+
+    await expect(
+      engine.verifyAnswer(
+        'Quels faits sont soutenus ?',
+        draft,
+        [
+          {
+            title: 'Source',
+            url: 'https://example.com/source',
+            content: 'Le premier fait est corrigé. Le second fait est soutenu.',
+            publishedAt: null,
+          },
+        ],
+        'web_light',
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({
+      content: draft,
+      thinkingUsed: false,
+      verification: {
+        checkedSegments: 2,
+        correctedSegments: 0,
+        coverage: 'partial',
+        redundantSegments: 0,
+        removedSegments: 0,
+      },
+    });
+  });
+
+  it('lets the auditor remove a duplicated event backed by another publication', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: {
+            content: JSON.stringify({
+              coverage: 'complete',
+              verdicts: [
+                {
+                  segmentId: 'C1',
+                  status: 'supported',
+                  replacement: '',
+                  citations: ['S1'],
+                  duplicateOf: '',
+                },
+                {
+                  segmentId: 'C2',
+                  status: 'redundant',
+                  replacement: '',
+                  citations: [],
+                  duplicateOf: 'C1',
+                },
+                {
+                  segmentId: 'C3',
+                  status: 'supported',
+                  replacement: '',
+                  citations: ['S3'],
+                  duplicateOf: '',
+                },
+              ],
+            }),
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const engine = new OllamaAssistantEngine({ fetch: fetcher });
+
+    await expect(
+      engine.verifyAnswer(
+        'Quelles sont les dernières découvertes de James Webb ?',
+        'MoM-BH*-1 pourrait signaler un trou noir primordial [S1]. Une autre découverte concerne MoM-BH*-1 [S2]. LID-1166 forme un événement distinct [S3].',
+        [
+          {
+            title: 'MoM-BH*-1 study',
+            url: 'https://science.example/mom-bh-1',
+            content: 'MoM-BH*-1 pourrait signaler un trou noir primordial.',
+            publishedAt: '2026-08-10T00:00:00.000Z',
+          },
+          {
+            title: 'MoM-BH*-1 analysis',
+            url: 'https://news.example/mom-bh-1',
+            content: 'Une autre publication analyse MoM-BH*-1.',
+            publishedAt: '2026-08-12T00:00:00.000Z',
+          },
+          {
+            title: 'LID-1166 study',
+            url: 'https://science.example/lid-1166',
+            content: 'LID-1166 forme un événement distinct.',
+            publishedAt: '2026-08-11T00:00:00.000Z',
+          },
+        ],
+        'web_deep',
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({
+      content:
+        'MoM-BH*-1 pourrait signaler un trou noir primordial [S1]. LID-1166 forme un événement distinct [S3].',
+      thinkingUsed: false,
+      verification: {
+        checkedSegments: 3,
+        correctedSegments: 0,
+        coverage: 'complete',
+        redundantSegments: 1,
+        removedSegments: 0,
+      },
+    });
   });
 
   it('rejects a surgical edit that invents a source identifier', async () => {
@@ -492,13 +626,13 @@ describe('OllamaAssistantEngine', () => {
           message: {
             content: JSON.stringify({
               coverage: 'partial',
-              edits: [
+              verdicts: [
                 {
                   segmentId: 'C1',
                   status: 'contradicted',
                   replacement: 'Une affirmation remplacée sans preuve [S9].',
                   citations: ['S9'],
-                  reason: 'Correction proposée.',
+                  duplicateOf: '',
                 },
               ],
             }),
@@ -526,6 +660,13 @@ describe('OllamaAssistantEngine', () => {
     ).resolves.toEqual({
       content: 'Une affirmation initiale correctement attribuée [S1].',
       thinkingUsed: false,
+      verification: {
+        checkedSegments: 1,
+        correctedSegments: 0,
+        coverage: 'partial',
+        redundantSegments: 0,
+        removedSegments: 0,
+      },
     });
   });
 
@@ -569,6 +710,59 @@ describe('OllamaAssistantEngine', () => {
       required: ['searchNeeded', 'queries'],
     });
     expect(body.options.num_ctx).toBe(16_384);
+  });
+
+  it('gives the planner a civil date only for temporal research', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: {
+            content: JSON.stringify({
+              searchNeeded: true,
+              queries: ['dernières découvertes James Webb'],
+            }),
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const engine = new OllamaAssistantEngine({ fetch: fetcher });
+
+    await engine.planResearch(
+      [{ ...message, content: 'Cherche les dernières découvertes' }],
+      'web_deep',
+      3,
+      new AbortController().signal,
+      'qwen3.5',
+      {
+        explicitYears: [],
+        freshness: 'recent',
+        referenceDate: '2026-08-26',
+      },
+    );
+    await engine.planResearch(
+      [{ ...message, content: 'Pourquoi le ciel est-il bleu ?' }],
+      'web_light',
+      2,
+      new AbortController().signal,
+      'qwen3.5',
+      { explicitYears: [], freshness: 'none' },
+    );
+
+    const temporalBody = JSON.parse(
+      String(fetcher.mock.calls[0]?.[1]?.body),
+    ) as { messages: Array<{ content: string }> };
+    const generalBody = JSON.parse(
+      String(fetcher.mock.calls[1]?.[1]?.body),
+    ) as { messages: Array<{ content: string }> };
+    expect(temporalBody.messages[0]?.content).toContain('2026-08-26');
+    expect(temporalBody.messages[0]?.content).toContain(
+      'informations récentes',
+    );
+    expect(generalBody.messages[0]?.content).not.toMatch(/\b2026\b/u);
+    expect(generalBody.messages[0]?.content).toContain(
+      "La demande n'est pas temporelle",
+    );
   });
 
   it('keeps Gemma available with the optimized 8K title context', async () => {

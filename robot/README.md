@@ -19,9 +19,12 @@ sûre et les essais roues levées décrits dans
 
 Les roues et les servos caméra démarrent toujours désactivés. L’API
 `POST /actuators` reçoit explicitement les deux booléens `wheelsEnabled` et
-`cameraServosEnabled`. Couper les roues stoppe et désarme ; couper les servos
-libère les canaux PCA9685. `POST /halt` arrête seulement le mouvement courant
-et conserve l’armement, tandis que `POST /stop` désarme également.
+`cameraServosEnabled`. Le switch Roues est l’autorisation persistante de
+locomotion : le couper stoppe immédiatement les moteurs. Le switch Caméra
+autorise les mouvements servo. `POST /halt` et `POST /stop` arrêtent l’impulsion
+courante sans modifier les switches. L’ancien `POST /arm` reste un no-op de
+compatibilité ; chaque commande moteur conserve son expiration et le watchdog
+local coupe les PWM sans renouvellement.
 
 Variables principales :
 
@@ -51,10 +54,21 @@ Le service CSI utilise MJPEG 640×480, 15 images/s, deux buffers caméra et
 afin de transmettre les octets disponibles sans attendre le remplissage d’un
 tampon de 64 Kio.
 
-Le Pi accepte les modes `manual` et `autonomous`, mais la politique Dyna-Q, la
-mémoire, la cartographie et la relocalisation restent sur le hub PC. Le Pi ne
-reçoit que des commandes bornées et garde l’autorité du watchdog. L’état global
-est documenté dans
+Le Pi accepte les modes `manual` et `autonomous`, mais la reconnaissance des
+lieux, le graphe visuel et le Q-learning restent sur le hub PC. Le Pi ne reçoit
+que des commandes bornées et garde l’autorité du watchdog. L’état global est documenté dans
 `docs/27-etat-canonique-app-robot-2026-08-25.md`.
 
 Tests sans GPIO : `python -m unittest discover -s robot/tests -p "test_*.py"`.
+
+## Veille réseau
+
+Le point d’entrée `friday-wake-agent` (port 8764 par défaut) reste actif pendant
+que `friday-awake.target` arrête la caméra et le contrôleur GPIO. Son jeton
+`FRIDAY_WAKE_TOKEN` doit être distinct du jeton robot et comporter au moins 32
+caractères. Voir `deploy/install-network-standby.sh` et le runbook AlphaBot2.
+
+Le déploiement du 27 août 2026 a laissé `friday-wake`, `friday-camera`,
+`friday-robot` et `friday-awake.target` actifs avec l’état désiré `awake`. La
+première recette physique veille/réveil reste à consigner dans le runbook ; ne
+pas l’inférer des tests unitaires.

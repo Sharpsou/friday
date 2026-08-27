@@ -9,12 +9,16 @@ $ErrorActionPreference = 'Stop'
 $workspacePath = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $launcherPath = Join-Path $PSScriptRoot 'Start-FridayRecipe.ps1'
 $stopLauncherPath = Join-Path $PSScriptRoot 'Stop-Friday.ps1'
+$statusLauncherPath = Join-Path $PSScriptRoot 'Get-FridayStatus.ps1'
 $lanConfigurationPath = Join-Path $PSScriptRoot 'Configure-FridayLan.ps1'
 if (-not (Test-Path -LiteralPath $launcherPath)) {
   throw "Lanceur Friday introuvable : $launcherPath"
 }
 if (-not (Test-Path -LiteralPath $stopLauncherPath)) {
   throw "Arret Friday introuvable : $stopLauncherPath"
+}
+if (-not (Test-Path -LiteralPath $statusLauncherPath)) {
+  throw "Statut Friday introuvable : $statusLauncherPath"
 }
 if (-not (Test-Path -LiteralPath $lanConfigurationPath)) {
   throw "Configuration LAN Friday introuvable : $lanConfigurationPath"
@@ -62,11 +66,24 @@ $stopShortcut.IconLocation = "$powershellPath,0"
 $stopShortcut.WindowStyle = 7
 $stopShortcut.Save()
 
+$statusShortcutPath = Join-Path $DesktopPath 'Friday - Etat du service.lnk'
+$statusShortcut = $shell.CreateShortcut($statusShortcutPath)
+$statusShortcut.TargetPath = $powershellPath
+$statusShortcut.Arguments = (
+  "-NoLogo -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass " +
+  "-File `"$statusLauncherPath`""
+)
+$statusShortcut.WorkingDirectory = $workspacePath
+$statusShortcut.Description = 'Indiquer si Friday tourne'
+$statusShortcut.IconLocation = "$powershellPath,0"
+$statusShortcut.WindowStyle = 7
+$statusShortcut.Save()
+
 $networkConfiguration = Get-NetIPConfiguration |
   Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' } |
   Select-Object -First 1
 if (-not $networkConfiguration) {
-  throw 'Aucune interface réseau active avec passerelle n’a été trouvée.'
+  throw 'Aucune interface reseau active avec passerelle disponible.'
 }
 $networkProfile = Get-NetConnectionProfile `
   -InterfaceIndex $networkConfiguration.InterfaceIndex
@@ -88,4 +105,5 @@ $lanShortcut.Save()
 Write-Output "SHORTCUT_PATH=$shortcutPath"
 Write-Output "BACKGROUND_SHORTCUT_PATH=$backgroundShortcutPath"
 Write-Output "STOP_SHORTCUT_PATH=$stopShortcutPath"
+Write-Output "STATUS_SHORTCUT_PATH=$statusShortcutPath"
 Write-Output "LAN_SHORTCUT_PATH=$lanShortcutPath"

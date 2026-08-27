@@ -4,7 +4,6 @@ import helmet from '@fastify/helmet';
 import staticPlugin from '@fastify/static';
 import { fromNodeHeaders } from 'better-auth/node';
 import Fastify from 'fastify';
-import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import {
@@ -47,19 +46,27 @@ import {
   RobotArmRequestSchema,
   RobotActuatorsRequestSchema,
   RobotAutonomyResponseSchema,
+  RobotAutonomyPowerRequestSchema,
   RobotAutonomyStartRequestSchema,
   RobotCameraLookRequestSchema,
-  RobotCognitionJournalSchema,
+  RobotCameraBandwidthRequestSchema,
+  RobotCameraBandwidthStatusSchema,
   RobotCommandResponseSchema,
+  RobotControlPreferencesRequestSchema,
+  RobotControlPreferencesSchema,
+  RobotDisplayPreferencesRequestSchema,
+  RobotDisplayPreferencesSchema,
   RobotDriveRequestSchema,
-  RobotMemoryRenameRequestSchema,
-  RobotMemorySummarySchema,
-  RobotMapSnapshotSchema,
-  RobotMappingActionResponseSchema,
-  RobotMissionPreviewRequestSchema,
-  RobotMissionPreviewSchema,
   RobotOperatingModeRequestSchema,
+  RobotPanoramaPreferencesRequestSchema,
+  RobotPanoramaPreferencesSchema,
   RobotStateSchema,
+  RobotVisualGraphSchema,
+  RobotVisualMemoryPurgeRequestSchema,
+  RobotVisualMemoryPurgeResponseSchema,
+  RobotVisualObjectRenameRequestSchema,
+  RobotVisualPlaceMergeRequestSchema,
+  RobotVisualPlaceRenameRequestSchema,
   WatchArticleSchema,
   WatchArticleStateRequestSchema,
   WatchAddDiscoveredSourcesRequestSchema,
@@ -102,6 +109,7 @@ import {
   type GroceryPhotoTranscriptionEngine,
 } from './groceries/ollama-photo-transcription-engine.js';
 import { SyncService } from './sync/sync-service.js';
+import { SecureFeedClient } from './watch/feed-client.js';
 import { WatchNotFoundError, WatchService } from './watch/watch-service.js';
 import {
   DisabledRobotController,
@@ -109,16 +117,15 @@ import {
   type RobotController,
   RobotUnavailableError,
 } from './robot/robot-controller.js';
-import { RobotMemoryService } from './robot/robot-memory.js';
 import {
   RobotAutonomyError,
   RobotAutonomyService,
 } from './robot/robot-autonomy.js';
+import type { RobotPlaceRecognitionEngine } from './robot/robot-place-recognition.js';
 import {
-  RobotMappingError,
-  RobotMappingService,
-} from './robot/robot-mapping.js';
-import type { RobotPlaceRecognitionEngine } from './robot/robot-localization-engine.js';
+  RobotVisualTopologyError,
+  RobotVisualTopologyService,
+} from './robot/robot-visual-topology.js';
 
 export interface BuildHubOptions {
   authAttemptLimit?: number;
@@ -132,6 +139,7 @@ export interface BuildHubOptions {
   classificationEngine?: GroceryClassificationEngine;
   photoTranscriptionEngine?: GroceryPhotoTranscriptionEngine;
   assistantEngine?: AssistantEngine;
+  assistantWebPageReader?: Pick<SecureFeedClient, 'fetchArticleText'>;
   tavilySearchClient?: TavilySearchClient;
   exaMcpSearchClient?: ExaMcpSearchClient;
   ollamaBaseUrl?: string;
@@ -254,29 +262,22 @@ export async function buildHub(options: BuildHubOptions) {
     assistantEngine,
     tavily,
     options.exaMcpSearchClient ?? new ExaMcpSearchClient(),
+    undefined,
+    options.assistantWebPageReader ?? new SecureFeedClient(),
   );
   const watch = new WatchService(database, assistantEngine, undefined, tavily);
   const robot: RobotController =
     options.robotController ?? new DisabledRobotController();
-  const robotMemory = new RobotMemoryService(database, HOUSEHOLD_ID);
-  const robotMapping = new RobotMappingService(database, HOUSEHOLD_ID, {
-    ...(options.robotPlaceRecognition
-      ? { placeRecognition: options.robotPlaceRecognition }
-      : {}),
-    onLocalizationError(error) {
-      app.log.warn(
-        { error },
-        'Localisation visuelle du robot temporairement indisponible.',
-      );
-    },
-  });
+  const robotTopology = new RobotVisualTopologyService(
+    database,
+    HOUSEHOLD_ID,
+    options.robotPlaceRecognition,
+  );
   const robotAutonomy = new RobotAutonomyService(
     database,
     HOUSEHOLD_ID,
     robot,
-    robotMapping,
-    robotMemory,
-    assistantEngine,
+    robotTopology,
   );
   const publicOrigin = options.publicOrigin ?? 'http://localhost';
   const closedAuth = new ClosedAuthService({
@@ -324,6 +325,52 @@ export async function buildHub(options: BuildHubOptions) {
     robotCommandWindows.set(deviceId, recent);
     return true;
   };
+  const readRobotDisplayPreferences = () => {
+    const row = database
+      .prepare(
+        `SELECT recognition_visible, updated_at
+           FROM robot_display_preferences
+          WHERE household_id = ?`,
+      )
+      .get(HOUSEHOLD_ID) as
+      { recognition_visible: number; updated_at: string } | undefined;
+    return RobotDisplayPreferencesSchema.parse({
+      recognitionVisible: row ? row.recognition_visible === 1 : true,
+      updatedAt: row?.updated_at ?? null,
+    });
+  };
+  const readRobotControlPreferences = () => {
+    const row = database
+      .prepare(
+        `SELECT steering_trim_percent, updated_at
+           FROM robot_control_preferences
+          WHERE household_id = ?`,
+      )
+      .get(HOUSEHOLD_ID) as
+      | {
+          steering_trim_percent: number;
+          updated_at: string;
+        }
+      | undefined;
+    return RobotControlPreferencesSchema.parse({
+      steeringTrimPercent: row?.steering_trim_percent ?? 0,
+      updatedAt: row?.updated_at ?? null,
+    });
+  };
+  const readRobotPanoramaPreferences = () => {
+    const row = database
+      .prepare(
+        `SELECT panorama_pulse_ms, updated_at
+           FROM robot_control_preferences
+          WHERE household_id = ?`,
+      )
+      .get(HOUSEHOLD_ID) as
+      { panorama_pulse_ms: number; updated_at: string } | undefined;
+    return RobotPanoramaPreferencesSchema.parse({
+      panoramaPulseMs: row?.panorama_pulse_ms ?? 220,
+      updatedAt: row?.updated_at ?? null,
+    });
+  };
   const sendRobotError = (
     error: unknown,
     reply: { code(status: number): unknown },
@@ -340,15 +387,19 @@ export async function buildHub(options: BuildHubOptions) {
         message: error.message,
       });
     }
-    if (error instanceof RobotMappingError) {
+    if (error instanceof RobotAutonomyError) {
       return (reply.code(409) as { send(payload: unknown): unknown }).send({
         error: error.code,
         message: error.message,
       });
     }
-    if (error instanceof RobotAutonomyError) {
-      return (reply.code(409) as { send(payload: unknown): unknown }).send({
-        error: error.code,
+    if (error instanceof RobotVisualTopologyError) {
+      const status = error.code === 'not_found' ? 404 : 409;
+      return (reply.code(status) as { send(payload: unknown): unknown }).send({
+        error:
+          error.code === 'not_found'
+            ? 'robot_visual_not_found'
+            : 'robot_visual_conflict',
         message: error.message,
       });
     }
@@ -408,18 +459,260 @@ export async function buildHub(options: BuildHubOptions) {
       const keyframe = state.vision
         ? (robot.visionKeyframe?.(state.vision.frameId) ?? null)
         : null;
-      robotMemory.observe(state, keyframe, robotMapping.isRecording());
-      robotMapping.observe(state, keyframe);
+      void robotTopology.observe(state, keyframe).catch((error: unknown) => {
+        app.log.warn(
+          { error },
+          'Reconnaissance de lieu temporairement indisponible.',
+        );
+      });
       return state;
     } catch (error) {
       return sendRobotError(error, reply);
     }
   });
 
-  app.get('/api/robot/map', async (request, reply) => {
+  app.post('/api/robot/power/sleep', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (!robot.sleepNetwork)
+        return reply
+          .code(404)
+          .send({ error: 'robot_network_standby_unavailable' });
+      if (robotAutonomy.status().status !== 'inactive')
+        await robotAutonomy.stop('network_standby');
+      robotTopology.pauseObservations();
+      try {
+        const state = await robot.sleepNetwork();
+        return RobotCommandResponseSchema.parse({ accepted: true, state });
+      } catch (error) {
+        robotTopology.resumeObservationsAfter(700);
+        throw error;
+      }
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/power/wake', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (!robot.wakeNetwork)
+        return reply
+          .code(404)
+          .send({ error: 'robot_network_standby_unavailable' });
+      const state = await robot.wakeNetwork();
+      robotTopology.resumeObservationsAfter(700);
+      return RobotCommandResponseSchema.parse({ accepted: true, state });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/display-preferences', async (request, reply) => {
     try {
       await closedAuth.requireSession(request.headers);
-      return RobotMapSnapshotSchema.parse(robotMapping.snapshot());
+      return readRobotDisplayPreferences();
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.patch('/api/robot/display-preferences', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotDisplayPreferencesRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply
+        .code(400)
+        .send({ error: 'invalid_robot_display_preferences' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (!acceptsRobotCommandRate(session.deviceId, 5))
+        return reply.code(429).send({ error: 'robot_rate_limited' });
+      const updatedAt = new Date().toISOString();
+      database
+        .prepare(
+          `INSERT INTO robot_display_preferences(
+             household_id, recognition_visible, updated_at, updated_by_profile_id
+           ) VALUES (?, ?, ?, ?)
+           ON CONFLICT(household_id) DO UPDATE SET
+             recognition_visible = excluded.recognition_visible,
+             updated_at = excluded.updated_at,
+             updated_by_profile_id = excluded.updated_by_profile_id`,
+        )
+        .run(
+          HOUSEHOLD_ID,
+          body.data.recognitionVisible ? 1 : 0,
+          updatedAt,
+          session.member.profileId,
+        );
+      return readRobotDisplayPreferences();
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/control-preferences', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return readRobotControlPreferences();
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.patch('/api/robot/control-preferences', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotControlPreferencesRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply
+        .code(400)
+        .send({ error: 'invalid_robot_control_preferences' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (!acceptsRobotCommandRate(session.deviceId, 5))
+        return reply.code(429).send({ error: 'robot_rate_limited' });
+      const updatedAt = new Date().toISOString();
+      database
+        .prepare(
+          `INSERT INTO robot_control_preferences(
+             household_id, steering_trim_percent, updated_at,
+             updated_by_profile_id
+           ) VALUES (?, ?, ?, ?)
+           ON CONFLICT(household_id) DO UPDATE SET
+             steering_trim_percent = excluded.steering_trim_percent,
+             updated_at = excluded.updated_at,
+             updated_by_profile_id = excluded.updated_by_profile_id`,
+        )
+        .run(
+          HOUSEHOLD_ID,
+          body.data.steeringTrimPercent,
+          updatedAt,
+          session.member.profileId,
+        );
+      return readRobotControlPreferences();
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/panorama-preferences', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return readRobotPanoramaPreferences();
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.patch('/api/robot/panorama-preferences', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotPanoramaPreferencesRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply
+        .code(400)
+        .send({ error: 'invalid_robot_panorama_preferences' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (!acceptsRobotCommandRate(session.deviceId, 5))
+        return reply.code(429).send({ error: 'robot_rate_limited' });
+      const updatedAt = new Date().toISOString();
+      database
+        .prepare(
+          `INSERT INTO robot_control_preferences(
+             household_id, steering_trim_percent, panorama_pulse_ms,
+             updated_at, updated_by_profile_id
+           ) VALUES (?, 0, ?, ?, ?)
+           ON CONFLICT(household_id) DO UPDATE SET
+             panorama_pulse_ms = excluded.panorama_pulse_ms,
+             updated_at = excluded.updated_at,
+             updated_by_profile_id = excluded.updated_by_profile_id`,
+        )
+        .run(
+          HOUSEHOLD_ID,
+          body.data.panoramaPulseMs,
+          updatedAt,
+          session.member.profileId,
+        );
+      const saved = readRobotPanoramaPreferences();
+      robotAutonomy.setPanoramaPulseDuration(saved.panoramaPulseMs);
+      return saved;
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/graph', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return RobotVisualGraphSchema.parse(robotTopology.snapshot());
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/graph/purge', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotVisualMemoryPurgeRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_robot_memory_purge' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (robotAutonomy.status().status === 'inactive') await robot.stop();
+      else await robotAutonomy.stop('visual_memory_purge');
+      return RobotVisualMemoryPurgeResponseSchema.parse(
+        await robotTopology.purge(body.data.scope),
+      );
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.get('/api/robot/camera/bandwidth', async (request, reply) => {
+    try {
+      await closedAuth.requireSession(request.headers);
+      return RobotCameraBandwidthStatusSchema.parse(
+        await robot.cameraBandwidth(),
+      );
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/camera/bandwidth', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotCameraBandwidthRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_robot_camera_bandwidth' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (robotAutonomy.status().status === 'inactive') await robot.stop();
+      else await robotAutonomy.stop('camera_bandwidth_changed');
+      return RobotCameraBandwidthStatusSchema.parse(
+        await robot.setCameraBandwidth(body.data.profile),
+      );
     } catch (error) {
       return sendRobotError(error, reply);
     }
@@ -429,15 +722,6 @@ export async function buildHub(options: BuildHubOptions) {
     try {
       await closedAuth.requireSession(request.headers);
       return robotAutonomy.status();
-    } catch (error) {
-      return sendRobotError(error, reply);
-    }
-  });
-
-  app.get('/api/robot/cognition-journal', async (request, reply) => {
-    try {
-      await closedAuth.requireSession(request.headers);
-      return RobotCognitionJournalSchema.parse(robotAutonomy.journal());
     } catch (error) {
       return sendRobotError(error, reply);
     }
@@ -453,19 +737,40 @@ export async function buildHub(options: BuildHubOptions) {
       const session = await closedAuth.requireSession(request.headers);
       if (session.member.role !== 'owner')
         return reply.code(403).send({ error: 'robot_owner_required' });
+      const panoramaPreferences = readRobotPanoramaPreferences();
       const state = await robotAutonomy.start({
         powerPercent: body.data.powerPercent,
         steeringTrimPercent: body.data.steeringTrimPercent,
-        ...(body.data.targetPointId
-          ? { targetPointId: body.data.targetPointId }
+        panoramaPulseMs: panoramaPreferences.panoramaPulseMs,
+        ...(body.data.allowCandidatePath !== undefined
+          ? { allowCandidatePath: body.data.allowCandidatePath }
+          : {}),
+        ...(body.data.targetPlaceId
+          ? { targetPlaceId: body.data.targetPlaceId }
           : {}),
       });
       return RobotAutonomyResponseSchema.parse({
         accepted: true,
         state,
-        map: robotMapping.snapshot(),
+        graph: robotTopology.snapshot(),
         autonomy: robotAutonomy.status(),
       });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.patch('/api/robot/autonomy/power', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const body = RobotAutonomyPowerRequestSchema.safeParse(request.body);
+    if (!body.success)
+      return reply.code(400).send({ error: 'invalid_robot_autonomy_power' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      return robotAutonomy.setPowerPercent(body.data.powerPercent);
     } catch (error) {
       return sendRobotError(error, reply);
     }
@@ -482,7 +787,7 @@ export async function buildHub(options: BuildHubOptions) {
       return RobotAutonomyResponseSchema.parse({
         accepted: true,
         state,
-        map: robotMapping.snapshot(),
+        graph: robotTopology.snapshot(),
         autonomy: robotAutonomy.status(),
       });
     } catch (error) {
@@ -490,7 +795,7 @@ export async function buildHub(options: BuildHubOptions) {
     }
   });
 
-  app.post('/api/robot/autonomy/recovery', async (request, reply) => {
+  app.post('/api/robot/autonomy/recovery/start', async (request, reply) => {
     if (!acceptsTrustedMutationOrigin(request.headers))
       return reply.code(403).send({ error: 'untrusted_origin' });
     try {
@@ -501,7 +806,7 @@ export async function buildHub(options: BuildHubOptions) {
       return RobotAutonomyResponseSchema.parse({
         accepted: true,
         state,
-        map: robotMapping.snapshot(),
+        graph: robotTopology.snapshot(),
         autonomy: robotAutonomy.status(),
       });
     } catch (error) {
@@ -509,90 +814,129 @@ export async function buildHub(options: BuildHubOptions) {
     }
   });
 
-  const mutateMapping = async (
-    request: FastifyRequest,
-    reply: FastifyReply,
-    action: 'pause' | 'relocalize' | 'resume' | 'start' | 'stop',
-  ) => {
-    try {
-      const session = await closedAuth.requireSession(request.headers);
-      if (session.member.role !== 'owner')
-        return reply.code(403).send({
-          error: 'robot_owner_required',
-        });
-      const state = RobotStateSchema.parse(await robot.state());
-      const map =
-        action === 'relocalize'
-          ? robotMapping.requestRelocalization()
-          : action === 'start'
-            ? robotMapping.start(state)
-            : action === 'pause'
-              ? robotMapping.pause()
-              : action === 'resume'
-                ? robotMapping.resume(state)
-                : robotMapping.stop();
-      return RobotMappingActionResponseSchema.parse({ accepted: true, map });
-    } catch (error) {
-      return sendRobotError(error, reply);
-    }
-  };
-
-  for (const action of [
-    'start',
-    'pause',
-    'resume',
-    'stop',
-    'relocalize',
-  ] as const) {
-    app.post(`/api/robot/mapping/${action}`, async (request, reply) => {
-      if (!acceptsTrustedMutationOrigin(request.headers))
-        return reply.code(403).send({ error: 'untrusted_origin' });
-      return mutateMapping(request, reply, action);
-    });
-  }
-
-  app.post('/api/robot/missions/preview', async (request, reply) => {
+  app.post('/api/robot/autonomy/recovery/finish', async (request, reply) => {
     if (!acceptsTrustedMutationOrigin(request.headers))
       return reply.code(403).send({ error: 'untrusted_origin' });
-    const body = RobotMissionPreviewRequestSchema.safeParse(request.body);
-    if (!body.success)
-      return reply.code(400).send({ error: 'invalid_robot_mission_preview' });
     try {
       const session = await closedAuth.requireSession(request.headers);
       if (session.member.role !== 'owner')
         return reply.code(403).send({ error: 'robot_owner_required' });
-      return RobotMissionPreviewSchema.parse(
-        robotMapping.previewMission(body.data.targetPointId),
+      const state = await robotAutonomy.finishHumanRecovery();
+      return RobotAutonomyResponseSchema.parse({
+        accepted: true,
+        state,
+        graph: robotTopology.snapshot(),
+        autonomy: robotAutonomy.status(),
+      });
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.patch('/api/robot/graph/objects/:id', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = z
+      .object({ id: z.string().uuid() })
+      .safeParse(request.params);
+    const body = RobotVisualObjectRenameRequestSchema.safeParse(request.body);
+    if (!params.success || !body.success)
+      return reply.code(400).send({ error: 'invalid_robot_visual_object' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      return RobotVisualGraphSchema.parse(
+        robotTopology.renameObject(params.data.id, body.data.displayName),
       );
     } catch (error) {
       return sendRobotError(error, reply);
     }
   });
 
-  app.get('/api/robot/memory', async (request, reply) => {
-    try {
-      await closedAuth.requireSession(request.headers);
-      return RobotMemorySummarySchema.parse(robotMemory.summary());
-    } catch (error) {
-      return sendRobotError(error, reply);
-    }
-  });
-
-  app.patch('/api/robot/memory/entities/:id', async (request, reply) => {
+  app.patch('/api/robot/graph/places/:id', async (request, reply) => {
     if (!acceptsTrustedMutationOrigin(request.headers))
       return reply.code(403).send({ error: 'untrusted_origin' });
     const params = z
       .object({ id: z.string().uuid() })
       .safeParse(request.params);
-    const body = RobotMemoryRenameRequestSchema.safeParse(request.body);
+    const body = RobotVisualPlaceRenameRequestSchema.safeParse(request.body);
     if (!params.success || !body.success)
-      return reply.code(400).send({ error: 'invalid_robot_memory_entity' });
+      return reply.code(400).send({ error: 'invalid_robot_visual_place' });
     try {
       const session = await closedAuth.requireSession(request.headers);
       if (session.member.role !== 'owner')
         return reply.code(403).send({ error: 'robot_owner_required' });
-      return RobotMemorySummarySchema.parse(
-        robotMemory.rename(params.data.id, body.data.displayName),
+      return RobotVisualGraphSchema.parse(
+        robotTopology.renamePlace(params.data.id, body.data.label),
+      );
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.post('/api/robot/graph/places/:id/merge', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = z
+      .object({ id: z.string().uuid() })
+      .safeParse(request.params);
+    const body = RobotVisualPlaceMergeRequestSchema.safeParse(request.body);
+    if (!params.success || !body.success)
+      return reply.code(400).send({ error: 'invalid_robot_visual_merge' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (robotAutonomy.status().status === 'inactive') await robot.stop();
+      else await robotAutonomy.stop('visual_places_merge');
+      return RobotVisualGraphSchema.parse(
+        await robotTopology.mergePlaces(
+          params.data.id,
+          body.data.sourcePlaceId,
+        ),
+      );
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.delete('/api/robot/graph/places/:id', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = z
+      .object({ id: z.string().uuid() })
+      .safeParse(request.params);
+    if (!params.success)
+      return reply.code(400).send({ error: 'invalid_robot_visual_place' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      if (robotAutonomy.status().status === 'inactive') await robot.stop();
+      else await robotAutonomy.stop('visual_place_deleted');
+      return RobotVisualGraphSchema.parse(
+        await robotTopology.deletePlace(params.data.id),
+      );
+    } catch (error) {
+      return sendRobotError(error, reply);
+    }
+  });
+
+  app.delete('/api/robot/graph/objects/:id', async (request, reply) => {
+    if (!acceptsTrustedMutationOrigin(request.headers))
+      return reply.code(403).send({ error: 'untrusted_origin' });
+    const params = z
+      .object({ id: z.string().uuid() })
+      .safeParse(request.params);
+    if (!params.success)
+      return reply.code(400).send({ error: 'invalid_robot_visual_object' });
+    try {
+      const session = await closedAuth.requireSession(request.headers);
+      if (session.member.role !== 'owner')
+        return reply.code(403).send({ error: 'robot_owner_required' });
+      return RobotVisualGraphSchema.parse(
+        robotTopology.deleteObject(params.data.id),
       );
     } catch (error) {
       return sendRobotError(error, reply);
@@ -647,7 +991,6 @@ export async function buildHub(options: BuildHubOptions) {
         issuedAt: new Date(forwardedAt).toISOString(),
         expiresAt: new Date(forwardedAt + 1_800).toISOString(),
       });
-      robotMapping.recordDrive(body.data, state);
       robotAutonomy.observeManualDrive(body.data, state);
       return RobotCommandResponseSchema.parse({
         accepted: true,
@@ -674,14 +1017,19 @@ export async function buildHub(options: BuildHubOptions) {
       // target-position command at the hub boundary so ordinary phone clock
       // skew cannot make it expire before it reaches the Pi.
       const forwardedAt = Date.now();
-      return RobotCommandResponseSchema.parse({
-        accepted: true,
-        state: await robot.look({
-          ...body.data,
-          issuedAt: new Date(forwardedAt).toISOString(),
-          expiresAt: new Date(forwardedAt + 1_800).toISOString(),
-        }),
-      });
+      robotTopology.pauseObservations();
+      try {
+        return RobotCommandResponseSchema.parse({
+          accepted: true,
+          state: await robot.look({
+            ...body.data,
+            issuedAt: new Date(forwardedAt).toISOString(),
+            expiresAt: new Date(forwardedAt + 1_800).toISOString(),
+          }),
+        });
+      } finally {
+        robotTopology.resumeObservationsAfter(700);
+      }
     } catch (error) {
       return sendRobotError(error, reply);
     }
@@ -719,9 +1067,16 @@ export async function buildHub(options: BuildHubOptions) {
       if (session.member.role !== 'owner')
         return reply.code(403).send({ error: 'robot_owner_required' });
       if (body.data.mode === 'autonomous') {
+        if (robotAutonomy.status().status === 'recovering') {
+          const state = await robotAutonomy.finishHumanRecovery();
+          return RobotCommandResponseSchema.parse({ accepted: true, state });
+        }
+        const controlPreferences = readRobotControlPreferences();
+        const panoramaPreferences = readRobotPanoramaPreferences();
         const state = await robotAutonomy.start({
           powerPercent: 20,
-          steeringTrimPercent: 0,
+          steeringTrimPercent: controlPreferences.steeringTrimPercent,
+          panoramaPulseMs: panoramaPreferences.panoramaPulseMs,
         });
         return RobotCommandResponseSchema.parse({ accepted: true, state });
       }
@@ -729,7 +1084,6 @@ export async function buildHub(options: BuildHubOptions) {
         const state = await robotAutonomy.stop('manual_mode');
         return RobotCommandResponseSchema.parse({ accepted: true, state });
       }
-      robotMapping.setMode(body.data.mode);
       return RobotCommandResponseSchema.parse({
         accepted: true,
         state: await robot.setMode(body.data.mode),
@@ -792,26 +1146,32 @@ export async function buildHub(options: BuildHubOptions) {
     }
   });
 
-  app.get('/api/robot/memory/keyframes/:id', async (request, reply) => {
-    const params = z
-      .object({ id: z.string().uuid() })
-      .safeParse(request.params);
-    if (!params.success)
-      return reply.code(400).send({ error: 'invalid_robot_keyframe' });
-    try {
-      await closedAuth.requireSession(request.headers);
-      const keyframe = robotMemory.keyframe(params.data.id);
-      if (!keyframe)
-        return reply.code(404).send({ error: 'robot_keyframe_not_found' });
-      return reply
-        .header('content-disposition', 'inline')
-        .header('x-robot-observed-at', keyframe.observedAt)
-        .type('image/jpeg')
-        .send(keyframe.image);
-    } catch (error) {
-      return sendRobotError(error, reply);
-    }
-  });
+  app.get(
+    '/api/robot/graph/places/:placeId/views/:viewId',
+    async (request, reply) => {
+      const params = z
+        .object({ placeId: z.string().uuid(), viewId: z.string().uuid() })
+        .safeParse(request.params);
+      if (!params.success)
+        return reply.code(400).send({ error: 'invalid_robot_visual_view' });
+      try {
+        await closedAuth.requireSession(request.headers);
+        const view = robotTopology.image(
+          params.data.placeId,
+          params.data.viewId,
+        );
+        if (!view)
+          return reply.code(404).send({ error: 'robot_visual_view_not_found' });
+        return reply
+          .header('content-disposition', 'inline')
+          .header('x-robot-observed-at', view.observedAt)
+          .type('image/jpeg')
+          .send(view.image);
+      } catch (error) {
+        return sendRobotError(error, reply);
+      }
+    },
+  );
 
   app.get('/api/auth/state', async (request) =>
     AuthStateResponseSchema.parse({
@@ -1529,7 +1889,7 @@ export async function buildHub(options: BuildHubOptions) {
       return InferenceStatusSchema.parse(
         assistantEngine.getInferenceStatus?.() ?? {
           active: null,
-          queued: { assistant: 0, robot: 0, watch: 0 },
+          queued: { assistant: 0, watch: 0 },
         },
       );
     } catch (error) {
@@ -1845,7 +2205,6 @@ export async function buildHub(options: BuildHubOptions) {
 
   app.addHook('onClose', async () => {
     await robotAutonomy.close();
-    await robotMapping.close();
     await robot.close();
     await watch.stop();
     await assistant.stop();

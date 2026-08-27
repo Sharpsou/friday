@@ -5,6 +5,7 @@ import json
 import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, BinaryIO, Iterator
+from urllib.parse import parse_qs, urlparse
 
 from .controller import CommandRejected, RobotController
 
@@ -30,14 +31,19 @@ def handler_factory(controller: RobotController, token: str):
         def do_GET(self) -> None:  # noqa: N802
             if not self._authorized():
                 return
-            if self.path == "/state":
+            parsed = urlparse(self.path)
+            if parsed.path == "/state":
                 try:
                     self._json(200, controller.state())
                 except Exception:
                     controller.stop()
                     self._json(503, {"error": "Télémétrie indisponible."})
-            elif self.path == "/camera/stream":
-                self._camera()
+            elif parsed.path == "/camera/stream":
+                profile = parse_qs(parsed.query).get("profile", ["normal"])[0]
+                if profile not in {"normal", "reduced"}:
+                    self._json(400, {"error": "Profil caméra invalide."})
+                    return
+                self._camera(profile)
             else:
                 self._json(404, {"error": "Route inconnue."})
 
@@ -99,10 +105,10 @@ def handler_factory(controller: RobotController, token: str):
             self.end_headers()
             self.wfile.write(body)
 
-        def _camera(self) -> None:
+        def _camera(self, profile: str) -> None:
             headers_sent = False
             try:
-                stream, content_type = controller.open_camera()
+                stream, content_type = controller.open_camera(profile)
                 self.send_response(200)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Cache-Control", "no-store")

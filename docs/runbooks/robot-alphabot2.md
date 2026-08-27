@@ -1,127 +1,32 @@
 # Runbook — Robot Friday AlphaBot2-Pi
 
-Lire d’abord
-[l’état canonique App + Robot](../27-etat-canonique-app-robot-2026-08-25.md),
-puis, pour les détails de conception, le
-[checkpoint autonomie](../24-checkpoint-autonomie-alphabot2-2026-08-25.md) et le
-[checkpoint matériel](../22-checkpoint-robot-alphabot2-2026-08-24.md). Le
-[journal du 24 août](../21-journal-implementation-alphabot2-2026-08-24.md)
-conserve des états historiques qui ne doivent pas être pris pour la
-configuration actuelle.
+Lire d’abord [l’état canonique](../27-etat-canonique-app-robot-2026-08-25.md)
+et [la décision d’autonomie visuelle](../30-decision-autonomie-topologique-visuelle.md).
+Les checkpoints 22–29 décrivent l’ancien prototype et ne pilotent plus le
+runtime.
 
-> Les mesures historiques restent utiles au diagnostic. En cas de contradiction
-> sur une capacité ou un blocage, le document 27 et le code testé prévalent.
+## État et sécurité
 
-## État livré
+Le Pi réel utilise `friday-camera.service` et `friday-robot.service`. Il démarre
+avec les deux switches OFF. Le switch Roues est l’autorisation persistante de
+locomotion. Son watchdog arrête les PWM à l’expiration d’une commande, au
+passage Roues OFF, au changement de mode, à une erreur ou à l’arrêt du processus.
 
-Le hub sait fonctionner en mode `disabled` ou `alphabot2`. La production ne
-propose plus de mode simulation. Le service Python embarqué possède son propre
-watchdog et remet les PWM à zéro à
-l'expiration de chaque impulsion, au désarmement, au changement de mode, à une
-erreur ou à l'arrêt du processus.
+Avant tout essai physique :
 
-Le Pi courant est un Raspberry Pi 3B sous Raspberry Pi OS Trixie 32 bits,
-joignable à `192.168.1.22` en SSH port 22 par la clé dédiée conservée hors Git
-sous `D:\FridayData\robot\ssh`. Le raccourci
-`infra/windows/Open-FridayRobotSsh.cmd` ouvre cette session. Les services
-embarqués sont `friday-camera.service` et `friday-robot.service`.
+1. utilisateur présent, zone dégagée et arrêt accessible ;
+2. roues levées pour une nouvelle classe de commande ;
+3. alimentation et masse vérifiées ;
+4. flux, IR et télémétrie observés roues OFF ;
+5. sens moteur vérifié à 10 % ;
+6. arrêt sur perte réseau/processus vérifié.
 
-Le déploiement cible utilise `FRIDAY_ROBOT_MODE=alphabot2` et
-`FRIDAY_ROBOT_HARDWARE_CONFIRMED=YES`. Les sorties moteur sont initialisées à
-zéro ; le contrôleur garde roues et servos désactivés jusqu’aux switchs de la
-PWA. Le flux CSI est relayé depuis
-`http://127.0.0.1:8080/stream` en 640×480 à 15 images/s. La capture utilise deux
-buffers et `rpicam-vid --flush`; le relais lit au plus 16 Kio avec `read1()` et
-vide immédiatement sa sortie. La PWA affiche ce flux en 4:3 avec
-`object-fit: contain`, sans recadrage logiciel.
+La caméra monoculaire et les deux IR ne constituent pas un système
+anticollision certifié. Une recette logicielle n’autorise jamais un mouvement.
 
-Lors d’un déploiement Python, synchroniser le paquet `friday_robot` complet,
-pas seulement les fichiers modifiés visibles dans le diff. Vérifier notamment
-le module réellement importé dans `.venv/lib/python*/site-packages` : une copie
-source correcte sous `/home/pi/friday-robot` ne garantit pas que le venv la
-charge. Après redémarrage, confirmer que `MODES` contient `autonomous` et que
-les capacités exposent `map_observer` et `autonomous_exploration`.
+## Configuration
 
-La reconnaissance tourne par défaut sur le PC du hub. Les poids ne sont ni dans
-Git ni sur le téléphone : utiliser `D:\FridayData\robot\models`, avec un
-`manifest.json` contenant source, licence et SHA-256. Le Pi 3 ne reçoit qu'un
-modèle après mesure démontrant une cadence, une température et une alimentation
-acceptables. La reconnaissance d'identité reste désactivée tant qu'un protocole
-de consentement et de suppression n'a pas été validé.
-
-Le candidat actuel utilise `yolo26s.onnx`, un modèle COCO de 36,5 Mo sous
-AGPL-3.0. Le hub vérifie son manifeste et son SHA-256 avant de le charger avec
-ONNX Runtime CPU dans un Worker Node séparé. Cette isolation est obligatoire :
-une inférence dans le processus principal peut retarder de plus de 350 ms le
-renouvellement des impulsions et déclencher le watchdog moteur. Le
-prétraitement conserve le ratio dans une entrée RGB 640×640 et remet les boîtes
-aux coordonnées de l'image 640×480. En mode
-`alphabot2`, le hub lit le flux MJPEG en continu, le redistribue aux clients
-vidéo depuis cette capture unique et analyse une image sur deux par défaut. Il
-ne faut jamais ouvrir un second `rpicam-vid` pour la vision : la caméra CSI ne
-fournit alors plus d'image à la PWA. Le hub jette les images lorsque le détecteur
-travaille déjà, sans créer de retard. Les observations restent en mémoire et
-persistent jusqu'au résultat suivant, avec expiration après deux secondes. Les
-sorties objets et personnes sont validées par schéma et n'ont aucune voie vers
-les commandes physiques.
-
-Référence exacte du modèle actif :
-
-- source officielle :
-  `https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26s.onnx` ;
-- taille : 38 291 130 octets ;
-- SHA-256 :
-  `d26b65c432111eb95798cd2320603d4d75627605dbec6c6b7f98c499a80e7321` ;
-- manifeste versionné : `robot/models/yolo26s.manifest.json` ;
-- installation active : `D:\FridayData\robot\models\yolo26s.onnx` et
-  `D:\FridayData\robot\models\manifest.json`.
-
-Le modèle et `manifest.json` résident dans `D:\FridayData\robot\models`. Ce
-mode se désactive avec `FRIDAY_ROBOT_VISION_ENABLED=false`. Les réglages hub
-`FRIDAY_ROBOT_VISION_FRAME_STRIDE` (1 à 30, défaut 2),
-`FRIDAY_ROBOT_VISION_CONFIDENCE` (0,1 à 0,95, défaut 0,30) et
-`FRIDAY_ROBOT_VISION_MANIFEST_PATH` permettent une recette contrôlée sans
-modifier le flux caméra du Pi.
-
-Pour vérifier que la vision ne perturbe pas la téléopération, mesurer au moins
-50 réponses locales `/api/health` pendant l'inférence. Aucune pointe ne doit
-approcher les 350 ms d'une impulsion moteur. Le test A/B du 25 août donnait une
-médiane de 141 ms et une pointe de 387 ms avec YOLO dans le processus principal,
-contre 9 ms et 150 ms sans vision ; cela a motivé le Worker dédié.
-Après isolation, une mesure sur connexion persistante avec la vision active a
-donné 2,1 ms de médiane, 3,4 ms p95, 4,3 ms p99 et 71,4 ms maximum, avec zéro
-réponse au-dessus de 170 ou 350 ms. Conserver ce benchmark comme gate de
-régression : une pointe approchant 350 ms impose de couper la vision et de
-chercher une régression avant tout nouvel essai de roues.
-
-Sur un nouveau PC, installer ou revérifier le modèle avec :
-
-```powershell
-infra/windows/Install-FridayRobotVisionModel.ps1
-```
-
-Le script conserve le modèle déjà présent si son empreinte est correcte ;
-sinon il retélécharge l'artefact officiel dans un fichier temporaire, vérifie
-l'empreinte attendue puis installe le modèle et le manifeste.
-
-## Recette logicielle sans mouvement
-
-1. Générer un secret aléatoire d'au moins 32 caractères.
-2. Pour une recette sans robot, injecter la doublure simulée uniquement dans les
-   tests automatisés ; elle n’est pas un mode de lancement.
-3. Configurer le hub avec `FRIDAY_ROBOT_MODE=alphabot2`,
-   `FRIDAY_ROBOT_URL=http://IP_PRIVEE_DU_SERVICE:8765` et le même
-   `FRIDAY_ROBOT_TOKEN`.
-4. Vérifier dans les tests injectés l'activation des roues par switch, les
-   impulsions, le stop, les mouvements de caméra simulés et les surimpressions.
-5. Couper le service pendant une impulsion : le hub doit afficher le robot
-   indisponible ; au redémarrage il doit être désarmé.
-
-Les tests d’interface utilisent `SimulatedRobotController` par injection de
-dépendance, jamais par `FRIDAY_ROBOT_MODE`.
-
-Le lanceur Windows charge automatiquement, s'il existe,
-`D:\FridayData\robot\hub.json`. Ce fichier reste hors Git et contient :
+La configuration hors Git est `D:\FridayData\robot\hub.json` :
 
 ```json
 {
@@ -131,251 +36,325 @@ Le lanceur Windows charge automatiquement, s'il existe,
 }
 ```
 
-Un jeton de 32 caractères minimum est obligatoire. Le lanceur refuse un mode
-inconnu ou une configuration AlphaBot2 incomplète.
-
-## Porte physique à répéter avant chaque nouvelle classe d’essai
-
-La production est déjà déployée avec
-`FRIDAY_ROBOT_HARDWARE_CONFIRMED=YES`. Ce drapeau signifie seulement que le
-pilote réel peut démarrer ; il n’autorise pas un essai. Avant toute nouvelle
-classe de mouvement :
-
-- photographie et contrôle du câblage, alimentation dédiée stable et masse
-  commune vérifiée ;
-- arrêt physique accessible, roues levées, personne devant les roues ;
-- vérification séparée du sens de chaque moteur à 10 %, puis du stop sur perte
-  réseau, fermeture de page et arrêt du processus ;
-- mesure de `vcgencmd get_throttled` et température en charge ;
-- bornes logicielles pan 700–2300 µs et tilt 900–2100 µs ; la plage pan
-  symétrique et sa rampe lente restent à confirmer physiquement.
-
-Ne pas présenter la détection d'objets monoculaire comme un dispositif
-anticollision. Les capteurs IR n'offrent qu'une réaction à courte portée.
-L'autonomie logicielle peut être lancée explicitement à faible vitesse, mais
-elle n'est pas certifiée comme navigation domestique fiable tant que les essais
-physiques documentés ne sont pas passés.
-
-## Reprise sûre à chaque allumage
-
-1. Garder les roues hors contact, la tête libre et l’interrupteur accessible.
-   Dans la PWA, placer d’abord les switchs `Roues` et `Caméra` sur OFF.
-2. Attendre le démarrage puis ouvrir le raccourci SSH et exécuter :
-
-   ```bash
-   systemctl --no-pager --full status friday-camera friday-robot
-   i2cdetect -y 1
-   vcgencmd get_throttled
-   ```
-
-3. Dans la PWA, confirmer le flux et les capteurs avant toute commande servo.
-4. Depuis le centre, reproduire une commande humaine : avancer horizontalement
-   par petits écarts de 10 à 15 %, attendre deux à trois secondes entre les
-   consignes, rester plusieurs secondes sur la scène observée, puis revenir au
-   centre par les mêmes petits écarts. Le pan matériel avance par pas de 10 µs
-   toutes les 20 ms et ne libère le PWM qu’une fois chaque cible atteinte. Ne
-   tester qu'un côté par séance et ne pas lancer de balayage répétitif.
-5. Relever `vcgencmd get_throttled`. Une sous-tension active pendant un appel de
-   courant moteur/servo est une alerte informative, pas un blocage automatique.
-   Un tremblement soutenu ou un mouvement incohérent justifie en revanche la
-   coupure opérateur et le diagnostic mécanique/alimentation.
-6. Ne pas envoyer de commande de roue tant que la recette sur cales de la
-   séance n’est pas explicitement ouverte. Ne pas modifier le mode ou le drapeau
-   matériel pour contourner une erreur.
-
-Après un redémarrage frais du service Pi, vérifier que l’état expose
-`actuators.wheelsEnabled=false` et `actuators.cameraServosEnabled=false` au
-démarrage. Les interrupteurs de la PWA appellent `/api/robot/actuators`. La
-coupure des roues doit stopper et désarmer ; la coupure caméra doit libérer les
-deux PWM. Le retour du joystick au centre appelle `/halt`, qui arrête le
-mouvement sans désarmer. Le bouton `ARRÊT` coupe les roues et désarme ; `/stop`
-reste aussi disponible comme arrêt désarmant à la fermeture de la page.
-
-Le déploiement de cette version a été réalisé après qu’un `404` sur
-`/actuators` a révélé l’ancien service. Les 18 tests Python ont réussi sur le Pi,
-les deux services sont actifs et une requête maintenant les actionneurs à
-`false` a été acceptée. `vcgencmd get_throttled` et l’API indiquaient toutefois
-`0x50005` immédiatement après déploiement. Une lecture ultérieure a donné
-`0x50000`, soit un événement historique sans sous-tension active à cet instant.
-Le bit actif est désormais consultatif et géré par l’utilisateur ; un
-tremblement soutenu ou un mouvement incohérent reste un motif concret d’arrêt.
-
-Le canal 0 est le panoramique et le canal 1 l’inclinaison ; tous deux partagent
-le PCA9685 à l’adresse I²C `0x40`, 50 Hz. L’axe horizontal présente un défaut
-intermittent probable, tandis que le vertical est nettement plus stable. Les
-codes de sous-tension observés sont consignés dans
-`docs/21-journal-implementation-alphabot2-2026-08-24.md`.
-
-Les commandes caméra ont une validité réseau de 1 800 ms et un délai de réponse
-hub de 3 500 ms afin de laisser la rampe matérielle se terminer sans accélérer le
-servo. Un refus doit désormais afficher son motif précis dans la PWA. Si le
-message générique réapparaît, consulter immédiatement
-`journalctl -u friday-robot -n 50 --no-pager` : les exceptions matérielles y
-sont journalisées avant l’arrêt de sûreté.
-
-Le hub réhorodate lui-même chaque consigne pan/tilt et chaque impulsion de roues
-après les contrôles de session, d’origine et de débit. L’horloge du téléphone
-n’est pas une autorité de sécurité. Pour les roues, `expiresAt` laisse 1 800 ms à
-la commande pour atteindre le Pi, mais cette fenêtre réseau n’est pas une durée
-moteur : le Pi arrête à `now + maxDurationMs`, toujours borné à 100–500 ms. Les
-commandes nécessitent toujours roues activées, armement valide, session
-propriétaire et mode compatible.
-
-L’armement n’a plus de bouton séparé dans la PWA. Le passage du switch `Roues`
-à ON appelle d’abord `/actuators`, force si nécessaire le mode `manual`, puis
-`/arm`; l’autorisation de 60 s est renouvelée toutes les 45 s tant que le switch
-reste actif. Elle ne commande jamais les moteurs à elle seule. Les boutons
-`Manuel` et `Autonome` sont maintenant explicites. Depuis le checkpoint 24,
-`Autonome` démarre l’exploration continue et Carto automatiquement. En manuel,
-`Carto` enregistre une trajectoire vectorielle approximative et quelques
-images-clés bornées ; déplacer la caméra conserve l’enregistrement, mais les roues attendent le
-retour au preset central. `Carte` ouvre la vue tactile et une destination
-`Va là` admissible démarre ou réoriente l’autonomie. Le switch OFF et `ARRÊT`
-arrêtent toujours le mouvement ; la boucle autonome continue en arrière-plan
-si la PWA se ferme, mais pas après un redémarrage du hub.
-
-`Manuel` sans Carto n’est pas un mode d’enregistrement. La reconnaissance et
-les boîtes restent visibles, mais le hub n’ajoute alors ni objet, présence,
-cellule, point de vue, trajectoire ou image-clé. La ligne `Mémoire en pause`
-confirme cet état. Le dernier état technique de pose peut être remplacé pour le
-joystick et une éventuelle séquence `Récup`, sans créer d’historique de carte.
-Quand Carto enregistre, les impulsions utiles à la géométrie restent prises en
-compte ; un objet ou point de vue identique n’est persisté qu’au plus toutes les
-cinq secondes. Un changement de preset ou de cellule peut être retenu
-immédiatement, et la relocalisation continue d’analyser les images en mémoire
-sans transformer chaque frame en donnée durable.
-
-La section `Objets mémorisés` affiche d’abord les objets confirmés, regroupés
-par pièce. Les indices candidats sont masqués jusqu’au bouton `Voir les
-indices`. Utiliser le filtre pour chercher par nom, classe ou pièce et
-`Modifier` pour corriger un libellé ; le renommage n’altère ni la classe YOLO
-ni les observations sources.
-
-Pendant une exploration, `Récup` signifie explicitement « la politique est
-coincée ». Le hub arrête la boucle, passe en manuel et commence une
-démonstration. Dégager le robot avec le joystick, puis appuyer sur `Rendre la
-main`. La séquence n’est apprise qu’après vérification du résultat : mouvement
-mesurable, localisation non dégradée, aucun nouvel obstacle et commande
-compatible avec le masque capteurs. Un passage direct par `Manuel` observe
-aussi la manœuvre, mais comme signal faible : il exige en plus qu’un obstacle
-soit dégagé ou que Carto mesure un progrès. Cela évite d’apprendre comme
-« meilleure solution » un passage manuel motivé par autre chose qu’un blocage.
-
-La collecte expire après cinq minutes ou cent commandes et compresse au plus
-douze étapes successives. Un retour immédiat sans mouvement, une localisation
-dégradée ou un recul que les capteurs avant ne rendent pas admissible est
-journalisé mais non injecté dans Dyna-Q. `ARRÊT` et le switch `Roues` restent
-des commandes de sécurité, jamais des démonstrations. Le verdict apparaît dans
-le journal Friday ; le détail persistant se trouve dans
-`robot_human_recovery_demonstrations` (migration 25).
-
-Après un redémarrage du hub, toute session Carto qui enregistrait passe en
-pause. Ne jamais interpréter la pose affichée comme une mesure métrique : sans
-encodeurs ni IMU, elle est déduite de la direction, de la puissance et du temps
-entre impulsions, et dérive. Carto conserve au plus 2 000 points par session et
-10 000 par foyer. La migration 23 autorise uniquement des images-clés JPEG
-pertinentes : au plus 48, 3 par objet, 256 Kio chacune et 16 Mio au total ; une
-frame où une personne est détectée est exclue. Ne pas contourner ces bornes ni
-brancher le Chat, un LLM ou la politique d’apprentissage sur une commande
-d’actionneur.
-
-La migration 24 ajoute des signatures ORB sans JPEG, bornées à 600 entrées et
-12 Mio. Elles sont calculées sur le PC par un worker OpenCV isolé. Après une
-première installation ou une recréation de l’environnement, lancer :
+Le modèle YOLO et son manifeste résident dans
+`D:\FridayData\robot\models`. Installer/revérifier avec :
 
 ```powershell
-infra\windows\Setup-FridayRobotLocalization.ps1
+infra/windows/Install-FridayRobotVisionModel.ps1
+infra/windows/Setup-FridayRobotLocalization.ps1
 ```
 
-Le lanceur de recette sélectionne ensuite automatiquement l’interpréteur sous
-`D:\FridayData\robot\localization-venv`. Deux changements visuels cohérents
-sans nouvelle commande de roues déclenchent une recherche de position. Pendant
-les cinq premières secondes, les roues attendent mais les actions caméra sûres
-restent disponibles ; ensuite l’autonomie peut reprendre à 10 % si la pose
-reste perdue. Le bouton `Je l’ai déplacé` permet de déclencher immédiatement la
-même recherche. Une relocalisation manuelle doit apparaître sur la carte comme
-une rupture de segment, jamais comme une diagonale parcourue.
+Le second script conserve pour l’instant son nom historique mais fournit le
+runtime OpenCV de **reconnaissance de lieux**. Le lanceur configure
+`FRIDAY_ROBOT_PLACE_RECOGNITION_PYTHON` et
+`FRIDAY_ROBOT_PLACE_RECOGNITION_WORKER_PATH`.
 
-Pour une recette physique, poser d’abord le robot face à un lieu déjà observé,
-attendre deux frames stables, le soulever sans commande de roues, puis le
-reposer face à un autre lieu connu. Contrôler `Recherche de position`, la
-nouvelle pose, la rupture de segment et l’absence de nouvelles images-clés
-pendant le transport. Le test n’autorise aucune rotation hors des presets
-caméra existants.
+Après un déploiement Pi, vérifier que les capacités exposent
+`visual_topology` et `topological_autonomy`, puis que roues et servos valent
+`false`.
 
-La téléopération expose un curseur de puissance commun aux quatre directions,
-borné de 10 à 35 %, initialisé à 20 % et mémorisé dans la PWA. Toute hausse
-au-delà de 35 %, ajout d’un coup de couple ou calibration séparée des moteurs
-exige une nouvelle recette sur cales avec contrôle immédiat de
-`vcgencmd get_throttled`.
+Le service charge le paquet installé dans `.venv`, pas directement le fichier
+source copié. Après synchronisation de `/home/pi/friday-robot`, réinstaller avec
+`python -m pip install --no-deps --no-build-isolation --force-reinstall .`,
+exécuter les tests Python, puis redémarrer `friday-robot`. Une simple copie
+de `hardware.py` laisse sinon l’ancien contrat actif.
 
-Le joystick accepte les diagonales : la PWA envoie `steering` entre `-1` et
-`+1` avec `forward` ou `backward`, puis le Pi applique un mélange différentiel
-aux deux roues. Tester d’abord à 10 % sur cales : en diagonale avant-droite, la
-roue gauche doit tourner plus vite que la droite sans dépasser le plafond de
-puissance ; avant-gauche doit produire l’inverse. Une position presque
-horizontale commande encore une rotation sur place. Tout sens inversé impose
-`ARRÊT`, sans tenter de le compenser dans l’interface.
+## Trafic caméra et purge
 
-Sa zone tactile mesure 164×112 px et son déplacement est normalisé sur une
-ellipse. Une petite erreur horizontale du doigt produit donc une correction
-moins forte que dans l’ancien joystick circulaire de 108 px.
+Dans `Réglages > Robot`, le propriétaire choisit le trafic caméra :
 
-En marche avant/arrière, les 35 premiers pourcents de course horizontale sont
-une zone neutre. Au-delà, la direction suit une courbe exponentielle douce. Son
-maximum est interpolé selon la puissance : `1,0` à 10 % et `0,55` à 35 %. À
-faible puissance, un virage très serré reste donc accessible ; à puissance
-élevée, le logiciel limite progressivement l’écart entre les roues. Une
-consigne presque horizontale (moins de 22 % de composante verticale) reste une
-rotation sur place complète et permet le demi-tour à l’arrêt.
+- `Normal` : 640 × 480, 15 images/s, qualité JPEG 70 ;
+- `Réduit` : même résolution, 7 images/s, qualité JPEG 55, soit environ 60 %
+  de trafic en moins selon la scène.
 
-Le filtre de variation de `0,05` ne s’applique jamais au retour à la ligne
-droite : tout passage d’un angle non nul à `steering=0` doit être transmis
-immédiatement. La recette tactile doit commencer par un petit virage en marche,
-revenir sur l’axe vertical sans relâcher, puis confirmer que les deux roues
-reprennent la même consigne.
+Le profil agit sur `rpicam-vid`, donc sur le lien Wi-Fi Pi → PC, pas seulement
+sur l’affichage du téléphone. Un changement arrête le mouvement courant sans
+modifier les switches, puis le Hub reconnecte automatiquement son flux. Le
+profil revient à `Normal` au redémarrage du Hub.
 
-Le bouton central de la caméra ne vise plus `tilt=0` : son neutre utilisateur
-est `pan=0`, `tilt=+0,20`, donc 20 points vers le bas selon la convention de la
-PWA. Les boutons haut/bas conservent leurs pas de `0,05` autour de ce neutre.
+La purge de mémoire est réservée au propriétaire et exige une confirmation.
+`Dernière heure` supprime les lieux **créés** depuis moins d’une heure, ainsi
+que leurs vues, objets, transitions et apprentissages liés ; un lieu ancien
+simplement revu récemment reste conservé. `Tout effacer` vide le graphe et
+tous les scores/récupérations autonomes. Les deux opérations arrêtent d’abord
+le robot. Ne jamais déclencher une purge réelle pour une simple recette.
 
-Le curseur `Trim direction`, mémorisé dans la PWA, couvre `G 10` à `D 10` par
-pas de 1. Commencer à zéro et corriger par pas de 1 sur une ligne droite à
-faible puissance : si le robot dérive à droite, essayer progressivement `G` ;
-s’il dérive à gauche, essayer `D`. Le trim s’applique uniquement à la marche
-avant : la marche arrière et les rotations sur place conservent la consigne
-brute du joystick. Ne pas utiliser le trim pour masquer une roue grippée, un
-pneu différent ou une sous-tension active.
+## Observation sans mouvement
 
-## Tests de capacités cognitives
+1. Ouvrir la PWA avec roues OFF.
+2. Vérifier vidéo, bouton `Reco affichée/masquée`, boîtes expirables et
+   télémétrie.
+3. Présenter puis masquer un objet : aucune commande moteur ne doit partir.
+4. Ouvrir `Repères` : seules les scènes stables sont présentes ; une frame avec
+   personne n’a pas de miniature.
+5. Vérifier `/api/health` et l’intégrité SQLite.
 
-Une reconnaissance temps réel légère objets/personnes est maintenant active.
-Sa qualité sur un corpus varié reste candidate et elle ne vaut ni identité, ni
-preuve d’évitement fiable. Pour la
-recetter sans mouvement : maintenir les roues et l'armement sur OFF, vérifier
-qu'une scène produit des boîtes expirables, masquer puis représenter un objet,
-et relever les faux positifs ainsi que le temps `Caméra / vision`. Une
-sous-tension active est affichée comme diagnostic ; elle ne désactive pas les
-servos. L’utilisateur peut interrompre l’essai si l’alimentation faiblit ou si
-le comportement mécanique devient anormal.
+YOLO est isolé du processus principal. Une régression de latence approchant
+300 ms interdit un essai moteur tant qu’elle n’est pas comprise.
 
-Dans la PWA, seule la case `Reco` pilote l'affichage des boîtes. La décocher ne
-coupe pas le moteur d'inférence ; elle masque seulement la dernière observation.
-Avec le réglage par défaut `FRAME_STRIDE=2`, la vision traite une image sur deux
-et conserve la dernière surimpression jusqu'au résultat suivant, au plus deux
-secondes. `Carto` peut mémoriser la géométrie et les objets confirmés pendant
-une téléopération. Seules les images-clés répondant aux critères de la migration
-23 sont persistées. `Autonome` et l’exécution de mission suivent le checkpoint 24.
+## Manuel
 
-- Objets/personnes : jeux d'images consentis, précision/rappel par classe,
-  faux positifs, latence p50/p95, faible lumière et mouvement.
-- Repères : AprilTags imprimés, distance/angle, perte et réacquisition.
-- Identité : uniquement opt-in, seuil calibré avec une classe `inconnu`, aucune
-  authentification, suppression immédiate testée.
-- Suivi : vitesse bornée, zone morte, perte de cible => stop.
-- Évitement : maquette au sol d'abord ; obstacle perdu ou télémétrie périmée =>
-  stop. La seule détection d'objets ne constitue pas une certification
-  anticollision de l'autonomie existante.
+Le switch Roues appelle `/actuators` et suffit à autoriser la locomotion. Il n’y
+a plus de bail d’armement ni de renouvellement périodique. Le joystick et
+l’autonomie renouvellent seulement des commandes expirables ; leur interruption
+arrête les PWM via le watchdog. Le retour au centre appelle `/halt`. Le switch
+Roues est la coupure persistante visible dans l’interface ; le gros bouton rouge
+redondant n’est plus affiché. L’ancien `/arm` reste un no-op transitoire pour les
+PWA encore en cache.
 
-Les étapes et critères complets sont dans
-`docs/20-plan-implementation-robot-friday-alphabot2.md`.
+Une manette exposée par la Gamepad API avec le mapping navigateur `standard`
+peut piloter le mode Manuel. Le stick gauche réutilise exactement la puissance,
+le trim, la zone morte et la courbe du joystick tactile. Le stick droit produit
+un seul pas caméra par geste : pan `±0,5`, tilt `±0,08`, puis exige un retour
+près du centre avant le geste suivant. Les cibles restent bornées à `[-1,1]`.
+La caméra ne bouge pas pendant le roulage et une commande servo reste seule en
+vol jusqu’à sa réponse.
+
+La manette doit passer au neutre après connexion, retour sur la page, sortie du
+mode Autonome ou réactivation des roues. Le tactile prend la priorité et exige
+ensuite un nouveau passage de la manette au neutre. Déconnexion ou page masquée
+arrête la locomotion. Les sticks sont sans effet en Autonome : ils ne changent
+pas de mode et ne déclenchent pas `Récup`. Une manette non standard est seulement
+signalée comme incompatible ; cette première version n’a pas de remappage.
+
+`Reco affichée/masquée` est un réglage d’affichage partagé et persistant par
+foyer. Le propriétaire peut le modifier ; toutes les PWA le relisent avec leur
+polling Robot et convergent normalement en moins d’une seconde. Le masquer ne
+coupe jamais YOLO, la reconnaissance de lieux, les objets mémorisés ou la
+cartographie : seules les boîtes superposées au flux disparaissent.
+
+La puissance reste 10–35 % et locale au contrôleur. Le tactile et la manette
+l'utilisent immédiatement. Au démarrage d'Autonome, la PWA transmet la valeur
+entière au Hub ; si la glissière change pendant un run `exploring` ou
+`navigating`, elle transmet la dernière valeur après 200 ms et le renouvellement
+moteur suivant l'applique sans redémarrer l'autonomie. Cette puissance pilote
+aussi les pivots de panorama, les recherches sans localisation et les trajets
+de validation ; les commandes `Récup` conservent leur forme apprise mais sont
+plafonnées par la valeur courante. Le trim est une
+calibration globale persistée par le Hub : toute PWA le relit, puis le tactile,
+la manette et l’autonomie appliquent la même valeur. Il n’agit qu’en marche
+avant. La glissière est optimiste et sérialise sa sauvegarde après 250 ms pour
+ne pas saturer le Hub. À la première ouverture après migration 29, un ancien
+trim local valide initialise le Hub seulement si aucune calibration globale
+n’existe encore ; il est ensuite supprimé localement. Toute hausse de plafond
+ou nouvelle calibration exige une recette sur cales.
+
+Sous le trim, `Impulsion 360°` règle de 120 à 1 000 ms, par pas de 20 ms, la
+durée de chaque pivot du panorama corporel. La valeur globale initiale est
+220 ms. Elle est partagée par le Hub et appliquée dès l'impulsion suivante.
+La puissance du pivot suit séparément la glissière `Puissance`, y compris
+pendant une impulsion longue renouvelée ; les 700 ms de stabilisation ne
+changent pas. Une
+API dédiée la sépare du trim : une ancienne PWA conserve donc la valeur
+panorama courante et continue de relire son ancien contrat trim strict. Au-delà
+de 500 ms, le Hub renouvelle la commande après 200 ms, donc avant l’expiration
+du watchdog matériel de 500 ms : le garde-fou du Pi n’est pas élargi.
+
+Chaque image stable en Manuel enrichit le même graphe que l’autonomie. Il n’y
+a plus de bouton Carto, de trajectoire `x/y` ou de relocalisation séparée.
+
+Dans `Repères`, le propriétaire peut renommer un lieu visuel. Le libellé sert à
+l’affichage et à `Va là` sans modifier l’UUID, les vues, objets, transitions ou
+apprentissages. Un repère étant une scène plutôt qu’une pièce métrique, préférer
+`Salon — canapé` et `Salon — bibliothèque` si plusieurs scènes distinctes
+appartiennent à la même pièce. Les doublons de libellé sont autorisés mais à
+éviter pour rester lisible.
+
+Si deux repères montrent réellement la même scène, `Même lieu que…` conserve le
+repère affiché après confirmation. Les vues et objets sont regroupés, mais les
+passages du repère absorbé sont oubliés : leurs secteurs panoramiques ne sont
+pas redirigés sans preuve et devront être reparcourus. Les habitudes globales,
+indépendantes des UUID, restent en place.
+
+`Supprimer` sur un repère oublie ses vues, objets, passages et apprentissages
+après arrêt du robot et confirmation. Supprimer seulement un objet n'arrête pas
+le robot : l'entrée disparaît immédiatement, mais pourra être recréée lors
+d'une future reconnaissance. Ne jamais fusionner ou supprimer des données
+réelles pour une simple recette technique.
+
+Le compteur d’observation d’un objet compte des **rencontres**, pas des frames :
+la première détection vaut 1, une visibilité continue ne l’incrémente plus, et
+une nouvelle rencontre exige soit un retour dans le lieu, soit une absence de
+détection d’au moins 30 s. La présence continue ne rafraîchit SQLite qu’une fois
+toutes les 30 s. Les anciens compteurs déjà acquis sont conservés.
+
+## Autonome
+
+`Autonome` exige caméra, roues activées et propriétaire authentifié. Le choix
+de direction est revu à 4 Hz, mais chaque intention de locomotion devient une
+impulsion bornée plutôt qu'un roulage continu. À 20 %, une avance normale dure
+320 ms et les autres manœuvres 220 ms. La durée est réduite quand la puissance
+augmente et allongée quand elle baisse, dans les bornes 180–500 ms pour
+`advance_normal` et 140–400 ms pour les autres intentions. La commande utilise
+toujours la puissance utilisateur courante (10–35 %) et reste renouvelée à
+10 Hz sous watchdog 300 ms pendant cette seule impulsion.
+
+À la fin de chaque impulsion, le Hub envoie un arrêt, attend 700 ms de repos
+mécanique, puis exige trois observations consécutives exploitables, classées
+stables et immobiles. Une image inutilisable, une rotation résiduelle ou une
+nouvelle translation remet ce compteur à zéro. La politique SARSA ne choisit
+donc jamais l'intention suivante sur une image encore floue. Le renouvellement
+cesse aussi immédiatement sur trame périmée, IR bloqué, pause d’observation ou
+arrêt utilisateur.
+
+La caméra autonome reste centrée à `pan=0`, `tilt=0,2` pendant un panorama. Le
+châssis pivote par impulsions réglables de 120 à 1 000 ms à la puissance
+utilisateur courante. Après chaque
+impulsion : arrêt, 700 ms de repos et trois frames classées immobiles. La
+fermeture du 360° exige au moins six secteurs et soit une forte reconnaissance
+ORB/RANSAC, soit un pHash très proche de la vue initiale. Une correspondance
+ORB ou pHash plus souple doit être corroborée par au moins trois occurrences
+d’un objet détecté au début du tour. Les objets seuls ne ferment jamais la
+boucle. Il n’existe plus de limite arbitraire de
+trente secondes ou seize impulsions : une image instable met l’acquisition en
+attente pendant 2 s au maximum. Si elle reste inexploitable, le robot effectue
+l’impulsion suivante sans mémoriser cette vue ; cela lui permet de franchir un
+mur uniforme et de chercher le retour vers la vue initiale. Seules douze
+signatures distinctes sont gardées. Roues désactivées, deux IR bloqués ou arrêt
+utilisateur interrompent toujours le panorama et le laissent `incomplet`.
+
+Le Worker OpenCV calcule aussi un flot optique parcimonieux. Un lieu nouveau
+exige six images exploitables sur 1,5 s et une preuve de translation, sauf la
+première ancre. Rotation caméra/châssis et déplacement physique à la main ne
+créent aucun passage.
+
+Si `currentPlaceId` est nul alors que le graphe contient déjà des repères,
+l’autonomie attend 1,2 s, effectue jusqu’à huit pivots avec la durée
+`Impulsion 360°`, 700 ms de repos et trois images stables, puis tente 300 ms en
+avant à la puissance utilisateur
+si les deux IR sont libres. Elle attend ensuite 2,5 s pour relocaliser ou créer
+une ancre sur preuve de flot. Cette recherche ne crée aucune transition depuis
+un lieu inconnu. Si les deux IR sont bloqués, elle s’arrête au lieu de traduire.
+
+La politique `topological-habits-v1` utilise SARSA(λ) sur IR, mouvement,
+confiance, gain d'information, ports et résultat précédent, jamais sur l'UUID
+du lieu. Elle apprend avancer, pivoter, inspecter, changer de port, revenir ou
+appliquer `Récup`. Les switches, IR, watchdog, stabilité, confirmation des
+lieux/passages et impulsions panoramiques restent déterministes.
+
+La marche arrière n’entre dans les choix que si le lieu courant possède une
+arrivée visuelle confirmée ; elle ne remplace pas la surveillance humaine,
+l’AlphaBot2 n’ayant pas de capteur arrière.
+
+`Va là` n’est proposé que sur un repère confirmé relié par des transitions
+confirmées. `Tester ce trajet` exige A→P1→B ou A→P1→P2→B avec panoramas complets
+et passages candidats ; il roule à la puissance utilisateur, s'arrête à chaque ancre et confirme
+chaque passage séparément. Le retour présumé doit aussi être parcouru. Le hub ne
+reprend jamais une mission après redémarrage.
+
+`Récup` :
+
+1. le robot s’arrête et passe en Manuel ;
+2. effectuer une manœuvre courte ;
+3. appuyer sur `Rendre la main` ;
+4. vérifier le message de verdict ;
+5. lors d’une situation similaire, contrôler que la recette est revalidée
+   commande par commande, reste plafonnée à la fois par la puissance courante
+   et par 20 %, et conserve la limite de 140 ms.
+
+Un retour sans commande, sans dégagement des deux IR et sans changement de lieu
+n’est pas appris.
+
+## Recette physique encore ouverte
+
+À réaliser avec l’utilisateur :
+
+- fluidité à 15 %, puis 20 %, et arrêt sur trame artificiellement périmée ;
+- alternance impulsion/arrêt : 700 ms de repos puis trois images immobiles avant
+  la décision suivante, notamment à 35 % ;
+- fermeture panoramique stable, d'abord roues levées puis au sol ;
+- création/confirmation de repères dans deux pièces ;
+- cohérence de séquence et refus d’une scène ambiguë ;
+- objet visible puis hors champ, toujours présent dans `Repères` ;
+- faible lumière : arrêt avant 15 s puis demande de main ;
+- `Tester ce trajet` sur A→P1→B, puis `Va là` confirmé et retour ;
+- apprentissage puis réapplication de `Récup` ;
+- tremblement pan, température et `vcgencmd get_throttled` ;
+- manette Xbox USB puis Bluetooth sur PC Chrome/Edge : détection, zone morte,
+  puissance, trim, braquage, arrêt au centre et déconnexion pendant le roulage ;
+- stick droit dans les quatre directions et aux limites, avec confirmation
+  qu’un geste tenu ne donne qu’un pas et qu’aucun mouvement ne part en roulant ;
+- essai Gamepad mobile/iPhone séparé, sans déclarer sa compatibilité avant une
+  observation physique avec la manette réellement appairée.
+
+Consigner séparément code livré, tests, déploiement, observation A17 et preuve
+matérielle.
+
+## Veille réseau réactivable (bouton uniquement)
+
+La veille réseau est une capacité optionnelle, distincte de l’arrêt électrique.
+Le Raspberry Pi reste connecté au réseau avec le seul service
+`friday-wake.service`; `friday-camera.service`, `friday-robot.service`, la
+reconnaissance PC, les moteurs et les servos sont arrêtés. Il n’existe aucun
+délai de veille automatique.
+
+Le Hub n’affiche les boutons **Mettre en veille** et **Réveiller** que lorsque
+`wakeUrl` et `wakeToken` sont tous les deux présents dans
+`D:\FridayData\robot\hub.json` :
+
+```json
+{
+  "mode": "alphabot2",
+  "url": "http://192.168.1.22:8765",
+  "token": "jeton-runtime-existant",
+  "wakeUrl": "http://192.168.1.22:8764",
+  "wakeToken": "jeton-de-reveil-distinct-de-32-caracteres-minimum"
+}
+```
+
+Le même `wakeToken` doit être ajouté à
+`/home/pi/.config/friday-robot/runtime.env` sous `FRIDAY_WAKE_TOKEN`. Ne jamais
+réutiliser le jeton du runtime principal. L’agent refuse par défaut toute
+adresse source autre que le PC Friday `192.168.1.14` ; sur un autre réseau,
+définir explicitement `FRIDAY_WAKE_ALLOWED_IP`. Conserver aussi le filtrage du
+port TCP 8764 dans le pare-feu du Pi/routeur quand il est disponible.
+
+Déploiement sûr, sans déclencher la veille :
+
+1. copier le dossier `robot` à jour sur `/home/pi/friday-robot` et réinstaller
+   le paquet dans son venv ;
+2. ajouter `FRIDAY_WAKE_TOKEN` au fichier d’environnement ;
+3. exécuter
+   `sudo sh /home/pi/friday-robot/deploy/install-network-standby.sh` ;
+4. vérifier que `friday-wake`, `friday-camera` et `friday-robot` sont tous
+   `active`, puis tester `GET /state` du wake agent avec son jeton ;
+5. seulement après cette preuve, ajouter `wakeUrl`/`wakeToken` au `hub.json` et
+   redémarrer la recette Windows.
+
+Le script installe d’abord l’agent permanent, ses deux helpers root exacts et
+la règle sudoers minimale, puis rattache caméra et robot à
+`friday-awake.target`. Une nouvelle installation part toujours éveillée. Le
+fichier `/var/lib/friday-wake/desired-state` conserve ensuite le choix lors des
+redémarrages.
+
+Au clic veille, le Hub annule le run autonome, arrête le mouvement, repasse en
+Manuel, désactive roues et servos, suspend le flux et l’inférence, puis demande
+l’arrêt des deux services Pi. Au réveil, caméra puis robot sont attendus au
+maximum 20 secondes ; le robot revient en Manuel, roues et servos désactivés.
+Aucun run autonome ne reprend. Les commandes répétées sont idempotentes.
+
+Recette physique obligatoire : zone sûre, arrêt accessible, robot immobile ;
+tester une veille, confirmer les services inactifs et l’agent actif, réveiller,
+confirmer le retour du flux, puis activer séparément les switches. Tester enfin
+un redémarrage en état éveillé puis en état veille. Ne pas déclarer la fonction
+validée sur le robot avant cette recette.
+
+### Déploiement du 27 août 2026
+
+Le runtime utilisateur, l’agent et les unités systemd sont installés sur le Pi.
+Les 27 tests Python y ont réussi. Après installation,
+`friday-wake.service`, `friday-camera.service`, `friday-robot.service` et
+`friday-awake.target` étaient tous actifs, l’état désiré valait `awake`, les
+roues et servos étaient désactivés et `moving=false`. Le Hub A17 a ensuite été
+configuré et redémarré avec health/SQLite `ok`.
+
+Sauvegardes de retour arrière :
+
+- runtime Pi : `/home/pi/friday-robot-backup-20260827-014257` ;
+- configuration Hub :
+  `D:\FridayData\robot\hub-before-network-standby-20260827-014855.json`.
+
+Le helper Windows
+`infra/windows/Invoke-FridayPiStandbyInstall.ps1` ouvre une session dédiée pour
+la seule saisie interactive du mot de passe `sudo`; aucun mot de passe n’est
+stocké. La recette physique veille/réveil ci-dessus reste à effectuer.

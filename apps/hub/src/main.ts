@@ -6,10 +6,22 @@ import { buildHub } from './app.js';
 import {
   DisabledRobotController,
   HttpRobotController,
+  type RobotController,
 } from './robot/robot-controller.js';
 import { VisionRobotController } from './robot/robot-vision.js';
+import {
+  HttpRobotPowerClient,
+  NetworkStandbyRobotController,
+} from './robot/robot-power.js';
 import { WorkerRobotVisionEngine } from './robot/robot-vision-worker-client.js';
-import { OpenCvPlaceRecognitionEngine } from './robot/robot-localization-engine.js';
+import { OpenCvPlaceRecognitionEngine } from './robot/robot-place-recognition.js';
+
+process.on('uncaughtExceptionMonitor', (error, origin) => {
+  console.error('Friday Hub uncaught exception:', origin, error);
+});
+process.once('exit', (code) => {
+  console.error(`Friday Hub process exit: ${code.toString()}`);
+});
 
 const host = process.env.FRIDAY_HOST ?? '127.0.0.1';
 const port = Number.parseInt(process.env.FRIDAY_PORT ?? '8443', 10);
@@ -61,9 +73,9 @@ if (
 const robotVisionEnabled =
   robotMode === 'alphabot2' &&
   process.env.FRIDAY_ROBOT_VISION_ENABLED !== 'false';
-const robotLocalizationEnabled =
+const robotPlaceRecognitionEnabled =
   robotVisionEnabled &&
-  process.env.FRIDAY_ROBOT_LOCALIZATION_ENABLED !== 'false';
+  process.env.FRIDAY_ROBOT_PLACE_RECOGNITION_ENABLED !== 'false';
 const robotVisionFrameStrideRaw = process.env.FRIDAY_ROBOT_VISION_FRAME_STRIDE;
 const robotVisionFrameStride = Number.parseInt(
   robotVisionFrameStrideRaw ?? '2',
@@ -91,6 +103,12 @@ if (
     'FRIDAY_ROBOT_VISION_CONFIDENCE doit être compris entre 0.1 et 0.95.',
   );
 }
+const wakeUrl = process.env.FRIDAY_ROBOT_WAKE_URL;
+const wakeToken = process.env.FRIDAY_ROBOT_WAKE_TOKEN;
+if (Boolean(wakeUrl) !== Boolean(wakeToken))
+  throw new Error(
+    'FRIDAY_ROBOT_WAKE_URL et FRIDAY_ROBOT_WAKE_TOKEN doivent être configurés ensemble.',
+  );
 const baseRobotController =
   robotMode === 'alphabot2'
     ? new HttpRobotController(
@@ -98,7 +116,7 @@ const baseRobotController =
         process.env.FRIDAY_ROBOT_TOKEN!,
       )
     : new DisabledRobotController();
-const robotController = robotVisionEnabled
+const visionRobotController = robotVisionEnabled
   ? new VisionRobotController(
       baseRobotController,
       new WorkerRobotVisionEngine({
@@ -114,6 +132,7 @@ const robotController = robotVisionEnabled
       }),
       {
         frameStride: robotVisionFrameStride,
+        startImmediately: !wakeUrl,
         onError(error) {
           console.warn(
             'Reconnaissance robot temporairement indisponible:',
@@ -123,11 +142,23 @@ const robotController = robotVisionEnabled
       },
     )
   : baseRobotController;
-const robotPlaceRecognition = robotLocalizationEnabled
+let robotController: RobotController = visionRobotController;
+if (wakeUrl && wakeToken) {
+  const standby = new NetworkStandbyRobotController(
+    visionRobotController,
+    new HttpRobotPowerClient(wakeUrl, wakeToken),
+    visionRobotController instanceof VisionRobotController
+      ? visionRobotController
+      : undefined,
+  );
+  await standby.initialize();
+  robotController = standby;
+}
+const robotPlaceRecognition = robotPlaceRecognitionEnabled
   ? new OpenCvPlaceRecognitionEngine(
-      process.env.FRIDAY_ROBOT_LOCALIZATION_WORKER_PATH ??
-        resolve('tools', 'robot-localization', 'worker.py'),
-      process.env.FRIDAY_ROBOT_LOCALIZATION_PYTHON ?? 'python',
+      process.env.FRIDAY_ROBOT_PLACE_RECOGNITION_WORKER_PATH ??
+        resolve('tools', 'robot-localization', 'place-worker.py'),
+      process.env.FRIDAY_ROBOT_PLACE_RECOGNITION_PYTHON ?? 'python',
     )
   : undefined;
 

@@ -18,7 +18,7 @@ Elle s’installe comme une application sur Android, iPhone et ordinateur. Les a
 | **Budget**      | Réalisé, prévisionnel, enveloppes, provisions, réserve et épargne réelle                          |
 | **Chat**        | Un assistant local privé, avec recherche Web optionnelle et sourcée                               |
 | **Veille**      | Des dossiers personnels qui suivent des sources, regroupent les sujets et produisent une synthèse |
-| **Robot**       | Téléopération, perception, mémoire d’objets, Carto, autonomie expérimentale et carte tactile      |
+| **Robot**       | Téléopération, perception, repères visuels, navigation topologique, manette et veille réseau      |
 
 L’interface reste volontairement courte et calme : une tâche peut se limiter à un titre, une course à un libellé, et les détails restent facultatifs.
 
@@ -52,7 +52,7 @@ flowchart LR
     H --> O["Ollama\nIA locale"]
     H -.-> W["RSS · Tavily · Exa\nWeb optionnel"]
     H <-->|"passerelle bornée"| R["AlphaBot2-Pi\nwatchdog + actionneurs"]
-    H --> V["Vision et localisation\nYOLO · ORB · carte"]
+    H --> V["Vision topologique\nYOLO · ORB · panoramas"]
 ```
 
 Le projet est un monorepo TypeScript : React/Vite pour la PWA, Fastify pour le hub, Dexie/IndexedDB sur les appareils et SQLite sur le PC.
@@ -73,6 +73,11 @@ pnpm verify
 ```
 
 Le runtime familial Windows, les certificats HTTPS et les procédures de redémarrage sont décrits dans les runbooks.
+
+Le Robot est une verticale expérimentale séparée : ses roues et servos restent
+sous switches explicites, les commandes ne passent jamais par l’outbox et le Pi
+peut désormais être mis en veille réseau puis réveillé depuis l’interface. Une
+validation automatisée ne remplace pas les recettes physiques documentées.
 
 ## Pour aller plus loin
 

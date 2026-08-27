@@ -139,10 +139,34 @@ if (Test-Path -LiteralPath $robotHubConfigPath) {
     }
     $env:FRIDAY_ROBOT_URL = $robotUrl
     $env:FRIDAY_ROBOT_TOKEN = $robotToken
+    $wakeUrl = if ($robotHubConfig.PSObject.Properties.Name -contains 'wakeUrl') {
+      [string]$robotHubConfig.wakeUrl
+    }
+    else { '' }
+    $wakeToken = if ($robotHubConfig.PSObject.Properties.Name -contains 'wakeToken') {
+      [string]$robotHubConfig.wakeToken
+    }
+    else { '' }
+    if ([bool]$wakeUrl -xor [bool]$wakeToken) {
+      throw 'La veille réseau requiert wakeUrl et wakeToken ensemble.'
+    }
+    if ($wakeUrl) {
+      if ($wakeToken.Length -lt 32) {
+        throw 'Le jeton de réveil doit contenir au moins 32 caractères.'
+      }
+      $env:FRIDAY_ROBOT_WAKE_URL = $wakeUrl
+      $env:FRIDAY_ROBOT_WAKE_TOKEN = $wakeToken
+    }
+    else {
+      Remove-Item Env:FRIDAY_ROBOT_WAKE_URL -ErrorAction SilentlyContinue
+      Remove-Item Env:FRIDAY_ROBOT_WAKE_TOKEN -ErrorAction SilentlyContinue
+    }
   }
   else {
     Remove-Item Env:FRIDAY_ROBOT_URL -ErrorAction SilentlyContinue
     Remove-Item Env:FRIDAY_ROBOT_TOKEN -ErrorAction SilentlyContinue
+    Remove-Item Env:FRIDAY_ROBOT_WAKE_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:FRIDAY_ROBOT_WAKE_TOKEN -ErrorAction SilentlyContinue
   }
 }
 
@@ -182,17 +206,17 @@ else {
 }
 
 $env:FRIDAY_DATA_DIR = $dataDirectory
-$localizationPythonPath = Join-Path $dataDirectory 'robot\localization-venv\Scripts\python.exe'
+$placeRecognitionPythonPath = Join-Path $dataDirectory 'robot\localization-venv\Scripts\python.exe'
 if (
   $env:FRIDAY_ROBOT_MODE -eq 'alphabot2' -and
-  $env:FRIDAY_ROBOT_LOCALIZATION_ENABLED -ne 'false'
+  $env:FRIDAY_ROBOT_PLACE_RECOGNITION_ENABLED -ne 'false'
 ) {
-  if (-not (Test-Path -LiteralPath $localizationPythonPath)) {
-    throw "La localisation visuelle n’est pas installée. Lancez infra\windows\Setup-FridayRobotLocalization.ps1."
+  if (-not (Test-Path -LiteralPath $placeRecognitionPythonPath)) {
+    throw "La reconnaissance de lieux n’est pas installée. Lancez infra\windows\Setup-FridayRobotLocalization.ps1."
   }
-  $env:FRIDAY_ROBOT_LOCALIZATION_PYTHON = $localizationPythonPath
-  $env:FRIDAY_ROBOT_LOCALIZATION_WORKER_PATH =
-    Join-Path $workspacePath 'tools\robot-localization\worker.py'
+  $env:FRIDAY_ROBOT_PLACE_RECOGNITION_PYTHON = $placeRecognitionPythonPath
+  $env:FRIDAY_ROBOT_PLACE_RECOGNITION_WORKER_PATH =
+    Join-Path $workspacePath 'tools\robot-localization\place-worker.py'
 }
 $env:FRIDAY_PORT = '8443'
 $env:FRIDAY_PUBLIC_ORIGIN = if ($lanReady) { $phoneUrl } else { $localUrl }
@@ -280,7 +304,13 @@ try {
       PassThru = $true
     }
     if ($KeepHubRunning) {
+      $logDirectory = Join-Path $dataDirectory 'logs'
+      New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
       $startParameters['WindowStyle'] = 'Hidden'
+      $startParameters['RedirectStandardOutput'] =
+        Join-Path $logDirectory 'friday-hub.stdout.log'
+      $startParameters['RedirectStandardError'] =
+        Join-Path $logDirectory 'friday-hub.stderr.log'
     }
     else {
       $startParameters['NoNewWindow'] = $true

@@ -1,6 +1,6 @@
 # Friday — reprise rapide
 
-Date : 25 août 2026
+Date : 26 août 2026
 
 Statut : **point d’entrée canonique et court**
 
@@ -40,7 +40,7 @@ La PWA possède sept destinations : Aujourd’hui, Agenda, Courses, Budget, Chat
 Veille et Robot. Les données Maison sont offline-first, chiffrées dans Dexie et
 synchronisées vers SQLite par outbox idempotente.
 
-- SQLite est en migration 25 ; Dexie en version 7.
+- SQLite est en migration 32 ; Dexie en version 7.
 - Authentification fermée et partage à deux implantés.
 - Agenda, Courses/En course/import photo, Budget, Chat et Veille sont présents.
 - Le Chat propose Local, Friday, Web léger et Web approfondi. Le mode Friday
@@ -52,33 +52,45 @@ synchronisées vers SQLite par outbox idempotente.
 
 ## 4. État Robot condensé
 
+La veille réseau manuelle est implantée et déployée côté contrats, Hub, PWA et
+runtime Pi. `wakeUrl` et un `wakeToken` distinct sont configurés hors Git ;
+l’agent, la caméra, le runtime Robot et le target éveillé ont été vérifiés
+actifs le 27 août. Le cycle physique veille/réveil reste ouvert : le déploiement
+ne constitue pas encore une preuve de réveil réel.
+
 Le prototype AlphaBot2 réel est intégré sans mode simulation en production :
 caméra CSI, joystick, roues, capteurs passifs et servos pan/tilt. YOLO26s tourne
 sur le PC dans un Worker isolé.
 
-- modes Manuel et Autonome explicites ; Carto automatique en autonomie ;
-- exploration Dyna-Q persistante à 10–20 %, bornée par les capteurs et le
-  watchdog Pi ; aucune reprise après redémarrage ;
-- bouton `Récup` en autonomie : passage manuel explicite, observation bornée
-  de la manœuvre puis apprentissage seulement après `Rendre la main` et
-  validation du résultat ; un simple passage par `Manuel` reste un signal
-  faible soumis à une preuve de progrès ;
-- caméra limitée aux presets issus du manuel, avec politique de points de vue
-  apprenable ; Carto continue pendant un mouvement de tête ;
-- en Manuel sans Carto, la reconnaissance reste visible mais n’ajoute ni
-  objet, présence, point de vue, cellule, trajectoire ou image ; pendant Carto,
-  la vision répétitive est échantillonnée toutes les cinq secondes ou lors
-  d’un changement de vue utile ;
-- carte tactile avec trajectoires, incertitude, objets, zoom/déplacement et
-  commande `Va là` sur une cible admissible ;
-- images-clés sélectives liées aux objets, signatures ORB sans copie d’image,
-  fermeture de boucle et correction du graphe de poses ;
-- déplacement physique à la main détectable : relocalisation, vues de transport
-  écartées et nouveau segment sans trajectoire fictive ; bouton
-  `Je l’ai déplacé` disponible ;
+- modes Manuel et Autonome explicites, sans bouton Carto ni coordonnées `x/y` ;
+- graphe de lieux visuels enrichi dans les deux modes, objets rattachés au lieu
+  et conservés quand ils sortent du champ ;
+- reconnaissance pHash/ORB/RANSAC, flot optique, panoramas corporels et
+  secteurs stables ; aucune image persistée si une personne est présente ;
+- habitudes SARSA(λ) généralisées sans UUID, sous réflexes déterministes ;
+  aucun Qwen/LLM dans la navigation ;
+- locomotion autonome 10–35 % par impulsions compensées selon la puissance :
+  décision 4 Hz, renouvellement watchdog 10 Hz, puis arrêt, 700 ms de repos et
+  trois images stables avant la décision suivante ;
+- `Va là` sur lieu et transitions confirmés ; `Récup` validée puis réappliquée
+  commande par commande sous les bornes capteurs ;
+- manette Gamepad `standard` en Manuel : stick gauche pour la conduite et stick
+  droit par pas caméra bornés, sans prise de contrôle de l’Autonome ;
+- trim de direction global persisté par le Hub et partagé par le tactile, la
+  manette et le démarrage de l’autonomie ;
+- durée globale des impulsions du panorama 360° réglable de 120 à 1 000 ms
+  sous le trim, initialisée à 220 ms et appliquée dès l’impulsion suivante ;
+- panorama poursuivi jusqu’au retour visuel sur la vue initiale ; ORB/RANSAC ou
+  un pHash très proche peuvent fermer la boucle, tandis qu’un retour plus faible
+  doit être corroboré par plusieurs occurrences d’un objet vu au début du tour ;
+- démarrage autonome sans localisation courante : huit impulsions corporelles
+  stabilisées tentent une relocalisation, puis un court déplacement à 12 %
+  fournit la preuve de translation nécessaire à une nouvelle ancre si les IR
+  sont libres ;
+- affichage Reco partagé par le Hub : `Reco affichée/masquée` converge entre
+  mobile et Web sans arrêter l’analyse visuelle ni la cartographie ;
 - servo pan encore tremblant, sous-tensions historiques informatives, absence
-  d’encodeur/IMU/LiDAR et recette physique autonome/relocalisation encore à
-  effectuer.
+  d’encodeur/IMU/LiDAR et recette physique du nouveau modèle encore ouverte.
 
 Avant tout travail Robot, lire
 [runbooks/robot-alphabot2.md](runbooks/robot-alphabot2.md). Observer l’état sans
@@ -87,19 +99,21 @@ preuve physique.
 
 ## 5. Dernière preuve fraîche
 
-Le candidat applicatif `08cafa1` a été vérifié et déployé le 25 août 2026 :
+Le lot d’autonomie topologique et son réglage panorama sont implantés et
+déployés le 26 août 2026 :
 
-- 21 tests Python ;
-- 22 tests contrats, 15 domaine, 153 hub et 91 PWA ;
-- 25 scénarios Playwright mobiles ;
-- builds PWA/hub réussis ;
-- worker OpenCV 4.14.0 testé ;
-- health check `/api/health` et intégrité SQLite `ok` ;
-- base active migrée en 25 après sauvegarde cohérente de la migration 24.
+- `pnpm verify` vert : 24 tests Robot Python, 25 contrats, 15 domaine,
+  159 Hub, 102 PWA et 25 Playwright ;
+- preuve logicielle veille réseau du 27 août : `pnpm verify` vert avec 27 tests
+  Robot Python, 26 contrats, 15 domaine, 165 Hub, 104 PWA et 25 Playwright ;
+- sauvegarde cohérente vérifiée :
+  `D:\FridayData\backups\friday-pre-panorama-loop-20260826-232816.sqlite` en
+  migration 31 ;
+- base active migrée en 32, `integrity_check = ok`, 4 repères, 18 secteurs,
+  4 transitions, trim `-5` et impulsion panorama `500 ms` conservés ;
+- candidat redémarré et health check vert sur l’origine A17.
 
-La sauvegarde pré-migration 25 est
-`D:\FridayData\backups\friday-pre-human-recovery-20260825-211114.sqlite`
-(migration 24, intégrité `ok`).
+La recette physique reste séparée et ouverte.
 
 ## 6. Démarrage d’une tâche
 
@@ -125,8 +139,8 @@ la commande est en revanche obligatoire avant une déclaration de fin après une
 
 ## 7. Prochains checkpoints réels
 
-1. recette physique de relocalisation après avoir soulevé/déplacé AlphaBot2 ;
-2. observation qualitative de l’autonomie et des mouvements caméra ;
+1. recette physique du graphe de lieux et de la navigation fluide ;
+2. observation de `Va là`, faible lumière et `Récup` réappliquée ;
 3. recettes A17 encore ouvertes sans bloquer les travaux automatisés ;
 4. observation iPhone à deux ;
 5. choix utilisateur du prochain lot App — Calendar est une option, pas une

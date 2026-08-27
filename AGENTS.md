@@ -54,19 +54,19 @@ historiques 01–08 ou les anciens checkpoints Robot pour contredire le document
 ## État technique courant
 
 - Navigation : Aujourd’hui, Agenda, Courses, Budget, Chat, Veille, Robot.
-- SQLite 25 ; Dexie 7.
-- `pnpm verify` de référence : 21 tests Python, 22 contrats, 15 domaine, 153
-  hub, 91 PWA, 25 Playwright et builds production.
+- SQLite 32 ; Dexie 7.
+- `pnpm verify` de référence : 27 tests Python, 26 contrats, 15 domaine, 165
+  hub, 104 PWA, 25 Playwright et builds production.
 - Candidat déployé sur l’origine A17 ; health check et intégrité SQLite `ok`.
-- Sauvegarde pré-migration 25 :
-  `D:\FridayData\backups\friday-pre-human-recovery-20260825-211114.sqlite`.
+- Sauvegardes de référence et retours arrière récents : document 27 et runbooks,
+  jamais Git.
 
-Le prototype AlphaBot2 réel est téléopérable et expose Manuel, Autonome, Carto,
-carte tactile, Dyna-Q à 10–20 %, politique caméra bornée, mémoire d’objets,
-images-clés sélectives, signatures ORB, fermeture de boucle, `Va là`, `Récup`
-avec apprentissage humain validé et relocalisation après déplacement physique à la main. Aucun run ne reprend
-après redémarrage. La recette physique autonomie/relocalisation reste ouverte ;
-le servo pan tremble et l’AlphaBot2 n’a ni encodeur, IMU, LiDAR ni pince.
+Le prototype AlphaBot2 réel expose Manuel, Autonome, un graphe de repères
+visuels, panoramas corporels, habitudes SARSA(λ), `Va là`, `Récup`, manette et
+veille réseau réactivable. Il n’existe plus de bouton Carto, de carte métrique
+ni de Dyna-Q. Aucun run ne reprend après redémarrage. Le runtime de veille est
+déployé, mais sa recette physique veille/réveil reste ouverte ; le servo pan
+tremble et l’AlphaBot2 n’a ni encodeur, IMU, LiDAR ni pince.
 
 Pour tout travail Robot, lire `docs/runbooks/robot-alphabot2.md`. Observer
 d’abord l’état sans mouvement. Une action physique exige l’utilisateur, une

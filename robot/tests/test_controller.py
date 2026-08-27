@@ -32,7 +32,7 @@ class ControllerTests(unittest.TestCase):
     def tearDown(self):
         self.controller.close()
 
-    def test_drive_requires_arm_and_stops_after_ttl(self):
+    def test_drive_requires_wheel_switch_and_stops_after_ttl(self):
         payload = command(direction="forward", intensity=0.2, steering=0, maxDurationMs=100)
         with self.assertRaises(CommandRejected):
             self.controller.drive(payload)
@@ -40,7 +40,6 @@ class ControllerTests(unittest.TestCase):
             "wheelsEnabled": True,
             "cameraServosEnabled": False,
         })
-        self.controller.arm({"durationMs": 1000})
         self.assertTrue(self.controller.drive(payload)["moving"])
         halted = self.controller.halt()
         self.assertFalse(halted["moving"])
@@ -50,16 +49,16 @@ class ControllerTests(unittest.TestCase):
         self.assertFalse(self.controller.state()["moving"])
         self.assertFalse(self.hardware.moving)
 
-    def test_mode_change_stops_and_disarms(self):
+    def test_mode_change_stops_without_disabling_wheels(self):
         self.controller.set_actuators({
             "wheelsEnabled": True,
             "cameraServosEnabled": False,
         })
-        self.controller.arm({"durationMs": 1000})
         self.controller.drive(command(direction="left", intensity=0.2, steering=0, maxDurationMs=300))
         state = self.controller.set_mode({"mode": "line"})
         self.assertFalse(state["moving"])
-        self.assertFalse(state["armed"])
+        self.assertTrue(state["armed"])
+        self.assertTrue(state["actuators"]["wheelsEnabled"])
 
     def test_actuator_switches_default_off_and_cut_motion(self):
         self.assertEqual(self.controller.state()["actuators"], {
@@ -71,7 +70,6 @@ class ControllerTests(unittest.TestCase):
             "cameraServosEnabled": True,
         })
         self.assertTrue(enabled["actuators"]["cameraServosEnabled"])
-        self.controller.arm({"durationMs": 1000})
         self.controller.drive(command(direction="left", intensity=0.2, steering=0, maxDurationMs=300))
         disabled = self.controller.set_actuators({
             "wheelsEnabled": False,

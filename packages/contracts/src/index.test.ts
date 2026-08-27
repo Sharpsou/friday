@@ -17,9 +17,69 @@ import {
   GroceryPhotoTranscriptionRequestSchema,
   GroceryPhotoTranscriptionResponseSchema,
   PushRequestSchema,
+  RobotControlPreferencesRequestSchema,
+  RobotControlPreferencesSchema,
+  RobotDisplayPreferencesRequestSchema,
+  RobotDisplayPreferencesSchema,
+  RobotPanoramaPreferencesRequestSchema,
+  RobotPanoramaPreferencesSchema,
   TaskRecordSchema,
   WatchUpdateRequestSchema,
 } from './index.js';
+
+describe('Robot display preference contracts', () => {
+  it('accepts only an explicit shared recognition visibility flag', () => {
+    expect(
+      RobotDisplayPreferencesSchema.parse({
+        recognitionVisible: false,
+        updatedAt: '2026-08-26T12:00:00.000Z',
+      }),
+    ).toEqual({
+      recognitionVisible: false,
+      updatedAt: '2026-08-26T12:00:00.000Z',
+    });
+    expect(
+      RobotDisplayPreferencesRequestSchema.safeParse({
+        recognitionVisible: 'false',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('bounds the shared steering trim to the calibrated range', () => {
+    expect(
+      RobotControlPreferencesSchema.parse({
+        steeringTrimPercent: -5,
+        updatedAt: null,
+      }),
+    ).toEqual({ steeringTrimPercent: -5, updatedAt: null });
+    expect(
+      RobotControlPreferencesRequestSchema.safeParse({
+        steeringTrimPercent: 11,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('Robot panorama preference contracts', () => {
+  it('bounds the shared 360 degree pulse duration', () => {
+    expect(
+      RobotPanoramaPreferencesSchema.parse({
+        panoramaPulseMs: 220,
+        updatedAt: null,
+      }),
+    ).toEqual({ panoramaPulseMs: 220, updatedAt: null });
+    expect(
+      RobotPanoramaPreferencesRequestSchema.safeParse({
+        panoramaPulseMs: 1_000,
+      }).success,
+    ).toBe(true);
+    expect(
+      RobotPanoramaPreferencesRequestSchema.safeParse({
+        panoramaPulseMs: 1_001,
+      }).success,
+    ).toBe(false);
+  });
+});
 
 describe('Watch contracts', () => {
   it('keeps a schedule update partial and requires a weekday for weekly runs', () => {

@@ -1,6 +1,7 @@
 # Audit de la documentation App + Robot
 
-Date : 25 août 2026
+Audit initial : 25 août 2026.
+Ré-audit global : 27 août 2026
 
 Périmètre initial : `AGENTS.md`, 65 artefacts sous `docs/`, monorepo,
 migrations, contrats, routes, navigation, scripts Windows, tests et base
@@ -59,8 +60,9 @@ résolution des liens.
 | `19`                                     | vision fondatrice Robot, comprenant des capacités futures                         |
 | `20`                                     | plan Robot historique ; progression réelle dans 27                                |
 | `21`                                     | journal chronologique clos                                                        |
-| `22` à `26`                              | chaîne de checkpoints Robot datés ; 27 consolide leur résultat                    |
+| `22` à `26` et `29`                      | chaîne de checkpoints Robot datés ; 27 consolide leur résultat                    |
 | `28`                                     | preuve et décisions du présent audit documentaire                                 |
+| `30`                                     | décision active d’autonomie topologique visuelle                                  |
 | `adr/*`                                  | décisions durables ; les numéros absents n’ont pas de fichier autonome            |
 | `friday-threat-model.md`                 | modèle de menace à réviser lors d’un changement de frontière                      |
 | `guides/*`                               | explication longue, non prioritaire pour une reprise agentique                    |
@@ -88,14 +90,16 @@ il ne fait pas autorité sur le code ou les calculs.
 ## 5. Vérités vérifiées dans le dépôt
 
 - sept destinations PWA, dont le libellé réel `Chat` et l’onglet `Robot` ;
-- SQLite 24 et Dexie 7 ;
+- SQLite 32 et Dexie 7 ;
 - quatre modes Chat : Local, Friday, Web léger et Web approfondi ;
-- routes Robot pour état, carte, mémoire, modes, autonomie, Carto,
-  relocalisation, missions, roues, caméra et arrêt ;
-- cartographie segmentée et déplacement physique à la main pris en compte ;
-- worker ORB/OpenCV séparé et mémoire visuelle bornée ;
+- routes Robot pour état, flux, actionneurs, préférences, repères, autonomie,
+  `Va là`, `Récup` et veille/réveil réseau ;
+- graphe topologique de lieux, panoramas corporels, passages et déplacement
+  physique à la main pris en compte ;
+- worker ORB/OpenCV séparé, mémoire visuelle bornée et habitudes SARSA(λ) ;
 - scripts d’installation vision/localisation et redémarrage HTTPS ;
-- `pnpm verify` : 294 tests Python/TypeScript et 25 parcours Playwright.
+- `pnpm verify` : 27 tests Robot Python, 26 contrats, 15 domaine, 165 Hub, 104
+  PWA et 25 parcours Playwright.
 
 ## 6. Points volontairement ouverts
 
@@ -113,3 +117,31 @@ runbook du domaine, document 27 et, seulement si la reprise change, `00` et
 `AGENTS.md`. Un ancien checkpoint ne doit jamais être « actualisé » au point de
 perdre sa valeur historique : ajouter une bannière de remplacement et écrire
 le nouvel état dans le canonique.
+
+## 8. Ré-audit global du 27 août 2026
+
+Le corpus compte désormais 69 fichiers Markdown et un guide Budget `.docx`
+sous `docs/`, plus sept README de dépôt ou de sous-système. Le contrôle a relu
+les points d’entrée canoniques, le guide long, tous les runbooks, les README,
+les migrations, les fichiers Robot réellement présents et toutes les cibles de
+liens Markdown relatifs.
+
+Écarts corrigés :
+
+| Gravité | Écart                                                                              | Correction                                                                            |
+| ------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| haute   | `AGENTS.md` annonçait encore SQLite 25, Carto, carte métrique et Dyna-Q            | état 32 et autonomie topologique/veille réseau rétablis                               |
+| haute   | le guide complet pointait vers `RobotMapView.tsx` et `robot-mapping.ts`, supprimés | carte du code remplacée par graphe, reconnaissance, panorama, habitudes et power      |
+| moyenne | le README racine présentait encore Carto et une carte tactile                      | présentation courte alignée sur repères, navigation topologique, manette et veille    |
+| moyenne | le guide décrivait les migrations 1–25 et l’ancien pipeline Robot                  | sections Robot/SQLite/routes réécrites, détails délégués au document 27 et au runbook |
+| faible  | le déploiement de veille réellement effectué n’était pas reflété partout           | handoff, état canonique, runbook et audit mis à jour avec preuves et sauvegardes      |
+
+Après correction, les liens relatifs Markdown ne présentent plus de cible
+manquante. La factorisation retenue ne crée pas un nouveau document d’état :
+
+- `README.md` explique le produit sans journal d’implémentation ;
+- `00` permet une reprise rapide ;
+- `27` porte l’état live et les preuves ;
+- `30` porte la décision d’autonomie ;
+- les runbooks portent les procédures ;
+- le présent document conserve uniquement la méthode et les écarts de l’audit.

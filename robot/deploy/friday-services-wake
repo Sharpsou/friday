@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+/usr/bin/systemctl start friday-awake.target

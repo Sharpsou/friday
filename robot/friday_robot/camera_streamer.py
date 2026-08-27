@@ -7,6 +7,7 @@ import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import BinaryIO, Iterator
+from urllib.parse import parse_qs, urlparse
 
 
 SOI = b"\xff\xd8"
@@ -37,14 +38,19 @@ def iter_jpeg_frames(stream: BinaryIO, chunk_size: int = 64 * 1024) -> Iterator[
             del buffer[:end]
 
 
-def camera_command() -> list[str]:
+def camera_command(profile: str = "normal") -> list[str]:
+    if profile not in {"normal", "reduced"}:
+        raise ValueError("Profil caméra invalide.")
     executable = shutil.which("rpicam-vid")
     if not executable:
         raise RuntimeError("rpicam-vid est introuvable.")
     width = _bounded_int("FRIDAY_CAMERA_WIDTH", 640, 160, 1920)
     height = _bounded_int("FRIDAY_CAMERA_HEIGHT", 480, 120, 1080)
-    fps = _bounded_int("FRIDAY_CAMERA_FPS", 10, 1, 30)
+    fps = _bounded_int("FRIDAY_CAMERA_FPS", 15, 1, 30)
     quality = _bounded_int("FRIDAY_CAMERA_QUALITY", 70, 20, 95)
+    if profile == "reduced":
+        fps = min(fps, 7)
+        quality = min(quality, 55)
     buffer_count = _bounded_int("FRIDAY_CAMERA_BUFFER_COUNT", 2, 2, 8)
     return [
         executable,
@@ -72,13 +78,18 @@ class CameraHandler(BaseHTTPRequestHandler):
     server_version = "FridayCamera/0.1"
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path != "/stream":
+        parsed = urlparse(self.path)
+        if parsed.path != "/stream":
             self.send_error(404)
+            return
+        profile = parse_qs(parsed.query).get("profile", ["normal"])[0]
+        if profile not in {"normal", "reduced"}:
+            self.send_error(400, "Profil caméra invalide.")
             return
         process: subprocess.Popen[bytes] | None = None
         try:
             process = subprocess.Popen(  # noqa: S603
-                camera_command(),
+                camera_command(profile),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 bufsize=0,

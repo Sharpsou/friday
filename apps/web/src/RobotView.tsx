@@ -1,5 +1,4 @@
 import {
-  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -10,267 +9,137 @@ import {
 } from 'react';
 
 import type {
-  RobotDirection,
   RobotAutonomyStatus,
-  RobotCognitionJournalEntry,
-  RobotMapSnapshot,
-  RobotMemoryEntity,
-  RobotMemorySummary,
+  RobotControlPreferences,
+  RobotDirection,
+  RobotDisplayPreferences,
+  RobotPanoramaPreferences,
   RobotState,
+  RobotVisualGraph,
 } from '@friday/contracts';
 
-import RobotMapView from './RobotMapView.js';
-import {
-  ROBOT_CAMERA_STREAM_URL,
-  RobotClientError,
-  armRobot,
-  driveRobot,
-  getRobotState,
-  getRobotMemory,
-  getRobotMap,
-  getRobotAutonomy,
-  getRobotCognitionJournal,
-  haltRobot,
-  lookRobotCamera,
-  renameRobotMemoryEntity,
-  setRobotMode,
-  setRobotMapping,
-  setRobotActuators,
-  stopRobot,
-  stopRobotOnPageExit,
-  startRobotAutonomy,
-  startRobotHumanRecovery,
-} from './sync/robot-client.js';
-import {
-  CAMERA_NEUTRAL_TILT,
-  cameraCenterDelta,
-  nextCameraPose,
-} from './robot-camera-controls.js';
+import RobotGraphView from './RobotGraphView.js';
+import { cameraCenterDelta, nextCameraPose } from './robot-camera-controls.js';
 import {
   applySteeringTrim,
   joystickDriveCommand,
   shouldSendDriveCommand,
   type DriveCommand,
 } from './robot-drive-controls.js';
+import {
+  ROBOT_CAMERA_STREAM_URL,
+  RobotClientError,
+  deleteRobotVisualObject,
+  deleteRobotVisualPlace,
+  driveRobot,
+  finishRobotHumanRecovery,
+  getRobotAutonomy,
+  getRobotControlPreferences,
+  getRobotDisplayPreferences,
+  getRobotGraph,
+  getRobotPanoramaPreferences,
+  getRobotState,
+  haltRobot,
+  lookRobotCamera,
+  mergeRobotVisualPlaces,
+  renameRobotVisualObject,
+  renameRobotVisualPlace,
+  setRobotActuators,
+  setRobotAutonomyPower,
+  setRobotControlPreferences,
+  setRobotDisplayPreferences,
+  setRobotMode,
+  setRobotPanoramaPreferences,
+  sleepRobotNetwork,
+  startRobotAutonomy,
+  startRobotHumanRecovery,
+  stopRobotOnPageExit,
+  wakeRobotNetwork,
+} from './sync/robot-client.js';
+import { useRobotGamepad } from './use-robot-gamepad.js';
 
 const PAN_NUDGE = 0.5;
-const TILT_NUDGE = 0.05;
-const ROBOT_POWER_STORAGE_KEY = 'friday.robot.powerPercent';
-const ROBOT_TRIM_STORAGE_KEY = 'friday.robot.steeringTrimPercent';
-const EMPTY_MEMORY_ENTITIES: RobotMemoryEntity[] = [];
+const TILT_NUDGE = 0.08;
+type RobotControlSettings = {
+  panoramaPulseMs: number;
+  steeringTrimPercent: number;
+};
+const POWER_KEY = 'friday.robot.powerPercent';
+const LEGACY_TRIM_KEY = 'friday.robot.steeringTrimPercent';
 
-function initialRobotPower(): number {
-  const stored = Number(window.localStorage.getItem(ROBOT_POWER_STORAGE_KEY));
-  return Number.isFinite(stored) && stored >= 10 && stored <= 35 ? stored : 20;
+function initialNumber(
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  const value = Number(window.localStorage.getItem(key));
+  return Number.isFinite(value) && value >= min && value <= max
+    ? value
+    : fallback;
 }
 
-function initialSteeringTrim(): number {
-  const stored = Number(window.localStorage.getItem(ROBOT_TRIM_STORAGE_KEY));
-  return Number.isInteger(stored) && stored >= -10 && stored <= 10 ? stored : 0;
-}
-
-function steeringTrimLabel(trimPercent: number): string {
-  if (trimPercent === 0) return '0';
-  return `${trimPercent < 0 ? 'G' : 'D'} ${Math.abs(trimPercent).toString()}`;
+function readLegacySteeringTrim(): number | null {
+  const stored = window.localStorage.getItem(LEGACY_TRIM_KEY);
+  if (stored === null) return null;
+  const value = Number(stored);
+  return Number.isInteger(value) && value >= -10 && value <= 10 ? value : null;
 }
 
 function stateLabel(state: RobotState | null): string {
+  if (state?.powerState === 'sleeping') return 'En veille';
+  if (state?.powerState === 'transitioning') return 'Transition…';
+  if (state?.powerState === 'degraded') return 'Veille dégradée';
   if (!state?.available) return 'Indisponible';
   if (!state.connected) return 'Déconnecté';
   if (state.moving) return 'En mouvement';
-  if (state.armed) return 'Armé';
+  if (state.actuators.wheelsEnabled) return 'Roues actives';
   return 'Connecté';
 }
 
-const RobotMemoryPanel = memo(function RobotMemoryPanel({
-  isOwner,
-  memory,
-  onRename,
-}: {
-  isOwner: boolean;
-  memory: RobotMemorySummary | null;
-  onRename: (id: string, currentName: string) => Promise<void>;
-}) {
-  const [query, setQuery] = useState('');
-  const [showCandidates, setShowCandidates] = useState(false);
-  const entities = memory?.entities ?? EMPTY_MEMORY_ENTITIES;
-  const confirmedCount = entities.filter(
-    (entity) => entity.status === 'confirmed',
-  ).length;
-  const candidateCount = entities.length - confirmedCount;
-  const normalizedQuery = query.trim().toLocaleLowerCase('fr-FR');
-  const groups = useMemo(() => {
-    const grouped = new Map<string, RobotMemoryEntity[]>();
-    for (const entity of entities) {
-      if (!showCandidates && entity.status !== 'confirmed') continue;
-      if (
-        normalizedQuery &&
-        !`${entity.displayName} ${entity.classLabel} ${entity.roomName}`
-          .toLocaleLowerCase('fr-FR')
-          .includes(normalizedQuery)
-      )
-        continue;
-      const room = entity.roomName;
-      const roomEntities = grouped.get(room) ?? [];
-      roomEntities.push(entity);
-      grouped.set(room, roomEntities);
-    }
-    return [...grouped.entries()].map(([room, roomEntities]) => ({
-      room,
-      entities: roomEntities.toSorted((left, right) =>
-        left.displayName.localeCompare(right.displayName, 'fr'),
-      ),
-    }));
-  }, [entities, normalizedQuery, showCandidates]);
-
-  return (
-    <details className="panel robot-memory">
-      <summary>
-        Objets mémorisés · {confirmedCount.toString()} fiable(s)
-        {candidateCount > 0
-          ? ` · ${candidateCount.toString()} à confirmer`
-          : ''}
-      </summary>
-      <div className="robot-memory-tools">
-        {entities.length > 6 ? (
-          <label>
-            <span>Filtrer</span>
-            <input
-              aria-label="Filtrer les objets mémorisés"
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Nom, type ou pièce"
-            />
-          </label>
-        ) : null}
-        {candidateCount > 0 ? (
-          <button
-            aria-pressed={showCandidates}
-            type="button"
-            onClick={() => setShowCandidates((visible) => !visible)}
-          >
-            {showCandidates
-              ? 'Masquer les indices'
-              : `Voir ${candidateCount.toString()} indice(s)`}
-          </button>
-        ) : null}
-      </div>
-      {groups.length > 0 ? (
-        <div className="robot-memory-groups">
-          {groups.map((group) => (
-            <section key={group.room}>
-              <h3>{group.room}</h3>
-              <ul>
-                {group.entities.map((entity) => (
-                  <li
-                    className={
-                      entity.status === 'confirmed' ? '' : 'is-candidate'
-                    }
-                    key={entity.id}
-                  >
-                    <span>
-                      <strong>{entity.displayName}</strong>
-                      <small>
-                        {entity.status === 'confirmed'
-                          ? `${Math.round(entity.confidence * 100).toString()} % · ${entity.sightingCount.toString()} observations`
-                          : `À confirmer · ${entity.sightingCount.toString()} observation(s)`}
-                      </small>
-                    </span>
-                    {isOwner ? (
-                      <button
-                        aria-label={`Modifier le nom ${entity.displayName}`}
-                        type="button"
-                        onClick={() =>
-                          void onRename(entity.id, entity.displayName)
-                        }
-                      >
-                        Modifier
-                      </button>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-      ) : (
-        <p>
-          {confirmedCount === 0 && !showCandidates
-            ? 'Aucun objet fiable. Les détections à confirmer restent masquées pour garder cette vue lisible.'
-            : 'Aucun objet ne correspond à ce filtre.'}
-        </p>
-      )}
-    </details>
-  );
-});
-
 export default function RobotView({ isOwner }: { isOwner: boolean }) {
   const [state, setState] = useState<RobotState | null>(null);
-  const [memory, setMemory] = useState<RobotMemorySummary | null>(null);
-  const [map, setMap] = useState<RobotMapSnapshot | null>(null);
+  const [graph, setGraph] = useState<RobotVisualGraph | null>(null);
   const [autonomy, setAutonomy] = useState<RobotAutonomyStatus | null>(null);
-  const [cognition, setCognition] = useState<RobotCognitionJournalEntry[]>([]);
-  const [mapVisible, setMapVisible] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [displayPreferences, setDisplayPreferences] =
+    useState<RobotDisplayPreferences | null>(null);
+  const [controlPreferences, setControlPreferences] =
+    useState<RobotControlPreferences | null>(null);
+  const [panoramaPreferences, setPanoramaPreferences] =
+    useState<RobotPanoramaPreferences | null>(null);
+  const [graphVisible, setGraphVisible] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [pageVisible, setPageVisible] = useState(
-    document.visibilityState === 'visible',
+  const [error, setError] = useState<string | null>(null);
+  const [powerPercent, setPowerPercent] = useState(() =>
+    initialNumber(POWER_KEY, 20, 10, 35),
   );
-  const [powerPercent, setPowerPercent] = useState(initialRobotPower);
-  const [steeringTrimPercent, setSteeringTrimPercent] =
-    useState(initialSteeringTrim);
-  const [recognitionVisible, setRecognitionVisible] = useState(true);
-  const driveTimerRef = useRef<number | null>(null);
-  const driveInFlightRef = useRef(false);
-  const driveCommandRef = useRef<DriveCommand | null>(null);
-  const powerPercentRef = useRef(powerPercent);
-  const armInFlightRef = useRef(false);
-  const mountedRef = useRef(true);
-  const operatingModeRef = useRef<RobotState['operatingMode']>('manual');
-
-  useEffect(() => {
-    powerPercentRef.current = powerPercent;
-    window.localStorage.setItem(
-      ROBOT_POWER_STORAGE_KEY,
-      powerPercent.toString(),
-    );
-  }, [powerPercent]);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      ROBOT_TRIM_STORAGE_KEY,
-      steeringTrimPercent.toString(),
-    );
-  }, [steeringTrimPercent]);
-
-  const updateState = useCallback((next: RobotState) => {
-    if (mountedRef.current) {
-      operatingModeRef.current = next.operatingMode;
-      setState(next);
-      setError(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    const refreshMap = () => {
-      if (document.visibilityState === 'visible')
-        void Promise.all([getRobotMap(), getRobotAutonomy()])
-          .then(([nextMap, nextAutonomy]) => {
-            if (mountedRef.current) {
-              setMap(nextMap);
-              setAutonomy(nextAutonomy);
-            }
-          })
-          .catch(() => undefined);
-    };
-    refreshMap();
-    const timer = window.setInterval(refreshMap, mapVisible ? 1_000 : 3_000);
-    return () => window.clearInterval(timer);
-  }, [mapVisible]);
+  const steeringTrimPercent = controlPreferences?.steeringTrimPercent ?? 0;
+  const panoramaPulseMs = panoramaPreferences?.panoramaPulseMs ?? 220;
+  const powerState = state?.powerState ?? 'awake';
+  const hasNetworkStandby =
+    state?.capabilities.includes('network_standby') ?? false;
+  const mounted = useRef(true);
+  const stateRef = useRef<RobotState | null>(null);
+  const mode = useRef<RobotState['operatingMode']>('manual');
+  const driveTimer = useRef<number | null>(null);
+  const driveInFlight = useRef(false);
+  const driveCommand = useRef<DriveCommand | null>(null);
+  const power = useRef(powerPercent);
+  const autonomyPowerRevision = useRef(0);
+  const autonomyPowerSaveTimer = useRef<number | null>(null);
+  const busyRef = useRef(false);
+  const cameraMoveInFlight = useRef(false);
+  const touchDriveActive = useRef(false);
+  const controlPreferencesDirty = useRef(false);
+  const controlPreferencesRevision = useRef(0);
+  const controlPreferencesPending = useRef<RobotControlSettings | null>(null);
+  const controlPreferencesSaveTimer = useRef<number | null>(null);
+  const controlPreferencesSaveChain = useRef<Promise<unknown>>(
+    Promise.resolve(),
+  );
 
   const showError = useCallback((cause: unknown) => {
-    if (!mountedRef.current) return;
+    if (!mounted.current) return;
     setError(
       cause instanceof RobotClientError
         ? cause.message
@@ -278,296 +147,182 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     );
   }, []);
 
-  const renameMemoryEntity = useCallback(
-    async (id: string, currentName: string) => {
-      const nextName = window.prompt('Nom de cet objet', currentName)?.trim();
-      if (!nextName || nextName === currentName) return;
-      try {
-        setMemory(await renameRobotMemoryEntity(id, nextName));
-        setError(null);
-      } catch (cause) {
-        showError(cause);
-      }
+  const updateState = useCallback((next: RobotState) => {
+    if (!mounted.current) return;
+    stateRef.current = next;
+    mode.current = next.operatingMode;
+    setState(next);
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    power.current = powerPercent;
+    window.localStorage.setItem(POWER_KEY, powerPercent.toString());
+  }, [powerPercent]);
+  const updatePowerPercent = useCallback(
+    (nextPowerPercent: number) => {
+      const next = Math.max(10, Math.min(35, Math.round(nextPowerPercent)));
+      power.current = next;
+      setPowerPercent(next);
+      if (!['exploring', 'navigating'].includes(autonomy?.status ?? 'inactive'))
+        return;
+      const revision = ++autonomyPowerRevision.current;
+      if (autonomyPowerSaveTimer.current !== null)
+        window.clearTimeout(autonomyPowerSaveTimer.current);
+      autonomyPowerSaveTimer.current = window.setTimeout(() => {
+        autonomyPowerSaveTimer.current = null;
+        void setRobotAutonomyPower(next)
+          .then((saved) => {
+            if (mounted.current && autonomyPowerRevision.current === revision)
+              setAutonomy(saved);
+          })
+          .catch(showError);
+      }, 200);
+    },
+    [autonomy?.status, showError],
+  );
+
+  useEffect(
+    () => () => {
+      if (autonomyPowerSaveTimer.current !== null)
+        window.clearTimeout(autonomyPowerSaveTimer.current);
+    },
+    [],
+  );
+  const updateControlPreferences = useCallback(
+    (preferences: RobotControlSettings) => {
+      const nextPreferences = {
+        steeringTrimPercent: Math.max(
+          -10,
+          Math.min(10, Math.round(preferences.steeringTrimPercent)),
+        ),
+        panoramaPulseMs: Math.max(
+          120,
+          Math.min(1_000, Math.round(preferences.panoramaPulseMs)),
+        ),
+      };
+      const revision = ++controlPreferencesRevision.current;
+      controlPreferencesDirty.current = true;
+      controlPreferencesPending.current = nextPreferences;
+      setControlPreferences((current) => ({
+        steeringTrimPercent: nextPreferences.steeringTrimPercent,
+        updatedAt: current?.updatedAt ?? null,
+      }));
+      setPanoramaPreferences((current) => ({
+        panoramaPulseMs: nextPreferences.panoramaPulseMs,
+        updatedAt: current?.updatedAt ?? null,
+      }));
+      if (controlPreferencesSaveTimer.current !== null)
+        window.clearTimeout(controlPreferencesSaveTimer.current);
+      controlPreferencesSaveTimer.current = window.setTimeout(() => {
+        controlPreferencesSaveTimer.current = null;
+        controlPreferencesPending.current = null;
+        controlPreferencesSaveChain.current =
+          controlPreferencesSaveChain.current
+            .catch(() => undefined)
+            .then(() =>
+              Promise.all([
+                setRobotControlPreferences(nextPreferences.steeringTrimPercent),
+                setRobotPanoramaPreferences(nextPreferences.panoramaPulseMs),
+              ]),
+            )
+            .then(([savedControlPreferences, savedPanoramaPreferences]) => {
+              if (
+                !mounted.current ||
+                controlPreferencesRevision.current !== revision
+              )
+                return;
+              controlPreferencesDirty.current = false;
+              window.localStorage.removeItem(LEGACY_TRIM_KEY);
+              setControlPreferences(savedControlPreferences);
+              setPanoramaPreferences(savedPanoramaPreferences);
+            })
+            .catch((cause: unknown) => {
+              if (
+                !mounted.current ||
+                controlPreferencesRevision.current !== revision
+              )
+                return;
+              controlPreferencesDirty.current = false;
+              showError(cause);
+            });
+      }, 250);
     },
     [showError],
   );
 
-  const stopDriveLoop = useCallback(
-    (sendStop = true, disarm = false) => {
-      const wasDriving = driveTimerRef.current !== null;
-      if (driveTimerRef.current !== null) {
-        window.clearInterval(driveTimerRef.current);
-        driveTimerRef.current = null;
+  useEffect(
+    () => () => {
+      if (controlPreferencesSaveTimer.current !== null)
+        window.clearTimeout(controlPreferencesSaveTimer.current);
+      if (controlPreferencesPending.current !== null) {
+        const pendingPreferences = controlPreferencesPending.current;
+        controlPreferencesPending.current = null;
+        controlPreferencesSaveChain.current =
+          controlPreferencesSaveChain.current
+            .catch(() => undefined)
+            .then(() =>
+              Promise.all([
+                setRobotControlPreferences(
+                  pendingPreferences.steeringTrimPercent,
+                ),
+                setRobotPanoramaPreferences(pendingPreferences.panoramaPulseMs),
+              ]),
+            );
       }
-      driveInFlightRef.current = false;
-      driveCommandRef.current = null;
-      if (sendStop && wasDriving)
-        void (disarm ? stopRobot() : haltRobot())
-          .then(updateState)
-          .catch(showError);
+    },
+    [],
+  );
+
+  const stopDriveLoop = useCallback(
+    (sendStop = true) => {
+      const active = driveTimer.current !== null;
+      if (driveTimer.current !== null) window.clearInterval(driveTimer.current);
+      driveTimer.current = null;
+      driveCommand.current = null;
+      driveInFlight.current = false;
+      if (active && sendStop)
+        void haltRobot().then(updateState).catch(showError);
     },
     [showError, updateState],
   );
 
-  useEffect(() => {
-    mountedRef.current = true;
-    const refresh = () => {
-      if (document.visibilityState === 'visible')
-        void getRobotState().then(updateState).catch(showError);
-    };
-    refresh();
-    const timer = window.setInterval(refresh, 750);
-    const onVisibility = () => {
-      setPageVisible(document.visibilityState === 'visible');
-      if (document.visibilityState === 'hidden') {
-        stopDriveLoop(operatingModeRef.current === 'manual', true);
-      } else {
-        refresh();
-      }
-    };
-    const onPointerRelease = () => stopDriveLoop();
-    window.addEventListener('pointerup', onPointerRelease, { passive: true });
-    window.addEventListener('pointercancel', onPointerRelease, {
-      passive: true,
-    });
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      mountedRef.current = false;
-      window.clearInterval(timer);
-      window.removeEventListener('pointerup', onPointerRelease);
-      window.removeEventListener('pointercancel', onPointerRelease);
-      document.removeEventListener('visibilitychange', onVisibility);
-      stopDriveLoop(false);
-      if (operatingModeRef.current === 'manual') stopRobotOnPageExit();
-    };
-  }, [showError, stopDriveLoop, updateState]);
-
-  useEffect(() => {
-    const refreshMemory = () => {
-      if (document.visibilityState === 'visible')
-        void getRobotMemory()
-          .then((next) => {
-            if (mountedRef.current) setMemory(next);
-          })
-          .catch(() => undefined);
-    };
-    refreshMemory();
-    const timer = window.setInterval(refreshMemory, 5_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const refresh = () => {
-      if (document.visibilityState === 'visible')
-        void getRobotCognitionJournal()
-          .then((entries) => {
-            if (mountedRef.current) setCognition(entries);
-          })
-          .catch(() => undefined);
-    };
-    refresh();
-    const timer = window.setInterval(refresh, 5_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const sendDrivePulse = useCallback(
+  const sendDrive = useCallback(
     (command: DriveCommand) => {
-      if (driveInFlightRef.current) return;
-      driveInFlightRef.current = true;
-      void driveRobot(
-        command.direction,
-        powerPercentRef.current / 100,
-        command.steering,
-      )
+      if (driveInFlight.current) return;
+      driveInFlight.current = true;
+      void driveRobot(command.direction, power.current / 100, command.steering)
         .then(updateState)
         .catch((cause: unknown) => {
           stopDriveLoop(false);
           showError(cause);
         })
         .finally(() => {
-          driveInFlightRef.current = false;
+          driveInFlight.current = false;
         });
     },
     [showError, stopDriveLoop, updateState],
   );
 
-  const startDriveCommand = useCallback(
+  const startDrive = useCallback(
     (command: DriveCommand) => {
-      driveCommandRef.current = command;
-      if (driveTimerRef.current !== null) {
-        sendDrivePulse(command);
-        return;
-      }
-      stopDriveLoop(false);
-      driveCommandRef.current = command;
-      sendDrivePulse(command);
-      driveTimerRef.current = window.setInterval(() => {
-        if (driveCommandRef.current) sendDrivePulse(driveCommandRef.current);
-      }, 180);
+      driveCommand.current = command;
+      sendDrive(command);
+      if (driveTimer.current === null)
+        driveTimer.current = window.setInterval(() => {
+          if (driveCommand.current) sendDrive(driveCommand.current);
+        }, 180);
     },
-    [sendDrivePulse, stopDriveLoop],
+    [sendDrive],
   );
-
-  const renewWheelArm = useCallback(() => {
-    if (armInFlightRef.current) return;
-    armInFlightRef.current = true;
-    void armRobot()
-      .then(updateState)
-      .catch(showError)
-      .finally(() => {
-        armInFlightRef.current = false;
-      });
-  }, [showError, updateState]);
-
-  useEffect(() => {
-    if (
-      !isOwner ||
-      !state?.available ||
-      !state.connected ||
-      !state.actuators.wheelsEnabled ||
-      state.operatingMode !== 'manual' ||
-      !pageVisible
-    )
-      return;
-    if (!state.armed) renewWheelArm();
-    const timer = window.setInterval(renewWheelArm, 45_000);
-    return () => window.clearInterval(timer);
-  }, [
-    isOwner,
-    pageVisible,
-    renewWheelArm,
-    state?.armed,
-    state?.actuators.wheelsEnabled,
-    state?.available,
-    state?.connected,
-    state?.operatingMode,
-  ]);
-
-  const nudgeCamera = async (panDelta: number, tiltDelta: number) => {
-    if (!state) return;
-    setBusy(true);
-    try {
-      const target = nextCameraPose(state.cameraPose, panDelta, tiltDelta);
-      updateState(await lookRobotCamera(target.pan, target.tilt));
-    } catch (cause) {
-      showError(cause);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const changeMode = async (mode: 'manual' | 'autonomous') => {
-    setBusy(true);
-    try {
-      if (mode === 'autonomous') {
-        const response = await startRobotAutonomy(
-          powerPercent,
-          steeringTrimPercent,
-        );
-        updateState(response.state);
-        setMap(response.map);
-        setAutonomy(response.autonomy);
-      } else if (autonomy?.status !== 'inactive') {
-        updateState(await setRobotMode('manual'));
-        const [nextMap, nextAutonomy] = await Promise.all([
-          getRobotMap(),
-          getRobotAutonomy(),
-        ]);
-        setMap(nextMap);
-        setAutonomy(nextAutonomy);
-      } else {
-        updateState(await setRobotMode('manual'));
-        setMap(await getRobotMap());
-      }
-    } catch (cause) {
-      showError(cause);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const startRecovery = async () => {
-    setBusy(true);
-    try {
-      const response = await startRobotHumanRecovery();
-      updateState(response.state);
-      setMap(response.map);
-      setAutonomy(response.autonomy);
-    } catch (cause) {
-      showError(cause);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const changeMapping = async (
-    action: 'pause' | 'relocalize' | 'resume' | 'start' | 'stop',
-  ) => {
-    if (!state) return;
-    setBusy(true);
-    try {
-      if (
-        (action === 'start' || action === 'resume') &&
-        (Math.abs(state.cameraPose.pan) > 0.02 ||
-          Math.abs(state.cameraPose.tilt - CAMERA_NEUTRAL_TILT) > 0.02)
-      ) {
-        updateState(await lookRobotCamera(0, CAMERA_NEUTRAL_TILT));
-      }
-      setMap(await setRobotMapping(action));
-      setError(null);
-    } catch (cause) {
-      showError(cause);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const setActuator = async (
-    actuator: 'wheelsEnabled' | 'cameraServosEnabled',
-    enabled: boolean,
-  ) => {
-    if (!state) return;
-    if (actuator === 'wheelsEnabled' && !enabled) stopDriveLoop();
-    setBusy(true);
-    try {
-      const actuatorState = await setRobotActuators({
-        ...state.actuators,
-        [actuator]: enabled,
-      });
-      if (actuator === 'wheelsEnabled' && enabled) {
-        updateState(
-          actuatorState.operatingMode === 'manual'
-            ? await armRobot()
-            : actuatorState,
-        );
-      } else updateState(actuatorState);
-    } catch (cause) {
-      showError(cause);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const visibleDetections = useMemo(() => {
-    if (
-      !recognitionVisible ||
-      !state?.vision ||
-      Date.parse(state.vision.expiresAt) <=
-        Date.parse(state.lastSeenAt ?? state.vision.observedAt)
-    )
-      return [];
-    return state.vision.detections;
-  }, [recognitionVisible, state]);
 
   const canDrive =
     isOwner &&
+    controlPreferences !== null &&
     state?.available === true &&
     state.connected &&
     state.actuators.wheelsEnabled &&
-    state.operatingMode === 'manual' &&
-    (map?.mapping.status !== 'recording' ||
-      (Math.abs(state.cameraPose.pan) <= 0.02 &&
-        Math.abs(state.cameraPose.tilt - CAMERA_NEUTRAL_TILT) <= 0.02));
+    state.operatingMode === 'manual';
   const canLook =
     isOwner &&
     state?.capabilities.includes('camera_look') === true &&
@@ -575,30 +330,257 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     state.operatingMode === 'manual' &&
     !state.moving &&
     !busy;
-  const confirmedMemoryCount =
-    memory?.entities.filter((entity) => entity.status === 'confirmed').length ??
-    0;
 
-  if (mapVisible && map)
-    return (
-      <RobotMapView
-        snapshot={map}
-        isOwner={isOwner}
-        onClose={() => setMapVisible(false)}
-        onError={showError}
-        onNavigate={async (targetPointId) => {
-          const response = await startRobotAutonomy(
-            powerPercent,
-            steeringTrimPercent,
-            targetPointId,
-          );
+  const moveCameraByDelta = useCallback(
+    async (panDelta: number, tiltDelta: number) => {
+      const current = stateRef.current;
+      if (
+        !isOwner ||
+        !current ||
+        current.operatingMode !== 'manual' ||
+        current.moving ||
+        !current.actuators.cameraServosEnabled ||
+        !current.capabilities.includes('camera_look') ||
+        busyRef.current ||
+        cameraMoveInFlight.current
+      )
+        return;
+      busyRef.current = true;
+      cameraMoveInFlight.current = true;
+      setBusy(true);
+      try {
+        const next = nextCameraPose(current.cameraPose, panDelta, tiltDelta);
+        updateState(await lookRobotCamera(next.pan, next.tilt));
+      } catch (cause) {
+        showError(cause);
+      } finally {
+        cameraMoveInFlight.current = false;
+        busyRef.current = false;
+        if (mounted.current) setBusy(false);
+      }
+    },
+    [isOwner, showError, updateState],
+  );
+
+  const {
+    beginTouchDrive,
+    endTouchDrive,
+    status: gamepadStatus,
+  } = useRobotGamepad({
+    active: isOwner && state?.operatingMode === 'manual',
+    canDrive,
+    canLook,
+    enabled: isOwner,
+    onCameraGesture: moveCameraByDelta,
+    onDrive: startDrive,
+    onDriveRelease: stopDriveLoop,
+    powerPercent,
+    steeringTrimPercent,
+  });
+
+  useEffect(() => {
+    mounted.current = true;
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      void Promise.all([
+        getRobotState(),
+        getRobotGraph(),
+        getRobotAutonomy(),
+        getRobotDisplayPreferences(),
+        getRobotControlPreferences(),
+        getRobotPanoramaPreferences(),
+      ])
+        .then(
+          ([
+            nextState,
+            nextGraph,
+            nextAutonomy,
+            nextDisplayPreferences,
+            nextControlPreferences,
+            nextPanoramaPreferences,
+          ]) => {
+            updateState(nextState);
+            if (mounted.current) {
+              setGraph(nextGraph);
+              setAutonomy(nextAutonomy);
+              setDisplayPreferences(nextDisplayPreferences);
+              if (!controlPreferencesDirty.current) {
+                const legacyTrim =
+                  isOwner && nextControlPreferences.updatedAt === null
+                    ? readLegacySteeringTrim()
+                    : null;
+                if (legacyTrim === null) {
+                  if (nextControlPreferences.updatedAt !== null)
+                    window.localStorage.removeItem(LEGACY_TRIM_KEY);
+                  setControlPreferences(nextControlPreferences);
+                  setPanoramaPreferences(nextPanoramaPreferences);
+                } else
+                  updateControlPreferences({
+                    panoramaPulseMs: nextPanoramaPreferences.panoramaPulseMs,
+                    steeringTrimPercent: legacyTrim,
+                  });
+              }
+            }
+          },
+        )
+        .catch(showError);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, graphVisible ? 1_000 : 750);
+    const release = () => {
+      if (!touchDriveActive.current) return;
+      touchDriveActive.current = false;
+      endTouchDrive();
+      stopDriveLoop();
+    };
+    const visibility = () => {
+      if (document.visibilityState === 'hidden') stopDriveLoop(true);
+      else refresh();
+    };
+    window.addEventListener('pointerup', release, { passive: true });
+    window.addEventListener('pointercancel', release, { passive: true });
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      mounted.current = false;
+      window.clearInterval(timer);
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+      document.removeEventListener('visibilitychange', visibility);
+      touchDriveActive.current = false;
+      endTouchDrive();
+      stopDriveLoop(false);
+      if (mode.current === 'manual') stopRobotOnPageExit();
+    };
+  }, [
+    endTouchDrive,
+    graphVisible,
+    isOwner,
+    showError,
+    stopDriveLoop,
+    updateState,
+    updateControlPreferences,
+  ]);
+
+  const mutate = async (operation: () => Promise<void>) => {
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      await operation();
+      setError(null);
+    } catch (cause) {
+      showError(cause);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const setActuator = (
+    key: keyof RobotState['actuators'],
+    enabled: boolean,
+  ) => {
+    if (!state) return;
+    if (key === 'wheelsEnabled' && !enabled) stopDriveLoop();
+    void mutate(async () => {
+      const next = await setRobotActuators({
+        ...state.actuators,
+        [key]: enabled,
+      });
+      updateState(next);
+    });
+  };
+
+  const startAutonomy = (targetPlaceId?: string, allowCandidatePath = false) =>
+    mutate(async () => {
+      const response = await startRobotAutonomy(
+        powerPercent,
+        steeringTrimPercent,
+        targetPlaceId,
+        allowCandidatePath,
+      );
+      updateState(response.state);
+      setGraph(response.graph);
+      setAutonomy(response.autonomy);
+      setGraphVisible(false);
+    });
+
+  const changeMode = (nextMode: 'manual' | 'autonomous') =>
+    mutate(async () => {
+      if (nextMode === 'autonomous') {
+        if (autonomy?.status === 'recovering') {
+          const response = await finishRobotHumanRecovery();
           updateState(response.state);
-          setMap(response.map);
+          setGraph(response.graph);
           setAutonomy(response.autonomy);
-          setMapVisible(false);
+        } else await startAutonomy();
+      } else {
+        updateState(await setRobotMode('manual'));
+        setAutonomy(await getRobotAutonomy());
+      }
+    });
+
+  const toggleNetworkStandby = () =>
+    mutate(async () => {
+      if (powerState === 'awake') {
+        if (
+          autonomy &&
+          autonomy.status !== 'inactive' &&
+          !window.confirm(
+            'L’autonomie ou une récupération est active. La mettre en veille et oublier ce run ?',
+          )
+        )
+          return;
+        stopDriveLoop();
+        updateState(await sleepRobotNetwork());
+        setAutonomy(await getRobotAutonomy());
+      } else {
+        updateState(await wakeRobotNetwork());
+        setAutonomy(await getRobotAutonomy());
+      }
+    });
+
+  const visibleDetections = useMemo(() => {
+    if (displayPreferences?.recognitionVisible === false || !state?.vision)
+      return [];
+    return state.vision.detections;
+  }, [displayPreferences?.recognitionVisible, state]);
+
+  if (graphVisible && graph)
+    return (
+      <RobotGraphView
+        graph={graph}
+        busy={busy}
+        error={error}
+        isOwner={isOwner}
+        onClose={() => setGraphVisible(false)}
+        onDeleteObject={(id) =>
+          void mutate(async () => setGraph(await deleteRobotVisualObject(id)))
+        }
+        onDeletePlace={(id) =>
+          void mutate(async () => setGraph(await deleteRobotVisualPlace(id)))
+        }
+        onMergePlaces={(targetId, sourceId) =>
+          void mutate(async () =>
+            setGraph(await mergeRobotVisualPlaces(targetId, sourceId)),
+          )
+        }
+        onNavigate={(placeId) => void startAutonomy(placeId)}
+        onTestRoute={(placeId) => void startAutonomy(placeId, true)}
+        onRename={(id, currentName) => {
+          const name = window.prompt('Nom de cet objet', currentName)?.trim();
+          if (!name || name === currentName) return;
+          void mutate(async () =>
+            setGraph(await renameRobotVisualObject(id, name)),
+          );
         }}
-        onRelocalize={async () => {
-          setMap(await setRobotMapping('relocalize'));
+        onRenamePlace={(id, currentName) => {
+          const name = window
+            .prompt('Nom de ce repère ou de cette pièce', currentName)
+            ?.trim();
+          if (!name || name === currentName) return;
+          void mutate(async () =>
+            setGraph(await renameRobotVisualPlace(id, name)),
+          );
         }}
       />
     );
@@ -607,35 +589,23 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
     <section className="screen robot-view" aria-label="Robot">
       <div className="robot-topbar">
         <span
-          className={`robot-state is-${state?.moving ? 'moving' : state?.armed ? 'armed' : state?.connected ? 'connected' : 'offline'}`}
+          className={`robot-state is-${state?.moving ? 'moving' : state?.actuators.wheelsEnabled ? 'armed' : state?.connected ? 'connected' : 'offline'}`}
           role="status"
         >
           {stateLabel(state)}
         </span>
         <div className="robot-actuator-switches" aria-label="Actionneurs">
           <ActuatorSwitch
-            checked={state?.actuators.wheelsEnabled ?? false}
-            disabled={
-              !isOwner ||
-              !state?.available ||
-              !state.capabilities.includes('teleop') ||
-              busy
-            }
             label="Roues"
-            onChange={(enabled) => void setActuator('wheelsEnabled', enabled)}
+            checked={state?.actuators.wheelsEnabled ?? false}
+            disabled={!isOwner || busy || !state?.available}
+            onChange={(value) => setActuator('wheelsEnabled', value)}
           />
           <ActuatorSwitch
-            checked={state?.actuators.cameraServosEnabled ?? false}
-            disabled={
-              !isOwner ||
-              !state?.available ||
-              !state.capabilities.includes('camera_look') ||
-              busy
-            }
             label="Caméra"
-            onChange={(enabled) =>
-              void setActuator('cameraServosEnabled', enabled)
-            }
+            checked={state?.actuators.cameraServosEnabled ?? false}
+            disabled={!isOwner || busy || !state?.available}
+            onChange={(value) => setActuator('cameraServosEnabled', value)}
           />
         </div>
       </div>
@@ -650,330 +620,297 @@ export default function RobotView({ isOwner }: { isOwner: boolean }) {
       <div className="robot-mode-controls" aria-label="Mode du robot">
         <button
           className={state?.operatingMode === 'manual' ? 'is-active' : ''}
-          disabled={!isOwner || busy}
-          type="button"
+          disabled={!isOwner || busy || powerState !== 'awake'}
           onClick={() => void changeMode('manual')}
+          type="button"
         >
           Manuel
         </button>
         <button
           className={state?.operatingMode === 'autonomous' ? 'is-active' : ''}
-          disabled={!isOwner || busy || !map?.autonomy.available}
-          title={map?.autonomy.blockedReason ?? undefined}
-          type="button"
+          disabled={
+            !isOwner ||
+            busy ||
+            powerState !== 'awake' ||
+            controlPreferences === null ||
+            !state?.cameraAvailable ||
+            !state.actuators.wheelsEnabled
+          }
           onClick={() => void changeMode('autonomous')}
+          type="button"
         >
-          {autonomy?.humanRecovery ? 'Rendre la main' : 'Autonome'}
+          {autonomy?.status === 'recovering' ? 'Rendre la main' : 'Autonome'}
         </button>
-        {state?.operatingMode === 'autonomous' &&
-        autonomy?.status !== 'inactive' ? (
+        {autonomy && !['inactive', 'recovering'].includes(autonomy.status) ? (
           <button
             className="is-recovery"
             disabled={!isOwner || busy}
             type="button"
-            onClick={() => void startRecovery()}
+            onClick={() =>
+              void mutate(async () => {
+                const response = await startRobotHumanRecovery();
+                updateState(response.state);
+                setGraph(response.graph);
+                setAutonomy(response.autonomy);
+              })
+            }
           >
             Récup
           </button>
         ) : null}
+        {hasNetworkStandby ? (
+          <button
+            className="robot-power-button"
+            disabled={!isOwner || busy || powerState === 'transitioning'}
+            type="button"
+            onClick={() => void toggleNetworkStandby()}
+          >
+            {powerState === 'awake' ? 'Mettre en veille' : 'Réveiller'}
+          </button>
+        ) : null}
         <button
           type="button"
-          onClick={() => setMapVisible(true)}
-          disabled={!map}
+          disabled={!graph}
+          onClick={() => setGraphVisible(true)}
         >
-          Carte
+          Repères
         </button>
-        {state?.operatingMode === 'manual' ? (
-          <button
-            className={
-              map?.mapping.status === 'recording' ? 'is-recording' : ''
-            }
-            disabled={!isOwner || busy || !state.cameraAvailable}
-            type="button"
-            onClick={() =>
-              void changeMapping(
-                map?.mapping.status === 'recording'
-                  ? 'pause'
-                  : map?.mapping.status === 'paused'
-                    ? 'resume'
-                    : 'start',
-              )
-            }
-          >
-            {map?.mapping.status === 'recording'
-              ? 'Carto active'
-              : map?.mapping.status === 'paused'
-                ? 'Reprendre Carto'
-                : 'Carto'}
-          </button>
-        ) : null}
-        {map?.mapping.status === 'recording' ||
-        map?.mapping.status === 'paused' ? (
-          <button
-            disabled={!isOwner || busy}
-            type="button"
-            onClick={() => void changeMapping('stop')}
-          >
-            Terminer
-          </button>
-        ) : null}
       </div>
+
       <small className="robot-map-status">
-        Mémoire {map?.mapping.status === 'recording' ? 'sélective' : 'en pause'}
-        {' · '}
-        {confirmedMemoryCount.toString()} objet(s) fiable(s) · Carto{' '}
-        {map?.mapping.status ?? 'indisponible'} ·{' '}
-        {map
-          ? `${Math.round(map.mapping.storageBytes / 1_024).toString()} Kio`
-          : '—'}{' '}
-        · images-clés {map?.visualMemory.keyframeCount.toString() ?? '0'} (
-        {map
-          ? `${Math.round(map.visualMemory.storageBytes / 1_024).toString()} Kio`
-          : '—'}
-        )
+        Repères visuels · {graph?.places.length.toString() ?? '0'} lieux ·{' '}
+        {graph?.objects.length.toString() ?? '0'} objets · apprentissage continu
+        en Manuel et Autonome
       </small>
-      {autonomy && autonomy.status !== 'inactive' ? (
-        <small className="robot-map-status" role="status">
-          Autonomie · {autonomy.status} · {autonomy.goal ?? 'observation'} ·{' '}
-          {autonomy.action ?? 'attente'} · confiance{' '}
-          {Math.round(autonomy.confidence * 100).toString()} % ·{' '}
-          {autonomy.episodeCount.toString()} expériences
-        </small>
-      ) : null}
-      {autonomy?.humanRecovery ? (
-        <small className="robot-map-status is-recovery" role="status">
-          Récup · {autonomy.humanRecovery.commandCount.toString()} commande(s)
-          manuelle(s) · rends la main quand le robot est dégagé
-        </small>
-      ) : null}
-      {cognition[0] ? (
-        <small className="robot-map-status">
-          Friday · {cognition[0].message}
+      {autonomy?.status !== 'inactive' ? (
+        <small
+          className={`robot-map-status${autonomy?.status === 'recovering' ? ' is-recovery' : ''}`}
+          role="status"
+        >
+          {autonomy?.status} · {autonomy?.action ?? 'observation'} · confiance{' '}
+          {Math.round((autonomy?.confidence ?? 0) * 100).toString()} % ·{' '}
+          {autonomy?.reason ?? ''}
         </small>
       ) : null}
 
-      <section className="robot-camera-panel" aria-label="Caméra du robot">
-        <div className="robot-camera">
-          {state?.cameraAvailable ? (
-            <img src={ROBOT_CAMERA_STREAM_URL} alt="Vue en direct du robot" />
-          ) : (
-            <div className="robot-camera-empty">Caméra indisponible</div>
-          )}
-          <div className="robot-overlays" aria-hidden="true">
-            {visibleDetections.map((detection) => (
-              <span
-                className={`robot-box is-${detection.kind}`}
-                key={detection.id}
-                style={{
-                  left: `${(detection.x * 100).toString()}%`,
-                  top: `${(detection.y * 100).toString()}%`,
-                  width: `${(detection.width * 100).toString()}%`,
-                  height: `${(detection.height * 100).toString()}%`,
-                }}
-              >
-                <small>
-                  {detection.label}
-                  {detection.confidence === null
-                    ? ''
-                    : ` ${Math.round(detection.confidence * 100).toString()} %`}
-                </small>
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="robot-overlay-options" aria-label="Surimpressions">
-          <label>
-            <input
-              checked={recognitionVisible}
-              type="checkbox"
-              onChange={(event) => setRecognitionVisible(event.target.checked)}
-            />
-            Reco
-          </label>
-        </div>
-        <div className="robot-compact-controls">
-          <div className="robot-camera-buttons" aria-label="Orientation caméra">
+      {powerState !== 'awake' ? (
+        <section className="panel robot-sleep-panel" aria-live="polite">
+          <h2>Robot en veille réseau</h2>
+          <p>
+            Les moteurs, servos, la caméra et la reconnaissance sont arrêtés. La
+            carte et les repères restent disponibles sur ce PC.
+          </p>
+        </section>
+      ) : (
+        <>
+          <section className="robot-camera-panel" aria-label="Caméra du robot">
+            <div className="robot-camera">
+              {state?.cameraAvailable ? (
+                <img
+                  src={ROBOT_CAMERA_STREAM_URL}
+                  alt="Vue en direct du robot"
+                />
+              ) : (
+                <div className="robot-camera-empty">Caméra indisponible</div>
+              )}
+              <div className="robot-overlays" aria-hidden="true">
+                {visibleDetections.map((detection) => (
+                  <span
+                    className={`robot-box is-${detection.kind}`}
+                    key={detection.id}
+                    style={{
+                      left: `${(detection.x * 100).toString()}%`,
+                      top: `${(detection.y * 100).toString()}%`,
+                      width: `${(detection.width * 100).toString()}%`,
+                      height: `${(detection.height * 100).toString()}%`,
+                    }}
+                  >
+                    <small>
+                      {detection.label}
+                      {detection.confidence === null
+                        ? ''
+                        : ` ${Math.round(detection.confidence * 100).toString()} %`}
+                    </small>
+                  </span>
+                ))}
+              </div>
+            </div>
             <button
-              aria-label="Caméra gauche"
-              disabled={!canLook}
+              aria-pressed={displayPreferences?.recognitionVisible !== false}
+              className="robot-overlay-options"
+              disabled={!isOwner || busy || displayPreferences === null}
               type="button"
-              onClick={() => void nudgeCamera(PAN_NUDGE, 0)}
-            >
-              ←
-            </button>
-            <button
-              aria-label="Caméra haut"
-              disabled={!canLook}
-              type="button"
-              onClick={() => void nudgeCamera(0, -TILT_NUDGE)}
-            >
-              ↑
-            </button>
-            <button
-              aria-label="Caméra centrer"
-              disabled={!canLook}
-              type="button"
-              onClick={() => {
-                if (!state) return;
-                const delta = cameraCenterDelta(state.cameraPose);
-                void nudgeCamera(delta.pan, delta.tilt);
-              }}
-            >
-              •
-            </button>
-            <button
-              aria-label="Caméra bas"
-              disabled={!canLook}
-              type="button"
-              onClick={() => void nudgeCamera(0, TILT_NUDGE)}
-            >
-              ↓
-            </button>
-            <button
-              aria-label="Caméra droite"
-              disabled={!canLook}
-              type="button"
-              onClick={() => void nudgeCamera(-PAN_NUDGE, 0)}
-            >
-              →
-            </button>
-            <small aria-label="Position caméra">
-              {Math.round((state?.cameraPose.pan ?? 0) * 100).toString()} ·{' '}
-              {Math.round((state?.cameraPose.tilt ?? 0) * 100).toString()}
-            </small>
-          </div>
-        </div>
-      </section>
-
-      <div className="robot-motion-dock" aria-label="Locomotion">
-        <div className="robot-drive-column">
-          <JoystickControl
-            disabled={!canDrive}
-            onCommand={startDriveCommand}
-            onRelease={() => stopDriveLoop()}
-            powerPercent={powerPercent}
-            steeringTrimPercent={steeringTrimPercent}
-          />
-          <label className="robot-power-control">
-            <span>
-              Puissance <strong>{powerPercent.toString()} %</strong>
-            </span>
-            <input
-              aria-label="Puissance moteurs"
-              disabled={!isOwner}
-              max="35"
-              min="10"
-              step="1"
-              type="range"
-              value={powerPercent}
-              onChange={(event) => setPowerPercent(event.target.valueAsNumber)}
-            />
-          </label>
-          <label className="robot-power-control">
-            <span>
-              Trim direction{' '}
-              <strong>{steeringTrimLabel(steeringTrimPercent)}</strong>
-            </span>
-            <input
-              aria-label="Trim direction"
-              disabled={!isOwner}
-              max="10"
-              min="-10"
-              step="1"
-              type="range"
-              value={steeringTrimPercent}
-              onChange={(event) =>
-                setSteeringTrimPercent(event.target.valueAsNumber)
+              onClick={() =>
+                void mutate(async () => {
+                  setDisplayPreferences(
+                    await setRobotDisplayPreferences(
+                      displayPreferences?.recognitionVisible === false,
+                    ),
+                  );
+                })
               }
-            />
-          </label>
-        </div>
-        <div className="robot-drive-actions">
-          <button
-            className="robot-stop"
-            type="button"
-            disabled={!state?.available}
-            onClick={() => void setActuator('wheelsEnabled', false)}
-          >
-            ARRÊT
-          </button>
-        </div>
-      </div>
+            >
+              Reco{' '}
+              {displayPreferences?.recognitionVisible === false
+                ? 'masquée'
+                : 'affichée'}
+            </button>
+            <div
+              className="robot-camera-buttons"
+              aria-label="Orientation caméra"
+            >
+              {(
+                [
+                  ['←', 'Caméra gauche', PAN_NUDGE, 0],
+                  ['↑', 'Caméra haut', 0, -TILT_NUDGE],
+                  ['•', 'Caméra centrer', 0, 0],
+                  ['↓', 'Caméra bas', 0, TILT_NUDGE],
+                  ['→', 'Caméra droite', -PAN_NUDGE, 0],
+                ] as const
+              ).map(([label, accessibleLabel, pan, tilt]) => (
+                <button
+                  aria-label={accessibleLabel}
+                  key={label}
+                  disabled={!canLook}
+                  type="button"
+                  onClick={() =>
+                    void moveCameraByDelta(
+                      label === '•'
+                        ? cameraCenterDelta(state!.cameraPose).pan
+                        : pan,
+                      label === '•'
+                        ? cameraCenterDelta(state!.cameraPose).tilt
+                        : tilt,
+                    )
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </section>
 
-      {!isOwner ? (
-        <small>Le propriétaire doit autoriser les actionneurs.</small>
-      ) : null}
+          <div className="robot-motion-dock" aria-label="Locomotion">
+            <div className="robot-drive-column">
+              {gamepadStatus ? (
+                <small className="robot-gamepad-status" role="status">
+                  {gamepadStatus === 'connected'
+                    ? 'Manette connectée'
+                    : 'Manette incompatible'}
+                </small>
+              ) : null}
+              <JoystickControl
+                disabled={!canDrive}
+                onEngage={() => {
+                  touchDriveActive.current = true;
+                  beginTouchDrive();
+                }}
+                onCommand={startDrive}
+                onRelease={() => {
+                  touchDriveActive.current = false;
+                  endTouchDrive();
+                  stopDriveLoop();
+                }}
+                powerPercent={powerPercent}
+                steeringTrimPercent={steeringTrimPercent}
+              />
+              <label className="robot-power-control">
+                <span>
+                  Puissance <strong>{powerPercent.toString()} %</strong>
+                </span>
+                <input
+                  aria-label="Puissance moteurs"
+                  disabled={!isOwner}
+                  min="10"
+                  max="35"
+                  type="range"
+                  value={powerPercent}
+                  onChange={(event) =>
+                    updatePowerPercent(event.target.valueAsNumber)
+                  }
+                />
+              </label>
+              <label className="robot-power-control">
+                <span>
+                  Trim <strong>{steeringTrimPercent.toString()}</strong>
+                </span>
+                <input
+                  aria-label="Trim direction"
+                  disabled={!isOwner || controlPreferences === null}
+                  min="-10"
+                  max="10"
+                  type="range"
+                  value={steeringTrimPercent}
+                  onChange={(event) =>
+                    updateControlPreferences({
+                      panoramaPulseMs,
+                      steeringTrimPercent: event.target.valueAsNumber,
+                    })
+                  }
+                />
+              </label>
+              <label className="robot-power-control">
+                <span>
+                  Impulsion 360°{' '}
+                  <strong>{panoramaPulseMs.toString()} ms</strong>
+                </span>
+                <small>
+                  Plus longue = rotation plus fluide et plus rapide.
+                </small>
+                <input
+                  aria-label="Durée impulsion panorama 360 degrés"
+                  disabled={!isOwner || panoramaPreferences === null}
+                  min="120"
+                  max="1000"
+                  step="20"
+                  type="range"
+                  value={panoramaPulseMs}
+                  onChange={(event) =>
+                    updateControlPreferences({
+                      panoramaPulseMs: event.target.valueAsNumber,
+                      steeringTrimPercent,
+                    })
+                  }
+                />
+              </label>
+            </div>
+          </div>
 
-      <RobotMemoryPanel
-        isOwner={isOwner}
-        memory={memory}
-        onRename={renameMemoryEntity}
-      />
-
-      <details className="panel robot-telemetry">
-        <summary>Télémétrie et diagnostic</summary>
-        <dl>
-          <div>
-            <dt>Température</dt>
-            <dd>
-              {state?.telemetry.temperatureC === null || !state
-                ? '—'
-                : `${state.telemetry.temperatureC.toFixed(1)} °C`}
-            </dd>
-          </div>
-          <div>
-            <dt>Alimentation</dt>
-            <dd>
-              {state?.telemetry.underVoltageActive
-                ? `Seuil Pi détecté${state.telemetry.throttledCode ? ` (${state.telemetry.throttledCode})` : ''} · informatif`
-                : state?.telemetry.underVoltageOccurred
-                  ? 'Seuil Pi mémorisé · informatif'
-                  : 'Normale'}
-            </dd>
-          </div>
-          <div>
-            <dt>IR avant</dt>
-            <dd>
-              {state
-                ? `${state.telemetry.irLeftClear ? 'libre' : 'bloqué'} / ${state.telemetry.irRightClear ? 'libre' : 'bloqué'}`
-                : '—'}
-            </dd>
-          </div>
-          <div>
-            <dt>Caméra / vision</dt>
-            <dd>
-              {state?.telemetry.cameraFps?.toFixed(1) ?? '—'} FPS /{' '}
-              {state?.vision?.processingMs.toFixed(0) ?? '—'} ms
-            </dd>
-          </div>
-          <div>
-            <dt>Apprentissage</dt>
-            <dd>
-              {memory?.learning.mode === 'shadow'
-                ? `Observateur · ${memory.learning.episodeCount.toString()} épisode(s)`
-                : 'Désactivé'}
-            </dd>
-          </div>
-          <div>
-            <dt>Présence anonyme</dt>
-            <dd>
-              {memory?.anonymousPresence.active
-                ? 'Détectée maintenant'
-                : memory?.anonymousPresence.lastSeenAt
-                  ? `Dernière vue ${new Date(memory.anonymousPresence.lastSeenAt).toLocaleTimeString('fr-FR')}`
-                  : 'Aucune observation récente'}
-            </dd>
-          </div>
-          <div>
-            <dt>Latence commande</dt>
-            <dd>{state?.telemetry.commandLatencyMs?.toFixed(0) ?? '—'} ms</dd>
-          </div>
-          <div>
-            <dt>Capteurs de ligne</dt>
-            <dd>{state?.telemetry.lineSensors.join(' · ') ?? '—'}</dd>
-          </div>
-        </dl>
-      </details>
+          <details className="panel robot-telemetry">
+            <summary>Télémétrie et diagnostic</summary>
+            <dl>
+              <div>
+                <dt>Température</dt>
+                <dd>{state?.telemetry.temperatureC?.toFixed(1) ?? '—'} °C</dd>
+              </div>
+              <div>
+                <dt>IR avant</dt>
+                <dd>
+                  {state
+                    ? `${state.telemetry.irLeftClear ? 'libre' : 'bloqué'} / ${state.telemetry.irRightClear ? 'libre' : 'bloqué'}`
+                    : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt>Caméra / vision</dt>
+                <dd>
+                  {state?.telemetry.cameraFps?.toFixed(1) ?? '—'} FPS /{' '}
+                  {state?.vision?.processingMs.toFixed(0) ?? '—'} ms
+                </dd>
+              </div>
+              <div>
+                <dt>Apprentissage</dt>
+                <dd>
+                  {autonomy?.learningStepCount.toString() ?? '0'} décisions ·{' '}
+                  {autonomy?.blockReason
+                    ? `état : ${autonomy.blockReason}`
+                    : `mouvement : ${autonomy?.motionState ?? 'inconnu'}`}
+                </dd>
+              </div>
+            </dl>
+          </details>
+        </>
+      )}
     </section>
   );
 }
@@ -1006,21 +943,21 @@ function ActuatorSwitch({
 
 function JoystickControl({
   disabled,
+  onEngage,
   onCommand,
   onRelease,
   powerPercent,
   steeringTrimPercent,
 }: {
   disabled: boolean;
+  onEngage: () => void;
   onCommand: (command: DriveCommand) => void;
   onRelease: () => void;
   powerPercent: number;
   steeringTrimPercent: number;
 }) {
-  const knobRef = useRef<HTMLSpanElement>(null);
-  const directionRef = useRef<RobotDirection | null>(null);
-  const steeringRef = useRef(0);
-
+  const knob = useRef<HTMLSpanElement>(null);
+  const previous = useRef<DriveCommand | null>(null);
   const release = (target?: HTMLButtonElement, pointerId?: number) => {
     if (
       target &&
@@ -1028,12 +965,10 @@ function JoystickControl({
       target.hasPointerCapture(pointerId)
     )
       target.releasePointerCapture(pointerId);
-    if (knobRef.current) knobRef.current.style.transform = 'translate(0, 0)';
-    if (directionRef.current !== null) onRelease();
-    directionRef.current = null;
-    steeringRef.current = 0;
+    if (knob.current) knob.current.style.transform = 'translate(0, 0)';
+    if (previous.current) onRelease();
+    previous.current = null;
   };
-
   const move = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (
       event.type === 'pointermove' &&
@@ -1041,77 +976,61 @@ function JoystickControl({
     )
       return;
     event.preventDefault();
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const rawX = event.clientX - (bounds.left + bounds.width / 2);
-    const rawY = event.clientY - (bounds.top + bounds.height / 2);
-    const radiusX = bounds.width * 0.34;
-    const radiusY = bounds.height * 0.28;
-    const ellipticalDistance = Math.hypot(rawX / radiusX, rawY / radiusY);
-    const scale = ellipticalDistance > 1 ? 1 / ellipticalDistance : 1;
-    const x = rawX * scale;
-    const y = rawY * scale;
-    if (knobRef.current)
-      knobRef.current.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-
-    const normalizedX = Math.max(-1, Math.min(1, x / radiusX));
-    const normalizedY = Math.max(-1, Math.min(1, y / radiusY));
-    const rawCommand = joystickDriveCommand(
-      normalizedX,
-      normalizedY,
-      powerPercent / 100,
+    const box = event.currentTarget.getBoundingClientRect();
+    const rx = box.width * 0.34,
+      ry = box.height * 0.28;
+    const rawX = event.clientX - box.left - box.width / 2;
+    const rawY = event.clientY - box.top - box.height / 2;
+    const scale = Math.min(
+      1,
+      1 / Math.max(1, Math.hypot(rawX / rx, rawY / ry)),
     );
-    if (!rawCommand) {
-      if (directionRef.current !== null) onRelease();
-      directionRef.current = null;
+    const x = rawX * scale,
+      y = rawY * scale;
+    if (knob.current)
+      knob.current.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+    const base = joystickDriveCommand(x / rx, y / ry, powerPercent / 100);
+    if (!base) {
+      release();
       return;
     }
-    const command = applySteeringTrim(rawCommand, steeringTrimPercent / 100);
-    const previousCommand = directionRef.current
-      ? { direction: directionRef.current, steering: steeringRef.current }
-      : null;
-    const returnedToTrimmedCenter =
-      rawCommand.steering === 0 &&
-      previousCommand?.steering !== command.steering;
-    if (
-      shouldSendDriveCommand(previousCommand, command, returnedToTrimmedCenter)
-    ) {
-      directionRef.current = command.direction;
-      steeringRef.current = command.steering;
+    const command = applySteeringTrim(base, steeringTrimPercent / 100);
+    if (shouldSendDriveCommand(previous.current, command)) {
+      previous.current = command;
       onCommand(command);
     }
   };
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    const directions: Partial<Record<string, RobotDirection>> = {
-      ArrowUp: 'forward',
-      ArrowDown: 'backward',
-      ArrowLeft: 'left',
-      ArrowRight: 'right',
-    };
-    const direction = directions[event.key];
+  const key = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const direction = (
+      {
+        ArrowUp: 'forward',
+        ArrowDown: 'backward',
+        ArrowLeft: 'left',
+        ArrowRight: 'right',
+      } as Partial<Record<string, RobotDirection>>
+    )[event.key];
     if (!direction) return;
     event.preventDefault();
-    directionRef.current = direction;
     const command = applySteeringTrim(
       { direction, steering: 0 },
       steeringTrimPercent / 100,
     );
-    steeringRef.current = command.steering;
+    previous.current = command;
     onCommand(command);
   };
-
   return (
     <button
       aria-label="Joystick locomotion"
       className="robot-joystick"
       disabled={disabled}
       type="button"
-      onKeyDown={onKeyDown}
+      onKeyDown={key}
       onKeyUp={(event) => {
         if (event.key.startsWith('Arrow')) release();
       }}
       onPointerCancel={(event) => release(event.currentTarget, event.pointerId)}
       onPointerDown={(event) => {
+        onEngage();
         event.currentTarget.setPointerCapture(event.pointerId);
         move(event);
       }}
@@ -1124,7 +1043,7 @@ function JoystickControl({
         <b>→</b>
         <b>↓</b>
       </span>
-      <span className="robot-joystick-knob" ref={knobRef} aria-hidden="true" />
+      <span className="robot-joystick-knob" ref={knob} aria-hidden="true" />
     </button>
   );
 }

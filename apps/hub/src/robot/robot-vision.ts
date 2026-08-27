@@ -6,6 +6,8 @@ import { PassThrough, Readable } from 'node:stream';
 import {
   RobotVisionFrameSchema,
   type RobotActuatorsRequest,
+  type RobotCameraBandwidthProfile,
+  type RobotCameraBandwidthStatus,
   type RobotCameraLookRequest,
   type RobotDriveRequest,
   type RobotOperatingMode,
@@ -571,7 +573,7 @@ interface VisionRobotControllerOptions {
 
 export class VisionRobotController implements RobotController {
   readonly #base: RobotController;
-  readonly #captureAbort = new AbortController();
+  #captureAbort = new AbortController();
   readonly #engine: RobotVisionEngine;
   readonly #options: Required<
     Omit<VisionRobotControllerOptions, 'onError' | 'startImmediately'>
@@ -579,11 +581,13 @@ export class VisionRobotController implements RobotController {
     Pick<VisionRobotControllerOptions, 'onError'>;
   #captureTask: Promise<void> | null = null;
   #closed = false;
+  #paused = false;
   #frameId = 0;
   #inference: Promise<void> | null = null;
   #latest: RobotVisionFrame | null = null;
   #latestKeyframe: RobotVisionKeyframe | null = null;
   #lastErrorAt = 0;
+  #activeCameraStream: RobotCameraStream | null = null;
   readonly #cameraSubscribers = new Set<PassThrough>();
 
   constructor(
@@ -606,8 +610,39 @@ export class VisionRobotController implements RobotController {
   }
 
   start(): void {
-    if (this.#closed || this.#captureTask) return;
-    this.#captureTask = this.#captureLoop();
+    this.resume();
+  }
+
+  resume(): void {
+    if (
+      this.#closed ||
+      this.#captureTask ||
+      (!this.#paused && this.#frameId > 0)
+    )
+      return;
+    this.#paused = false;
+    if (this.#captureAbort.signal.aborted)
+      this.#captureAbort = new AbortController();
+    const task = this.#captureLoop().finally(() => {
+      if (this.#captureTask === task) this.#captureTask = null;
+    });
+    this.#captureTask = task;
+  }
+
+  async pause(): Promise<void> {
+    if (this.#closed || this.#paused) return;
+    this.#paused = true;
+    this.#captureAbort.abort(new Error('Reconnaissance mise en veille.'));
+    this.#activeCameraStream?.body.destroy();
+    for (const subscriber of this.#cameraSubscribers) subscriber.destroy();
+    this.#cameraSubscribers.clear();
+    await Promise.allSettled(
+      [this.#captureTask, this.#inference].filter(
+        (task): task is Promise<void> => task !== null,
+      ),
+    );
+    this.#latest = null;
+    this.#latestKeyframe = null;
   }
 
   async refresh(): Promise<void> {
@@ -652,6 +687,18 @@ export class VisionRobotController implements RobotController {
   async stop(): Promise<RobotState> {
     return this.#withVision(await this.#base.stop());
   }
+  cameraBandwidth(): Promise<RobotCameraBandwidthStatus> {
+    return this.#base.cameraBandwidth();
+  }
+  async setCameraBandwidth(
+    profile: RobotCameraBandwidthProfile,
+  ): Promise<RobotCameraBandwidthStatus> {
+    const status = await this.#base.setCameraBandwidth(profile);
+    // Fermer seulement la connexion Pi en cours : la boucle se reconnecte
+    // avec le nouveau profil sans couper les abonnés caméra de l'interface.
+    this.#activeCameraStream?.body.destroy();
+    return status;
+  }
   async openCameraStream(signal: AbortSignal): Promise<RobotCameraStream> {
     const body = new PassThrough({ highWaterMark: 512 * 1024 });
     const close = () => body.destroy();
@@ -681,15 +728,8 @@ export class VisionRobotController implements RobotController {
   }
 
   async close(): Promise<void> {
+    await this.pause();
     this.#closed = true;
-    this.#captureAbort.abort(new Error('Reconnaissance arrêtée.'));
-    for (const subscriber of this.#cameraSubscribers) subscriber.destroy();
-    this.#cameraSubscribers.clear();
-    await Promise.allSettled(
-      [this.#captureTask, this.#inference].filter(
-        (task): task is Promise<void> => task !== null,
-      ),
-    );
     await this.#engine.close?.();
     await this.#base.close();
   }
@@ -697,11 +737,12 @@ export class VisionRobotController implements RobotController {
   async #captureLoop(): Promise<void> {
     let cameraStream: RobotCameraStream | null = null;
     let cameraFrame = 0;
-    while (!this.#closed) {
+    while (!this.#closed && !this.#paused) {
       try {
         cameraStream = await this.#base.openCameraStream(
           this.#captureAbort.signal,
         );
+        this.#activeCameraStream = cameraStream;
         for await (const frame of iterateJpegFrames(
           cameraStream.body,
           this.#captureAbort.signal,
@@ -712,12 +753,14 @@ export class VisionRobotController implements RobotController {
             void this.#analyzeFrame(frame, new Date());
         }
       } catch (error) {
-        if (!this.#closed) this.#reportError(error);
+        if (!this.#closed && !this.#paused) this.#reportError(error);
       } finally {
         cameraStream?.body.destroy();
+        if (this.#activeCameraStream === cameraStream)
+          this.#activeCameraStream = null;
         cameraStream = null;
       }
-      if (!this.#closed)
+      if (!this.#closed && !this.#paused)
         await abortableDelay(
           this.#options.reconnectDelayMs,
           this.#captureAbort.signal,
@@ -741,12 +784,12 @@ export class VisionRobotController implements RobotController {
   }
 
   async #analyzeFrame(frame: Buffer, observedAt: Date): Promise<void> {
-    if (this.#closed || this.#inference) return;
+    if (this.#closed || this.#paused || this.#inference) return;
     const startedAt = Date.now();
     const operation = this.#engine
       .detect(frame, this.#captureAbort.signal)
       .then((detections) => {
-        if (this.#closed) return;
+        if (this.#closed || this.#paused) return;
         const frameId = ++this.#frameId;
         this.#latest = RobotVisionFrameSchema.parse({
           frameId,
@@ -776,7 +819,7 @@ export class VisionRobotController implements RobotController {
         };
       })
       .catch((error: unknown) => {
-        if (!this.#closed) this.#reportError(error);
+        if (!this.#closed && !this.#paused) this.#reportError(error);
       })
       .finally(() => {
         if (this.#inference === operation) this.#inference = null;

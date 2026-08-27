@@ -29,18 +29,18 @@ describe('FridayMemoryReader', () => {
       INSERT INTO household_members(user_id, household_id, profile_id, role, created_at) VALUES
         ('u1', '${HOUSEHOLD}', '${PROFILE}', 'owner', '${now}'),
         ('u2', '${OTHER_HOUSEHOLD}', '${OTHER_PROFILE}', 'owner', '${now}');
-      INSERT INTO robot_rooms(id, household_id, name, status, created_at, updated_at) VALUES
-        ('r1', '${HOUSEHOLD}', 'Salon', 'confirmed', '${now}', '${now}'),
-        ('r2', '${OTHER_HOUSEHOLD}', 'Bureau', 'confirmed', '${now}', '${now}');
-      INSERT INTO robot_memory_entities(
-        id, household_id, room_id, kind, class_label, display_name, spatial_key,
-        confidence, status, sighting_count, viewpoint_keys_json, first_seen_at,
-        last_seen_at, last_x, last_y, updated_at
+      INSERT INTO robot_visual_places(
+        id, household_id, status, label, confidence, observation_count,
+        first_seen_at, last_seen_at, updated_at
       ) VALUES
-        ('e1', '${HOUSEHOLD}', 'r1', 'object', 'remote', 'Télécommande', '1:1',
-         0.92, 'confirmed', 4, '["1:1","2:1"]', '${now}', '${now}', 0.4, 0.6, '${now}'),
-        ('e2', '${OTHER_HOUSEHOLD}', 'r2', 'object', 'screen', 'Écran secret', '1:1',
-         0.99, 'confirmed', 9, '["1:1","2:1"]', '${now}', '${now}', 0.5, 0.5, '${now}');
+        ('r1', '${HOUSEHOLD}', 'confirmed', 'Salon', 0.92, 4, '${now}', '${now}', '${now}'),
+        ('r2', '${OTHER_HOUSEHOLD}', 'confirmed', 'Bureau', 0.99, 9, '${now}', '${now}', '${now}');
+      INSERT INTO robot_visual_objects(
+        id, household_id, place_id, class_label, display_name, confidence,
+        sighting_count, first_seen_at, last_seen_at, updated_at
+      ) VALUES
+        ('e1', '${HOUSEHOLD}', 'r1', 'remote', 'Télécommande', 0.92, 4, '${now}', '${now}', '${now}'),
+        ('e2', '${OTHER_HOUSEHOLD}', 'r2', 'screen', 'Écran secret', 0.99, 9, '${now}', '${now}', '${now}');
     `);
 
     const facts = new FridayMemoryReader(database).query(

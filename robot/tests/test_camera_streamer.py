@@ -15,6 +15,7 @@ from friday_robot.hardware import (
     SimulatedHardware,
     Tlc1543Tracker,
     normalized_pulse,
+    camera_url_with_profile,
     step_toward,
     validate_camera_url,
 )
@@ -72,6 +73,26 @@ class CameraStreamerTests(unittest.TestCase):
         self.assertEqual(command[command.index("--buffer-count") + 1], "2")
         self.assertIn("--flush", command)
 
+    def test_reduced_profile_keeps_resolution_and_reduces_rate_and_quality(self) -> None:
+        with patch.dict(os.environ, {"FRIDAY_CAMERA_FPS": "15"}, clear=True), patch(
+            "friday_robot.camera_streamer.shutil.which",
+            return_value="/usr/bin/rpicam-vid",
+        ):
+            command = camera_command("reduced")
+
+        self.assertEqual(command[command.index("--width") + 1], "640")
+        self.assertEqual(command[command.index("--height") + 1], "480")
+        self.assertEqual(command[command.index("--framerate") + 1], "7")
+        self.assertEqual(command[command.index("--quality") + 1], "55")
+
+    def test_camera_profile_is_added_to_local_stream_url(self) -> None:
+        self.assertEqual(
+            camera_url_with_profile("http://127.0.0.1:8080/stream", "reduced"),
+            "http://127.0.0.1:8080/stream?profile=reduced",
+        )
+        with self.assertRaises(ValueError):
+            camera_url_with_profile("http://127.0.0.1:8080/stream", "unknown")
+
     def test_extracts_fragmented_jpeg_frames_and_ignores_noise(self) -> None:
         first = b"\xff\xd8one\xff\xd9"
         second = b"\xff\xd8two\xff\xd9"
@@ -124,8 +145,8 @@ class CameraStreamerTests(unittest.TestCase):
             2300,
         )
         self.assertEqual(step_toward(1500, 700, 20), 1480)
-        self.assertGreater(delays.count(0.02), 20)
-        self.assertIn(0.04, delays)
+        self.assertGreater(delays.count(0.025), 20)
+        self.assertIn(0.08, delays)
         self.assertTrue(bus.closed)
 
     def test_pan_tilt_wakes_a_controller_left_asleep(self) -> None:

@@ -41,7 +41,7 @@ describe('hub database migrations', () => {
     database.close();
 
     expect(retiredTables).toEqual([]);
-    expect(latest.version).toBe(25);
+    expect(latest.version).toBe(32);
   });
 
   it('adds optional time and duration columns to a version 1 database', () => {
@@ -132,6 +132,13 @@ describe('hub database migrations', () => {
       { version: 23 },
       { version: 24 },
       { version: 25 },
+      { version: 26 },
+      { version: 27 },
+      { version: 28 },
+      { version: 29 },
+      { version: 30 },
+      { version: 31 },
+      { version: 32 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -161,7 +168,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 25 });
+    expect(migrations.at(-1)).toEqual({ version: 32 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -197,7 +204,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 25 });
+    expect(migrations.at(-1)).toEqual({ version: 32 });
   });
 
   it('adds the five budget stores and the idempotent seed marker', () => {
@@ -559,7 +566,7 @@ describe('hub database migrations', () => {
       )
       .run(household, '2026-08-25T12:00:00.000Z');
 
-    migrateDatabase(database);
+    migrateDatabase(database, 24);
 
     const point = database
       .prepare(
@@ -589,7 +596,7 @@ describe('hub database migrations', () => {
     const database = new Database(':memory:');
     migrateDatabase(database, 24);
 
-    migrateDatabase(database);
+    migrateDatabase(database, 25);
 
     const table = database
       .prepare(
@@ -605,5 +612,77 @@ describe('hub database migrations', () => {
 
     expect(table).toEqual({ name: 'robot_human_recovery_demonstrations' });
     expect(migration).toEqual({ version: 25 });
+  });
+
+  it('replaces legacy Robot tables and adds shared Robot preferences', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 25);
+    database
+      .prepare(
+        `INSERT INTO robot_rooms(id, household_id, name, status, created_at, updated_at)
+       VALUES ('legacy-room', 'house', 'Salon', 'confirmed', '2026-08-25T00:00:00.000Z', '2026-08-25T00:00:00.000Z')`,
+      )
+      .run();
+
+    migrateDatabase(database);
+
+    const robotTables = database
+      .prepare(
+        `SELECT name FROM sqlite_master
+          WHERE type = 'table' AND name LIKE 'robot_%' ORDER BY name`,
+      )
+      .all() as Array<{ name: string }>;
+    const migration = database
+      .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+      .get();
+    database.close();
+
+    expect(robotTables.map((row) => row.name)).toEqual([
+      'robot_control_preferences',
+      'robot_display_preferences',
+      'robot_habit_values',
+      'robot_recovery_skills',
+      'robot_route_trials',
+      'robot_visual_anchor_sectors',
+      'robot_visual_objects',
+      'robot_visual_place_views',
+      'robot_visual_places',
+      'robot_visual_ports',
+      'robot_visual_transitions',
+    ]);
+    expect(migration).toEqual({ version: 32 });
+  });
+
+  it('extends the panorama pulse range without losing the global trim', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 29);
+    database
+      .prepare(
+        `INSERT INTO robot_control_preferences(
+           household_id, steering_trim_percent, updated_at,
+           updated_by_profile_id
+         ) VALUES (?, ?, ?, ?)`,
+      )
+      .run('house', -4, '2026-08-26T00:00:00.000Z', 'owner');
+
+    migrateDatabase(database);
+    database
+      .prepare(
+        `UPDATE robot_control_preferences SET panorama_pulse_ms = 1000
+          WHERE household_id = ?`,
+      )
+      .run('house');
+    const preferences = database
+      .prepare(
+        `SELECT steering_trim_percent, panorama_pulse_ms
+           FROM robot_control_preferences WHERE household_id = ?`,
+      )
+      .get('house');
+    database.close();
+
+    expect(preferences).toEqual({
+      steering_trim_percent: -4,
+      panorama_pulse_ms: 1000,
+    });
   });
 });

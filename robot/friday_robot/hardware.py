@@ -20,7 +20,7 @@ class Hardware(Protocol):
     def look(self, pose: CameraPose) -> None: ...
     def set_camera_servos_enabled(self, enabled: bool) -> None: ...
     def telemetry(self) -> Telemetry: ...
-    def open_camera(self) -> tuple[BinaryIO, str]: ...
+    def open_camera(self, profile: str = "normal") -> tuple[BinaryIO, str]: ...
     def close(self) -> None: ...
 
 
@@ -173,16 +173,16 @@ class Pca9685PanTilt:
                 return
             if 0 in active_channels:
                 while (self._pan_us, self._tilt_us) != (target_pan, target_tilt):
-                    next_pan = step_toward(self._pan_us, target_pan, 10)
-                    next_tilt = step_toward(self._tilt_us, target_tilt, 10)
+                    next_pan = step_toward(self._pan_us, target_pan, 8)
+                    next_tilt = step_toward(self._tilt_us, target_tilt, 8)
                     if next_pan != self._pan_us:
                         self._set_pulse(0, next_pan)
                         self._pan_us = next_pan
                     if next_tilt != self._tilt_us:
                         self._set_pulse(1, next_tilt)
                         self._tilt_us = next_tilt
-                    self._sleep(0.02)
-                self._sleep(0.04)
+                    self._sleep(0.025)
+                self._sleep(0.08)
             else:
                 self._set_pulse(1, target_tilt)
                 self._tilt_us = target_tilt
@@ -245,8 +245,8 @@ class SimulatedHardware:
     capabilities = [
         "teleop", "camera_look", "camera_stream", "line_follow",
         "vision_objects", "vision_people", "vision_markers",
-        "signal_buzzer", "signal_lights", "map_observer",
-        "autonomous_exploration",
+        "signal_buzzer", "signal_lights", "visual_topology",
+        "topological_autonomy",
     ]
 
     def __init__(self, camera_url: str | None = None) -> None:
@@ -295,9 +295,9 @@ class SimulatedHardware:
             camera_fps=10.0,
         )
 
-    def open_camera(self) -> tuple[BinaryIO, str]:
+    def open_camera(self, profile: str = "normal") -> tuple[BinaryIO, str]:
         if self._camera_url:
-            return open_local_camera(self._camera_url)
+            return open_local_camera(camera_url_with_profile(self._camera_url, profile))
         return MemoryCamera(TINY_GIF), "image/gif"
 
     def close(self) -> None:
@@ -338,8 +338,8 @@ class AlphaBot2Hardware:
 
     capabilities = [
         "teleop", "camera_look", "camera_stream", "line_follow",
-        "signal_buzzer", "signal_lights", "map_observer",
-        "autonomous_exploration",
+        "signal_buzzer", "signal_lights", "visual_topology",
+        "topological_autonomy",
     ]
 
     def __init__(self, camera_url: str | None = None) -> None:
@@ -424,10 +424,10 @@ class AlphaBot2Hardware:
                 camera_fps=float(os.environ.get("FRIDAY_CAMERA_FPS", "10")),
             )
 
-    def open_camera(self) -> tuple[BinaryIO, str]:
+    def open_camera(self, profile: str = "normal") -> tuple[BinaryIO, str]:
         if not self._camera_url:
             raise RuntimeError("Flux caméra local non configuré.")
-        return open_local_camera(self._camera_url)
+        return open_local_camera(camera_url_with_profile(self._camera_url, profile))
 
     def close(self) -> None:
         try:
@@ -446,6 +446,15 @@ def validate_camera_url(value: str) -> str:
     if parsed.username or parsed.password or not parsed.port:
         raise ValueError("URL caméra invalide.")
     return value
+
+
+def camera_url_with_profile(camera_url: str, profile: str) -> str:
+    if profile not in {"normal", "reduced"}:
+        raise ValueError("Profil caméra invalide.")
+    parsed = urllib.parse.urlparse(camera_url)
+    query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    query["profile"] = [profile]
+    return urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(query, doseq=True)))
 
 
 def open_local_camera(camera_url: str) -> tuple[BinaryIO, str]:

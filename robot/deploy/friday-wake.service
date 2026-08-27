@@ -1,0 +1,23 @@
+[Unit]
+Description=Friday Robot authenticated wake agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/friday-robot
+Environment=FRIDAY_WAKE_ALLOWED_IP=192.168.1.14
+EnvironmentFile=/home/pi/.config/friday-robot/runtime.env
+ExecStart=/home/pi/friday-robot/.venv/bin/friday-wake-agent
+Restart=always
+RestartSec=2
+StateDirectory=friday-wake
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/friday-wake
+
+[Install]
+WantedBy=multi-user.target

@@ -23,9 +23,16 @@ export const RobotCapabilitySchema = z.enum([
   'vision_markers',
   'signal_buzzer',
   'signal_lights',
-  'map_observer',
-  'autonomous_route_replay',
-  'autonomous_exploration',
+  'visual_topology',
+  'topological_autonomy',
+  'network_standby',
+]);
+export const RobotPowerStateSchema = z.enum([
+  'awake',
+  'sleeping',
+  'transitioning',
+  'degraded',
+  'unavailable',
 ]);
 export const RobotOperatingModeSchema = z.enum([
   'manual',
@@ -73,259 +80,190 @@ export const RobotVisionFrameSchema = z
     detections: z.array(RobotDetectionSchema).max(100),
   })
   .strict();
-export const RobotMemoryEntitySchema = z
+export const RobotVisualPlaceStatusSchema = z.enum([
+  'provisional',
+  'confirmed',
+  'ambiguous',
+]);
+export const RobotVisualPlaceSchema = z
   .object({
     id: UuidSchema,
-    kind: z.enum(['object', 'light']),
-    classLabel: z.string().trim().min(1).max(80),
-    displayName: z.string().trim().min(1).max(120),
-    roomName: z.string().trim().min(1).max(80),
+    status: RobotVisualPlaceStatusSchema,
+    label: z.string().trim().min(1).max(80).nullable(),
     confidence: z.number().min(0).max(1),
-    status: z.enum(['candidate', 'confirmed', 'uncertain']),
-    sightingCount: z.number().int().nonnegative(),
+    viewCount: z.number().int().nonnegative().max(3),
+    objectCount: z.number().int().nonnegative(),
+    panoramaStatus: z.enum(['absent', 'incomplete', 'complete']),
+    canonicalSectorId: UuidSchema.nullable(),
     firstSeenAt: UtcInstantSchema,
     lastSeenAt: UtcInstantSchema,
-    lastPosition: z
-      .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
-      .strict(),
   })
   .strict();
-export const RobotMemorySummarySchema = z
-  .object({
-    roomName: z.string().trim().min(1).max(80),
-    entities: z.array(RobotMemoryEntitySchema).max(100),
-    anonymousPresence: z
-      .object({ active: z.boolean(), lastSeenAt: UtcInstantSchema.nullable() })
-      .strict(),
-    mapping: z
-      .object({
-        enabled: z.boolean(),
-        status: z.enum(['disabled', 'observer']),
-      })
-      .strict(),
-    learning: z
-      .object({
-        mode: z.enum(['disabled', 'shadow', 'online']),
-        policyStatus: z.enum([
-          'insufficient_data',
-          'candidate',
-          'validated',
-          'regressed',
-          'forbidden',
-        ]),
-        episodeCount: z.number().int().nonnegative(),
-      })
-      .strict(),
-  })
-  .strict();
-export const RobotMemoryRenameRequestSchema = z
-  .object({ displayName: z.string().trim().min(1).max(120) })
-  .strict();
-export const RobotMappingStatusSchema = z.enum([
-  'inactive',
-  'recording',
-  'paused',
-  'processing',
-]);
-export const RobotEstimatedPoseSchema = z
-  .object({
-    x: z.number().min(-10_000).max(10_000),
-    y: z.number().min(-10_000).max(10_000),
-    heading: z.number().min(-Math.PI).max(Math.PI),
-    uncertainty: z.number().min(0).max(100),
-    updatedAt: UtcInstantSchema,
-  })
-  .strict();
-export const RobotMapPointSchema = z
+export const RobotVisualPlaceViewSchema = z
   .object({
     id: UuidSchema,
-    x: z.number().min(-10_000).max(10_000),
-    y: z.number().min(-10_000).max(10_000),
-    heading: z.number().min(-Math.PI).max(Math.PI),
-    uncertainty: z.number().min(0).max(100),
-    segmentId: UuidSchema,
-    source: z.enum(['odometry', 'visual_loop', 'visual_relocalization']),
-    correctionRevision: z.number().int().nonnegative(),
-    recordedAt: UtcInstantSchema,
-  })
-  .strict();
-export const RobotMapObjectSchema = z
-  .object({
-    id: UuidSchema,
-    displayName: z.string().trim().min(1).max(120),
-    classLabel: z.string().trim().min(1).max(80),
-    x: z.number().min(-10_000).max(10_000),
-    y: z.number().min(-10_000).max(10_000),
-    uncertainty: z.number().min(0).max(100),
-    confidence: z.number().min(0).max(1),
-    sightingCount: z.number().int().positive(),
-    viewpointCount: z.number().int().positive(),
-    keyframeId: UuidSchema.nullable(),
-    lastSeenAt: UtcInstantSchema,
-  })
-  .strict();
-export const RobotMapViewpointSchema = z
-  .object({
-    id: UuidSchema,
-    x: z.number().min(-10_000).max(10_000),
-    y: z.number().min(-10_000).max(10_000),
-    heading: z.number().min(-Math.PI).max(Math.PI),
+    placeId: UuidSchema,
+    observedAt: UtcInstantSchema,
     pan: z.number().min(-1).max(1),
     tilt: z.number().min(-1).max(1),
-    observationCount: z.number().int().positive(),
-    hasKeyframe: z.boolean(),
+    quality: z.number().nonnegative(),
+    hasImage: z.boolean(),
+  })
+  .strict();
+export const RobotVisualTransitionSchema = z
+  .object({
+    id: UuidSchema,
+    fromPlaceId: UuidSchema,
+    toPlaceId: UuidSchema,
+    direction: z.enum(['forward', 'backward', 'left', 'right', 'unknown']),
+    status: z.enum([
+      'candidate',
+      'confirmed',
+      'reverse_hypothesis',
+      'temporarily_blocked',
+    ]),
+    confidence: z.number().min(0).max(1),
+    traversalCount: z.number().int().positive(),
+    successCount: z.number().int().nonnegative(),
+    failureCount: z.number().int().nonnegative(),
+    fromSectorId: UuidSchema.nullable(),
+    toSectorId: UuidSchema.nullable(),
+    expectedDurationMs: z.number().int().positive().max(120_000).nullable(),
+    lastTraversedAt: UtcInstantSchema,
+  })
+  .strict();
+export const RobotVisualSectorSchema = z
+  .object({
+    id: UuidSchema,
+    placeId: UuidSchema,
+    ordinal: z.number().int().min(0).max(11),
+    quality: z.number().nonnegative(),
+    observedAt: UtcInstantSchema,
+    isCanonical: z.boolean(),
+  })
+  .strict();
+export const RobotVisualPortSchema = z
+  .object({
+    id: UuidSchema,
+    placeId: UuidSchema,
+    sectorId: UuidSchema,
+    status: z.enum([
+      'unknown',
+      'candidate',
+      'exploring',
+      'passage_candidate',
+      'passage_confirmed',
+      'temporarily_blocked',
+      'dead_end_probable',
+      'dead_end_confirmed',
+    ]),
+    evidenceCount: z.number().int().nonnegative(),
+    failureCount: z.number().int().nonnegative(),
+    blockedUntil: UtcInstantSchema.nullable(),
+  })
+  .strict();
+export const RobotVisualObjectSchema = z
+  .object({
+    id: UuidSchema,
+    placeId: UuidSchema,
+    classLabel: z.string().trim().min(1).max(80),
+    displayName: z.string().trim().min(1).max(120),
+    confidence: z.number().min(0).max(1),
+    sightingCount: z.number().int().positive(),
     lastSeenAt: UtcInstantSchema,
   })
   .strict();
-export const RobotMapPathSchema = z
-  .object({
-    id: UuidSchema,
-    name: z.string().trim().min(1).max(80),
-    status: z.enum(['draft', 'explored', 'certified']),
-    points: z.array(RobotMapPointSchema).max(2_000),
-    createdAt: UtcInstantSchema,
-    updatedAt: UtcInstantSchema,
-  })
-  .strict();
-export const RobotMapSnapshotSchema = z
+export const RobotVisualGraphSchema = z
   .object({
     version: z.number().int().nonnegative(),
-    operatingMode: z.enum(['manual', 'autonomous']),
-    mapping: z
+    currentPlaceId: UuidSchema.nullable(),
+    places: z.array(RobotVisualPlaceSchema).max(128),
+    views: z.array(RobotVisualPlaceViewSchema).max(384),
+    sectors: z.array(RobotVisualSectorSchema).max(1_536),
+    ports: z.array(RobotVisualPortSchema).max(1_536),
+    transitions: z.array(RobotVisualTransitionSchema).max(1_024),
+    objects: z.array(RobotVisualObjectSchema).max(512),
+    storage: z
       .object({
-        status: RobotMappingStatusSchema,
-        sessionId: UuidSchema.nullable(),
-        startedAt: UtcInstantSchema.nullable(),
-        pointCount: z.number().int().nonnegative(),
-        storageBytes: z.number().int().nonnegative(),
-        quotaBytes: z.number().int().positive(),
-      })
-      .strict(),
-    localization: z
-      .object({
-        status: z.enum([
-          'unknown',
-          'estimated',
-          'uncertain',
-          'relocalizing',
-          'lost',
-        ]),
-        confidence: z.number().min(0).max(1),
-        source: z.enum(['odometry', 'visual_loop', 'visual_relocalization']),
-        correctionRevision: z.number().int().nonnegative(),
-        lastRelocalizedAt: UtcInstantSchema.nullable(),
-        visualRecognitionAvailable: z.boolean(),
-        pose: RobotEstimatedPoseSchema,
-      })
-      .strict(),
-    paths: z.array(RobotMapPathSchema).max(20),
-    objects: z.array(RobotMapObjectSchema).max(100),
-    viewpoints: z.array(RobotMapViewpointSchema).max(200),
-    visualMemory: z
-      .object({
-        keyframeCount: z.number().int().nonnegative(),
-        storageBytes: z.number().int().nonnegative(),
-        quotaBytes: z.number().int().positive(),
-        signatureCount: z.number().int().nonnegative(),
-        signatureStorageBytes: z.number().int().nonnegative(),
-        signatureQuotaBytes: z.number().int().positive(),
-      })
-      .strict(),
-    localizationEvents: z
-      .array(
-        z
-          .object({
-            id: UuidSchema,
-            kind: z.enum([
-              'loop_closure',
-              'manual_relocation',
-              'lost',
-              'recovered',
-              'rejected',
-            ]),
-            oldPose: RobotEstimatedPoseSchema.pick({
-              x: true,
-              y: true,
-              heading: true,
-            }),
-            newPose: RobotEstimatedPoseSchema.pick({
-              x: true,
-              y: true,
-              heading: true,
-            }),
-            confidence: z.number().min(0).max(1),
-            reason: z.string().trim().min(1).max(500),
-            createdAt: UtcInstantSchema,
-          })
-          .strict(),
-      )
-      .max(20),
-    autonomy: z
-      .object({
-        available: z.boolean(),
-        blockedReason: z.string().trim().min(1).max(240).nullable(),
+        imageBytes: z.number().int().nonnegative(),
+        imageQuotaBytes: z.number().int().positive(),
+        descriptorBytes: z.number().int().nonnegative(),
+        descriptorQuotaBytes: z.number().int().positive(),
       })
       .strict(),
   })
   .strict();
-export const RobotMappingActionResponseSchema = z
-  .object({ accepted: z.literal(true), map: RobotMapSnapshotSchema })
+export const RobotVisualObjectRenameRequestSchema = z
+  .object({ displayName: z.string().trim().min(1).max(120) })
   .strict();
-export const RobotMissionPreviewRequestSchema = z
-  .object({ targetPointId: UuidSchema })
+export const RobotVisualPlaceRenameRequestSchema = z
+  .object({ label: z.string().trim().min(1).max(120) })
   .strict();
-export const RobotMissionPreviewSchema = z
+export const RobotVisualPlaceMergeRequestSchema = z
+  .object({ sourcePlaceId: UuidSchema })
+  .strict();
+export const RobotCameraBandwidthProfileSchema = z.enum(['normal', 'reduced']);
+export const RobotCameraBandwidthRequestSchema = z
+  .object({ profile: RobotCameraBandwidthProfileSchema })
+  .strict();
+export const RobotCameraBandwidthStatusSchema = z
   .object({
-    previewId: UuidSchema,
-    targetPointId: UuidSchema,
-    expiresAt: UtcInstantSchema,
-    allowed: z.boolean(),
-    blockedReason: z.string().trim().min(1).max(240).nullable(),
+    profile: RobotCameraBandwidthProfileSchema,
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    fps: z.number().int().positive(),
+    jpegQuality: z.number().int().min(1).max(100),
+    estimatedReductionPercent: z.number().int().min(0).max(100),
   })
   .strict();
-export const RobotAutonomyGoalSchema = z.enum([
-  'calibrate_motion',
-  'consolidate_route',
-  'continue_current_goal',
-  'explore_frontier',
-  'improve_observation',
-  'navigate_to_target',
-  'revisit_object',
-  'verify_area',
-]);
+export const RobotDisplayPreferencesSchema = z
+  .object({
+    recognitionVisible: z.boolean(),
+    updatedAt: UtcInstantSchema.nullable(),
+  })
+  .strict();
+export const RobotDisplayPreferencesRequestSchema = z
+  .object({ recognitionVisible: z.boolean() })
+  .strict();
+export const RobotControlPreferencesSchema = z
+  .object({
+    steeringTrimPercent: z.number().int().min(-10).max(10),
+    updatedAt: UtcInstantSchema.nullable(),
+  })
+  .strict();
+export const RobotControlPreferencesRequestSchema = z
+  .object({ steeringTrimPercent: z.number().int().min(-10).max(10) })
+  .strict();
+export const RobotPanoramaPreferencesSchema = z
+  .object({
+    panoramaPulseMs: z.number().int().min(120).max(1_000),
+    updatedAt: UtcInstantSchema.nullable(),
+  })
+  .strict();
+export const RobotPanoramaPreferencesRequestSchema = z
+  .object({ panoramaPulseMs: z.number().int().min(120).max(1_000) })
+  .strict();
+export const RobotVisualMemoryPurgeRequestSchema = z
+  .object({ scope: z.enum(['last_hour', 'all']) })
+  .strict();
+export const RobotVisualMemoryPurgeResponseSchema = z
+  .object({
+    deletedPlaces: z.number().int().nonnegative(),
+    deletedViews: z.number().int().nonnegative(),
+    deletedTransitions: z.number().int().nonnegative(),
+    deletedObjects: z.number().int().nonnegative(),
+    graph: RobotVisualGraphSchema,
+  })
+  .strict();
 export const RobotAutonomyActionSchema = z.enum([
-  'look_center',
-  'look_down',
-  'look_down_left',
-  'look_down_low',
-  'look_down_right',
-  'look_left',
-  'look_left_wide',
-  'look_right',
-  'look_right_wide',
-  'look_up',
-  'look_up_high',
-  'look_up_left',
-  'look_up_right',
-  'reverse_escape',
-  'turn_left',
-  'turn_right',
-  'wait_observe',
-  'forward_10_left',
-  'forward_10_right',
-  'forward_10_straight',
-  'forward_12_left',
-  'forward_12_right',
-  'forward_12_straight',
-  'forward_15_left',
-  'forward_15_right',
-  'forward_15_straight',
-  'forward_18_left',
-  'forward_18_right',
-  'forward_18_straight',
-  'forward_20_left',
-  'forward_20_right',
-  'forward_20_straight',
+  'advance_slow',
+  'advance_normal',
+  'pivot_left',
+  'pivot_right',
+  'inspect_anchor',
+  'try_alternate_port',
+  'return_to_last_anchor',
+  'apply_recovery',
 ]);
 export const RobotAutonomyStatusSchema = z
   .object({
@@ -333,26 +271,46 @@ export const RobotAutonomyStatusSchema = z
       'inactive',
       'exploring',
       'navigating',
-      'analyzing',
       'recovering',
-      'fault',
+      'blocked',
     ]),
     runId: UuidSchema.nullable(),
-    mapSessionId: UuidSchema.nullable(),
     startedAt: UtcInstantSchema.nullable(),
     updatedAt: UtcInstantSchema,
-    goal: RobotAutonomyGoalSchema.nullable(),
+    currentPlaceId: UuidSchema.nullable(),
+    targetPlaceId: UuidSchema.nullable(),
     action: RobotAutonomyActionSchema.nullable(),
-    availableActions: z.array(RobotAutonomyActionSchema).max(32),
+    availableActions: z.array(RobotAutonomyActionSchema).max(16),
     confidence: z.number().min(0).max(1),
-    speedPercent: z.number().min(0).max(20),
-    reward: z.number().min(-100).max(100).nullable(),
-    tdError: z.number().min(-100).max(100).nullable(),
+    speedPercent: z.number().min(0).max(35),
+    reward: z.number().min(-4).max(4).nullable(),
     reason: z.string().trim().min(1).max(300).nullable(),
-    episodeCount: z.number().int().nonnegative(),
+    learningStepCount: z.number().int().nonnegative(),
+    imageUsable: z.boolean(),
+    motionState: z.enum([
+      'stationary',
+      'camera_rotation',
+      'body_rotation',
+      'translation',
+      'uncertain',
+    ]),
+    blockReason: z
+      .enum([
+        'stabilizing',
+        'panorama',
+        'no_translation',
+        'infrared',
+        'ambiguous',
+        'oscillation',
+        'route_mismatch',
+        'image_unusable',
+      ])
+      .nullable(),
+    informationGain: z.number().min(-1).max(1),
+    localizationConfidence: z.number().min(0).max(1),
+    habitConfidence: z.number().min(0).max(1),
     humanRecovery: z
       .object({
-        explicit: z.boolean(),
         commandCount: z.number().int().nonnegative().max(100),
         startedAt: UtcInstantSchema,
       })
@@ -364,35 +322,20 @@ export const RobotAutonomyStartRequestSchema = z
   .object({
     powerPercent: z.number().int().min(10).max(35),
     steeringTrimPercent: z.number().int().min(-10).max(10),
-    targetPointId: UuidSchema.optional(),
+    targetPlaceId: UuidSchema.optional(),
+    allowCandidatePath: z.boolean().optional(),
   })
+  .strict();
+export const RobotAutonomyPowerRequestSchema = z
+  .object({ powerPercent: z.number().int().min(10).max(35) })
   .strict();
 export const RobotAutonomyResponseSchema = z
   .object({
     accepted: z.literal(true),
     autonomy: RobotAutonomyStatusSchema,
-    map: RobotMapSnapshotSchema,
+    graph: RobotVisualGraphSchema,
     state: z.lazy(() => RobotStateSchema),
   })
-  .strict();
-export const RobotCognitionJournalEntrySchema = z
-  .object({
-    id: UuidSchema,
-    kind: z.enum([
-      'analysis_requested',
-      'goal_accepted',
-      'goal_rejected',
-      'learning',
-      'recovery',
-      'status',
-    ]),
-    message: z.string().trim().min(1).max(500),
-    goal: RobotAutonomyGoalSchema.nullable(),
-    createdAt: UtcInstantSchema,
-  })
-  .strict();
-export const RobotCognitionJournalSchema = z
-  .object({ entries: z.array(RobotCognitionJournalEntrySchema).max(100) })
   .strict();
 export const RobotTelemetrySchema = z
   .object({
@@ -412,6 +355,7 @@ export const RobotTelemetrySchema = z
   .strict();
 export const RobotStateSchema = z
   .object({
+    powerState: RobotPowerStateSchema.optional(),
     available: z.boolean(),
     connected: z.boolean(),
     armed: z.boolean(),
@@ -471,6 +415,15 @@ export const RobotActuatorsRequestSchema = z
   .strict();
 export const RobotCommandResponseSchema = z
   .object({ accepted: z.literal(true), state: RobotStateSchema })
+  .strict();
+export const RobotPowerStatusSchema = z
+  .object({
+    powerState: RobotPowerStateSchema,
+    robotService: z.enum(['active', 'inactive', 'failed', 'unknown']),
+    cameraService: z.enum(['active', 'inactive', 'failed', 'unknown']),
+    updatedAt: UtcInstantSchema,
+    message: z.string().trim().min(1).max(300).nullable(),
+  })
   .strict();
 
 export const AuthRoleSchema = z.enum(['owner', 'adult']);
@@ -1560,11 +1513,7 @@ export const AssistantQueueSummarySchema = z
   })
   .strict();
 
-export const InferenceWorkloadKindSchema = z.enum([
-  'assistant',
-  'robot',
-  'watch',
-]);
+export const InferenceWorkloadKindSchema = z.enum(['assistant', 'watch']);
 export const InferenceStatusSchema = z
   .object({
     active: z
@@ -1577,7 +1526,6 @@ export const InferenceStatusSchema = z
     queued: z
       .object({
         assistant: z.number().int().nonnegative(),
-        robot: z.number().int().nonnegative(),
         watch: z.number().int().nonnegative(),
       })
       .strict(),
@@ -2151,26 +2099,42 @@ export type AuthDeviceApprovalStatus = z.infer<
 export type AuthLoginResponse = z.infer<typeof AuthLoginResponseSchema>;
 export type RobotDirection = z.infer<typeof RobotDirectionSchema>;
 export type RobotCapability = z.infer<typeof RobotCapabilitySchema>;
+export type RobotPowerState = z.infer<typeof RobotPowerStateSchema>;
+export type RobotPowerStatus = z.infer<typeof RobotPowerStatusSchema>;
 export type RobotOperatingMode = z.infer<typeof RobotOperatingModeSchema>;
 export type RobotDetectionKind = z.infer<typeof RobotDetectionKindSchema>;
 export type RobotDetection = z.infer<typeof RobotDetectionSchema>;
 export type RobotVisionFrame = z.infer<typeof RobotVisionFrameSchema>;
-export type RobotMemoryEntity = z.infer<typeof RobotMemoryEntitySchema>;
-export type RobotMemorySummary = z.infer<typeof RobotMemorySummarySchema>;
-export type RobotMappingStatus = z.infer<typeof RobotMappingStatusSchema>;
-export type RobotEstimatedPose = z.infer<typeof RobotEstimatedPoseSchema>;
-export type RobotMapPoint = z.infer<typeof RobotMapPointSchema>;
-export type RobotMapObject = z.infer<typeof RobotMapObjectSchema>;
-export type RobotMapPath = z.infer<typeof RobotMapPathSchema>;
-export type RobotMapViewpoint = z.infer<typeof RobotMapViewpointSchema>;
-export type RobotMapSnapshot = z.infer<typeof RobotMapSnapshotSchema>;
-export type RobotMissionPreview = z.infer<typeof RobotMissionPreviewSchema>;
-export type RobotAutonomyGoal = z.infer<typeof RobotAutonomyGoalSchema>;
+export type RobotVisualPlaceStatus = z.infer<
+  typeof RobotVisualPlaceStatusSchema
+>;
+export type RobotVisualPlace = z.infer<typeof RobotVisualPlaceSchema>;
+export type RobotVisualPlaceView = z.infer<typeof RobotVisualPlaceViewSchema>;
+export type RobotVisualTransition = z.infer<typeof RobotVisualTransitionSchema>;
+export type RobotVisualSector = z.infer<typeof RobotVisualSectorSchema>;
+export type RobotVisualPort = z.infer<typeof RobotVisualPortSchema>;
+export type RobotVisualObject = z.infer<typeof RobotVisualObjectSchema>;
+export type RobotVisualGraph = z.infer<typeof RobotVisualGraphSchema>;
+export type RobotCameraBandwidthProfile = z.infer<
+  typeof RobotCameraBandwidthProfileSchema
+>;
+export type RobotCameraBandwidthStatus = z.infer<
+  typeof RobotCameraBandwidthStatusSchema
+>;
+export type RobotDisplayPreferences = z.infer<
+  typeof RobotDisplayPreferencesSchema
+>;
+export type RobotControlPreferences = z.infer<
+  typeof RobotControlPreferencesSchema
+>;
+export type RobotPanoramaPreferences = z.infer<
+  typeof RobotPanoramaPreferencesSchema
+>;
+export type RobotVisualMemoryPurgeScope = z.infer<
+  typeof RobotVisualMemoryPurgeRequestSchema
+>['scope'];
 export type RobotAutonomyAction = z.infer<typeof RobotAutonomyActionSchema>;
 export type RobotAutonomyStatus = z.infer<typeof RobotAutonomyStatusSchema>;
-export type RobotCognitionJournalEntry = z.infer<
-  typeof RobotCognitionJournalEntrySchema
->;
 export type RobotTelemetry = z.infer<typeof RobotTelemetrySchema>;
 export type RobotState = z.infer<typeof RobotStateSchema>;
 export type RobotArmRequest = z.infer<typeof RobotArmRequestSchema>;

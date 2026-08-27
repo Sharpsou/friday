@@ -1,0 +1,4 @@
+[Unit]
+Description=Friday Robot services actifs
+Wants=friday-camera.service friday-robot.service
+After=friday-camera.service

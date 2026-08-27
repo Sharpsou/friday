@@ -1,6 +1,7 @@
 [Unit]
 Description=Friday Robot local CSI camera stream
 After=network.target
+PartOf=friday-awake.target
 
 [Service]
 Type=simple
@@ -23,4 +24,4 @@ ProtectSystem=strict
 ProtectHome=read-only
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=friday-awake.target

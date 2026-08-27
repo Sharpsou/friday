@@ -4,9 +4,12 @@ import {
   RobotCommandResponseSchema,
   RobotStateSchema,
   type RobotActuatorsRequest,
+  type RobotCameraBandwidthProfile,
+  type RobotCameraBandwidthStatus,
   type RobotCameraLookRequest,
   type RobotDriveRequest,
   type RobotOperatingMode,
+  type RobotPowerStatus,
   type RobotState,
 } from '@friday/contracts';
 import { request } from 'undici';
@@ -34,9 +37,38 @@ export interface RobotController {
   setMode(mode: RobotOperatingMode): Promise<RobotState>;
   halt(): Promise<RobotState>;
   stop(): Promise<RobotState>;
+  cameraBandwidth(): Promise<RobotCameraBandwidthStatus>;
+  setCameraBandwidth(
+    profile: RobotCameraBandwidthProfile,
+  ): Promise<RobotCameraBandwidthStatus>;
   openCameraStream(signal: AbortSignal): Promise<RobotCameraStream>;
   visionKeyframe?(frameId: number): RobotVisionKeyframe | null;
+  powerStatus?(): Promise<RobotPowerStatus>;
+  sleepNetwork?(): Promise<RobotState>;
+  wakeNetwork?(): Promise<RobotState>;
   close(): Promise<void>;
+}
+
+export function robotCameraBandwidthStatus(
+  profile: RobotCameraBandwidthProfile,
+): RobotCameraBandwidthStatus {
+  return profile === 'reduced'
+    ? {
+        profile,
+        width: 640,
+        height: 480,
+        fps: 7,
+        jpegQuality: 55,
+        estimatedReductionPercent: 60,
+      }
+    : {
+        profile,
+        width: 640,
+        height: 480,
+        fps: 15,
+        jpegQuality: 70,
+        estimatedReductionPercent: 0,
+      };
 }
 
 const DISABLED_STATE: RobotState = {
@@ -100,6 +132,16 @@ export class DisabledRobotController implements RobotController {
     return DISABLED_STATE;
   }
 
+  async cameraBandwidth(): Promise<RobotCameraBandwidthStatus> {
+    return robotCameraBandwidthStatus('normal');
+  }
+
+  async setCameraBandwidth(
+    profile: RobotCameraBandwidthProfile,
+  ): Promise<RobotCameraBandwidthStatus> {
+    return robotCameraBandwidthStatus(profile);
+  }
+
   async openCameraStream(): Promise<RobotCameraStream> {
     throw new RobotUnavailableError('Caméra robot non configurée.');
   }
@@ -113,12 +155,12 @@ const SIMULATED_GIF = Buffer.from(
 );
 
 export class SimulatedRobotController implements RobotController {
-  #armedUntil = 0;
   #movingUntil = 0;
   #closed = false;
   #operatingMode: RobotOperatingMode = 'manual';
   #cameraPose = { pan: 0, tilt: 0 };
   #actuators = { wheelsEnabled: false, cameraServosEnabled: false };
+  #cameraBandwidthProfile: RobotCameraBandwidthProfile = 'normal';
   readonly #watchdog: NodeJS.Timeout;
 
   constructor() {
@@ -135,7 +177,7 @@ export class SimulatedRobotController implements RobotController {
     this.#assertOpen();
     if (!this.#actuators.wheelsEnabled)
       throw new RobotCommandRejectedError('Roues désactivées.');
-    this.#armedUntil = Date.now() + Math.min(durationMs, 60_000);
+    void durationMs;
     return this.#snapshot();
   }
 
@@ -146,8 +188,6 @@ export class SimulatedRobotController implements RobotController {
       throw new RobotCommandRejectedError('Commande expirée.');
     if (!this.#actuators.wheelsEnabled)
       throw new RobotCommandRejectedError('Roues désactivées.');
-    if (this.#armedUntil <= Date.now())
-      throw new RobotCommandRejectedError('Conduite non armée.');
     if (!['manual', 'calibration', 'autonomous'].includes(this.#operatingMode))
       throw new RobotCommandRejectedError(
         'La téléopération est interdite dans ce mode.',
@@ -173,7 +213,6 @@ export class SimulatedRobotController implements RobotController {
     this.#assertOpen();
     if (!actuators.wheelsEnabled) {
       this.#movingUntil = 0;
-      this.#armedUntil = 0;
     }
     this.#actuators = { ...actuators };
     return this.#snapshot();
@@ -182,7 +221,6 @@ export class SimulatedRobotController implements RobotController {
   async setMode(mode: RobotOperatingMode): Promise<RobotState> {
     this.#assertOpen();
     this.#movingUntil = 0;
-    this.#armedUntil = 0;
     this.#operatingMode = mode;
     return this.#snapshot();
   }
@@ -194,8 +232,18 @@ export class SimulatedRobotController implements RobotController {
 
   async stop(): Promise<RobotState> {
     this.#movingUntil = 0;
-    this.#armedUntil = 0;
     return this.#snapshot();
+  }
+
+  async cameraBandwidth(): Promise<RobotCameraBandwidthStatus> {
+    return robotCameraBandwidthStatus(this.#cameraBandwidthProfile);
+  }
+
+  async setCameraBandwidth(
+    profile: RobotCameraBandwidthProfile,
+  ): Promise<RobotCameraBandwidthStatus> {
+    this.#cameraBandwidthProfile = profile;
+    return this.cameraBandwidth();
   }
 
   async openCameraStream(): Promise<RobotCameraStream> {
@@ -209,7 +257,6 @@ export class SimulatedRobotController implements RobotController {
   async close(): Promise<void> {
     this.#closed = true;
     this.#movingUntil = 0;
-    this.#armedUntil = 0;
     clearInterval(this.#watchdog);
   }
 
@@ -219,9 +266,7 @@ export class SimulatedRobotController implements RobotController {
 
   #expire(): void {
     const now = Date.now();
-    if (this.#armedUntil <= now) this.#armedUntil = 0;
-    if (this.#movingUntil <= now || this.#armedUntil === 0)
-      this.#movingUntil = 0;
+    if (this.#movingUntil <= now) this.#movingUntil = 0;
   }
 
   #snapshot(): RobotState {
@@ -230,7 +275,7 @@ export class SimulatedRobotController implements RobotController {
     return {
       available: true,
       connected: !this.#closed,
-      armed: this.#armedUntil > now.getTime(),
+      armed: this.#actuators.wheelsEnabled,
       mode: 'simulated',
       cameraAvailable: !this.#closed,
       actuators: { ...this.#actuators },
@@ -247,14 +292,11 @@ export class SimulatedRobotController implements RobotController {
         'vision_markers',
         'signal_buzzer',
         'signal_lights',
-        'map_observer',
-        'autonomous_exploration',
+        'visual_topology',
+        'topological_autonomy',
       ],
       operatingMode: this.#operatingMode,
-      controlExpiresAt:
-        this.#armedUntil > now.getTime()
-          ? new Date(this.#armedUntil).toISOString()
-          : null,
+      controlExpiresAt: null,
       cameraPose: { ...this.#cameraPose },
       telemetry: {
         temperatureC: 48.5,
@@ -363,6 +405,7 @@ export function validateRobotCommandTiming(
 export class HttpRobotController implements RobotController {
   readonly #baseUrl: URL;
   readonly #token: string;
+  #cameraBandwidthProfile: RobotCameraBandwidthProfile = 'normal';
 
   constructor(baseUrl: string, token: string) {
     this.#baseUrl = parseRobotBaseUrl(baseUrl);
@@ -405,8 +448,21 @@ export class HttpRobotController implements RobotController {
     return this.#json('/stop', 'POST', {});
   }
 
+  async cameraBandwidth(): Promise<RobotCameraBandwidthStatus> {
+    return robotCameraBandwidthStatus(this.#cameraBandwidthProfile);
+  }
+
+  async setCameraBandwidth(
+    profile: RobotCameraBandwidthProfile,
+  ): Promise<RobotCameraBandwidthStatus> {
+    this.#cameraBandwidthProfile = profile;
+    return this.cameraBandwidth();
+  }
+
   async openCameraStream(signal: AbortSignal): Promise<RobotCameraStream> {
-    const response = await request(new URL('camera/stream', this.#baseUrl), {
+    const url = new URL('camera/stream', this.#baseUrl);
+    url.searchParams.set('profile', this.#cameraBandwidthProfile);
+    const response = await request(url, {
       method: 'GET',
       headers: { authorization: `Bearer ${this.#token}` },
       signal,
@@ -443,7 +499,7 @@ export class HttpRobotController implements RobotController {
     // A smoothed pan move can legitimately take longer than an ordinary
     // command. Keep the motor pulse deadline strict, but allow its response
     // (which also contains telemetry) enough time to return.
-    const timeoutMs = path === '/camera/look' ? 3_500 : 2_000;
+    const timeoutMs = path === '/camera/look' ? 6_500 : 2_000;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(
@@ -477,9 +533,9 @@ export class HttpRobotController implements RobotController {
       }
       const payload: unknown = await response.json();
       const wrapped = RobotCommandResponseSchema.safeParse(payload);
-      if (wrapped.success) return wrapped.data.state;
+      if (wrapped.success) return this.#withCameraBandwidth(wrapped.data.state);
       const direct = RobotStateSchema.safeParse(payload);
-      if (direct.success) return direct.data;
+      if (direct.success) return this.#withCameraBandwidth(direct.data);
       throw new RobotUnavailableError('Réponse robot invalide.');
     } catch (error) {
       if (
@@ -491,5 +547,15 @@ export class HttpRobotController implements RobotController {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  #withCameraBandwidth(state: RobotState): RobotState {
+    return {
+      ...state,
+      telemetry: {
+        ...state.telemetry,
+        cameraFps: robotCameraBandwidthStatus(this.#cameraBandwidthProfile).fps,
+      },
+    };
   }
 }

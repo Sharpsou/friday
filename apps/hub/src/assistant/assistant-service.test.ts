@@ -56,6 +56,9 @@ describe('AssistantService', () => {
     tavily = new TavilySearchClient(undefined),
     exa = new ExaMcpSearchClient(),
     fridayMemory?: Pick<FridayMemoryReader, 'query'>,
+    webPageReader?: {
+      fetchArticleText(url: string, signal: AbortSignal): Promise<string>;
+    },
   ) {
     const database = openDatabase(':memory:');
     databases.push(database);
@@ -65,6 +68,7 @@ describe('AssistantService', () => {
       tavily,
       exa,
       fridayMemory,
+      webPageReader,
     );
     services.push(service);
     return service;
@@ -187,7 +191,12 @@ describe('AssistantService', () => {
                 {
                   title: 'Source officielle',
                   url: 'https://example.com/fait',
-                  content: 'Fait vérifié',
+                  content: 'Fait récent vérifié',
+                },
+                {
+                  title: 'Confirmation indépendante',
+                  url: 'https://independent.example/fait',
+                  content: 'Confirmation indépendante du fait récent vérifié',
                 },
               ],
               usage: { credits: 1 },
@@ -207,7 +216,17 @@ describe('AssistantService', () => {
         verifyAnswer: async (question) => {
           verifyCalls += 1;
           verifiedQuestion = question;
-          return { content: 'Réponse vérifiée [S1]', thinkingUsed: true };
+          return {
+            content: 'Réponse vérifiée [S1][S2]',
+            thinkingUsed: true,
+            verification: {
+              checkedSegments: 2,
+              correctedSegments: 1,
+              coverage: 'partial',
+              redundantSegments: 0,
+              removedSegments: 0,
+            },
+          };
         },
       }),
       new TavilySearchClient('test', fetcher),
@@ -230,14 +249,14 @@ describe('AssistantService', () => {
     );
     const state = service.getMessages(PROFILE_ONE, conversation.id);
     expect(state.messages.at(-1)).toMatchObject({
-      content: 'Réponse vérifiée [S1]',
+      content: 'Réponse vérifiée [S1][S2]',
       effectiveMode: 'web',
       mode: 'web_light',
       thinkingUsed: true,
       researchOutcome: 'partial',
       creditsUsed: 2,
     });
-    expect(state.messages.at(-1)?.sources).toHaveLength(1);
+    expect(state.messages.at(-1)?.sources).toHaveLength(2);
     expect(
       state.messages.at(-1)?.progressEvents.map((event) => event.label),
     ).toEqual(
@@ -245,11 +264,12 @@ describe('AssistantService', () => {
         'Analyse de la demande et décision Web',
         'Plan Web prêt · 2 recherche(s) ciblée(s)',
         'Tavily 1/2 · basic · fait récent',
-        'Tavily terminé · 1 nouvelle(s) source(s)',
-        'Lecture et rapprochement de 1 source(s)',
-        'Synthèse de 1 source(s)',
+        'Tavily terminé · 2 nouvelle(s) source(s)',
+        'Lecture et rapprochement de 2 source(s)',
+        'Synthèse de 2 source(s)',
         'Réflexion approfondie utilisée',
         'Vérification des affirmations',
+        'Vérification partielle · 2 segment(s)',
         'Terminé',
       ]),
     );
@@ -257,6 +277,73 @@ describe('AssistantService', () => {
     expect((await service.webUsage()).remainingBasicSearches).toBe(948);
     expect(verifyCalls).toBe(1);
     expect(verifiedQuestion).toBe('Quel est le fait récent ?');
+  });
+
+  it('repairs a stale planner year before sending a temporal Web query', async () => {
+    const searchedQueries: string[] = [];
+    const fetcher = async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      if (String(input).endsWith('/usage'))
+        return new Response(
+          JSON.stringify({ account: { plan_usage: 0, plan_limit: 1_000 } }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      const body = JSON.parse(String(init?.body)) as { query: string };
+      searchedQueries.push(body.query);
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              title: 'Publication récente',
+              url: `https://example.com/${searchedQueries.length.toString()}`,
+              content: 'Résultat scientifique récent du télescope James Webb.',
+            },
+          ],
+          usage: { credits: 1 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    };
+    const service = createService(
+      fakeEngine({
+        planResearch: async () => ({
+          searchNeeded: true,
+          queries: [
+            'dernières découvertes James Webb',
+            'nouveaux résultats scientifiques James Webb 2024',
+          ],
+        }),
+      }),
+      new TavilySearchClient('test', fetcher),
+    );
+    const conversation = service.createConversation(
+      PROFILE_ONE,
+      'Recherche temporelle',
+      'web_light',
+    );
+    const submission = service.submit(PROFILE_ONE, conversation.id, {
+      clientRequestId: 'b1bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+      content:
+        'Cherche les dernières découvertes faites par le télescope James Webb',
+      mode: 'web_light',
+      thinkingPolicy: 'auto',
+    });
+
+    await waitFor(
+      () =>
+        service.getRun(PROFILE_ONE, submission.run.id).status === 'completed',
+    );
+
+    expect(searchedQueries).toHaveLength(2);
+    expect(searchedQueries).not.toContain(
+      'nouveaux résultats scientifiques James Webb 2024',
+    );
+    const currentYear = new Date().getFullYear().toString();
+    expect(searchedQueries.some((query) => query.includes(currentYear))).toBe(
+      true,
+    );
   });
 
   it('forces deep Web and starts Tavily and anonymous Exa MCP in parallel', async () => {
@@ -470,6 +557,99 @@ describe('AssistantService', () => {
       successes: 1,
       emptyResults: 1,
     });
+  });
+
+  it('reads selected pages once and sends question-relevant passages to both model passes', async () => {
+    const readUrls: string[] = [];
+    let answerEvidence = '';
+    let auditEvidence = '';
+    let tavilyCalls = 0;
+    const tavily = new TavilySearchClient('test', async (input) => {
+      if (String(input).endsWith('/usage'))
+        return new Response(
+          JSON.stringify({ account: { plan_usage: 0, plan_limit: 1_000 } }),
+        );
+      tavilyCalls += 1;
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              title: 'Dossier James Webb',
+              url:
+                tavilyCalls < 3
+                  ? 'https://science.example/article'
+                  : 'https://confirmation.example/article',
+              content: 'télescope James Webb découverte extrait trop court',
+              published_date: '2026-08-01',
+            },
+          ],
+          usage: { credits: tavilyCalls === 3 ? 2 : 1 },
+        }),
+      );
+    });
+    const service = createService(
+      fakeEngine({
+        planResearch: async () => ({
+          searchNeeded: true,
+          queries: [
+            'télescope James Webb découverte',
+            'James Webb résultat scientifique',
+            'James Webb confirmation indépendante',
+          ],
+        }),
+        answer: async (_history, _signal, options) => {
+          answerEvidence =
+            options?.evidence?.map(({ content }) => content).join('\n') ?? '';
+          return { content: 'Réponse [S1]' };
+        },
+        verifyAnswer: async (_question, draft, evidence) => {
+          auditEvidence = evidence.map(({ content }) => content).join('\n');
+          return { content: draft };
+        },
+      }),
+      tavily,
+      new ExaMcpSearchClient(
+        async () => new Response(JSON.stringify({ result: { content: [] } })),
+      ),
+      undefined,
+      {
+        fetchArticleText: async (url) => {
+          readUrls.push(url);
+          return `${'Contexte sans rapport. '.repeat(700)} Le télescope James Webb confirme la découverte précise attendue en 2026.`;
+        },
+      },
+    );
+    const conversation = service.createConversation(
+      PROFILE_ONE,
+      'Lecture ciblée',
+      'web_deep',
+    );
+    const submission = service.submit(PROFILE_ONE, conversation.id, {
+      clientRequestId: '94949494-e269-46b3-9ac7-1c8cb7b310bb',
+      content:
+        'Quelles sont les dernières découvertes du télescope James Webb ?',
+      mode: 'web_deep',
+    });
+
+    await waitFor(
+      () =>
+        service.getRun(PROFILE_ONE, submission.run.id).status === 'completed',
+    );
+    expect(readUrls).toEqual(['https://science.example/article']);
+    expect(tavilyCalls).toBe(3);
+    expect(answerEvidence).toContain('confirme la découverte précise');
+    expect(auditEvidence).toBe(answerEvidence);
+    expect(
+      service
+        .getMessages(PROFILE_ONE, conversation.id)
+        .messages.at(-1)
+        ?.progressEvents.map(({ label }) => label),
+    ).toEqual(
+      expect.arrayContaining([
+        'Lecture ciblée de 1 page(s)',
+        '1 page(s) utile(s) rapprochée(s)',
+      ]),
+    );
   });
 
   it('uses the selected model to title only the first exchange', async () => {

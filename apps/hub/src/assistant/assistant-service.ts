@@ -38,7 +38,14 @@ import {
   type ExaFailureKind,
 } from './exa-mcp-search.js';
 import {
+  areDuplicateResearchEvidence,
+  cleanResearchUrl,
+  correctiveResearchQuery,
+  normalizedResearchDomain,
+  normalizeTemporalResearchQueries,
+  researchTemporalContext,
   selectResearchEvidence,
+  selectPageReadCandidates,
   shouldContinueDeepResearch,
 } from './research-selection.js';
 import {
@@ -47,6 +54,7 @@ import {
   type TavilyEvidence,
   type TavilySearchDepth,
 } from './tavily-search.js';
+import type { SecureFeedClient } from '../watch/feed-client.js';
 
 interface ConversationRow {
   archived_at: string | null;
@@ -150,6 +158,7 @@ export class AssistantService {
       FridayMemoryReader,
       'query'
     > = new FridayMemoryReader(database),
+    private readonly webPageReader?: Pick<SecureFeedClient, 'fetchArticleText'>,
   ) {
     const now = new Date().toISOString();
     this.database
@@ -857,7 +866,31 @@ export class AssistantService {
         result = {
           content: verified.content,
           thinkingUsed: Boolean(result.thinkingUsed || verified.thinkingUsed),
+          ...(verified.verification
+            ? { verification: verified.verification }
+            : {}),
         };
+        if (verified.verification) {
+          const verificationCoverage = verified.verification.coverage;
+          if (
+            researchOutcome === 'completed' &&
+            verificationCoverage !== 'complete'
+          )
+            researchOutcome = 'partial';
+          const verificationLabel =
+            verificationCoverage === 'complete'
+              ? 'Vérification complète'
+              : verificationCoverage === 'insufficient'
+                ? 'Preuves insuffisantes après vérification'
+                : 'Vérification partielle';
+          this.setRunState(
+            row.id,
+            row.profile_id,
+            'verifying',
+            `${verificationLabel} · ${verified.verification.checkedSegments} segment(s)`,
+            new Date().toISOString(),
+          );
+        }
       }
       if (mode === 'friday' && fridayFacts.length > 0)
         result = groundFridayAnswer(result, fridayFacts);
@@ -920,7 +953,9 @@ export class AssistantService {
     evidence: TavilyEvidence[];
     outcome: AssistantResearchOutcome;
   }> {
-    const maximumQueries = row.conversation_mode === 'web_light' ? 2 : 6;
+    const maximumQueries = row.conversation_mode === 'web_light' ? 2 : 3;
+    const question = history.at(-1)?.content ?? '';
+    const temporal = researchTemporalContext(question);
     let queries = JSON.parse(row.search_queries_json) as string[];
     if (queries.length === 0) {
       this.setRunState(
@@ -937,14 +972,17 @@ export class AssistantService {
             maximumQueries,
             signal,
             row.assistant_model,
+            temporal,
           )
         : { searchNeeded: true, queries: [history.at(-1)?.content ?? ''] };
       const plannedQueries = plan.queries.length
         ? plan.queries
         : [deterministicSearchQuery(history)];
-      const sanitized = plannedQueries
-        .slice(0, maximumQueries)
-        .map(sanitizeSearchQuery);
+      const sanitized = normalizeTemporalResearchQueries(
+        question,
+        plannedQueries,
+        maximumQueries,
+      ).map(sanitizeSearchQuery);
       queries = sanitized.map((item) => item.query);
       this.setRunState(
         row.id,
@@ -1009,7 +1047,6 @@ export class AssistantService {
       content: source.excerpt,
       provider: source.provider,
     }));
-    const question = history.at(-1)?.content ?? '';
     let creditsUsed = (
       this.database
         .prepare(
@@ -1020,7 +1057,7 @@ export class AssistantService {
     ).credits;
     const creditsAtStart = creditsUsed;
     let failures = 0;
-    const runBudget = row.conversation_mode === 'web_light' ? 2 : 8;
+    const runBudget = row.conversation_mode === 'web_light' ? 2 : 4;
     if (!tavilyAllowed && queries[0]) {
       failures += 1;
       this.recordSkippedAttempt(
@@ -1069,9 +1106,36 @@ export class AssistantService {
       )
         secondExaPromise = this.exaAttempt(row, query, 1, signal);
     };
-    for (const [index, query] of queries.slice(0, maximumQueries).entries()) {
+    const queriesToRun = queries.slice(0, maximumQueries);
+    let pagesRead = false;
+    for (const [index, plannedQuery] of queriesToRun.entries()) {
+      let query = plannedQuery;
+      if (row.conversation_mode === 'web_deep' && index === 2) {
+        if (!pagesRead) {
+          await this.readResearchPages(
+            row,
+            question,
+            queries,
+            evidence,
+            signal,
+          );
+          pagesRead = true;
+        }
+        const assessment = selectResearchEvidence(
+          question,
+          queries,
+          evidence,
+          'web_deep',
+        ).assessment;
+        const correction = correctiveResearchQuery(
+          queries[0] ?? question,
+          assessment,
+        );
+        if (!correction) break;
+        query = sanitizeSearchQuery(correction).query;
+      }
       const depth: TavilySearchDepth =
-        row.conversation_mode === 'web_deep' && index >= 4
+        row.conversation_mode === 'web_deep' && index >= 2
           ? 'advanced'
           : 'basic';
       const expectedCredits = depth === 'advanced' ? 2 : 1;
@@ -1100,7 +1164,7 @@ export class AssistantService {
       )
         continue;
       const attemptId = previousAttempt?.id ?? randomUUID();
-      const phase = index < 2 ? 'explore' : index < 4 ? 'gap' : 'adversarial';
+      const phase = index < 2 ? 'explore' : 'gap';
       const now = new Date().toISOString();
       if (previousAttempt) {
         this.database
@@ -1122,7 +1186,7 @@ export class AssistantService {
         row.id,
         row.profile_id,
         'searching',
-        `Tavily ${(index + 1).toString()}/${queries.length.toString()} · ${depth} · ${progressQuery(query)}`,
+        `Tavily ${(index + 1).toString()}/${queriesToRun.length.toString()} · ${depth} · ${progressQuery(query)}`,
         now,
       );
       const startedAt = Date.now();
@@ -1175,7 +1239,7 @@ export class AssistantService {
         if (
           row.conversation_mode === 'web_deep' &&
           index >= 1 &&
-          index + 1 < queries.length &&
+          index + 1 < queriesToRun.length &&
           !shouldContinueDeepResearch(question, queries, evidence)
         ) {
           this.setRunState(
@@ -1239,11 +1303,14 @@ export class AssistantService {
       if (exaResult.failed) failures += 1;
       this.persistEvidence(row.id, 'exa', evidence, exaResult.evidence);
     }
+    if (row.conversation_mode === 'web_deep' && !pagesRead) {
+      await this.readResearchPages(row, question, queries, evidence, signal);
+    }
     const selection = selectResearchEvidence(
       question,
       queries,
       evidence,
-      row.conversation_mode as Exclude<AssistantMode, 'local'>,
+      row.conversation_mode as Exclude<AssistantMode, 'local' | 'friday'>,
     );
     if (selection.selected.length > 0) {
       this.replaceEvidence(row.id, selection.selected);
@@ -1252,7 +1319,7 @@ export class AssistantService {
         row.id,
         row.profile_id,
         'searching',
-        `Sélection de ${evidence.length.toString()} source(s) sur ${selection.totalCandidates.toString()} · ${selection.coveredAspects.toString()}/${selection.totalAspects.toString()} aspect(s) couvert(s)`,
+        `Preuves ${selection.assessment.status} · ${evidence.length.toString()} source(s) sur ${selection.totalCandidates.toString()} · diversité et fraîcheur contrôlées`,
         new Date().toISOString(),
       );
     }
@@ -1280,6 +1347,63 @@ export class AssistantService {
     };
   }
 
+  private async readResearchPages(
+    row: RunRow,
+    question: string,
+    queries: string[],
+    evidence: TavilyEvidence[],
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (!this.webPageReader || evidence.length === 0) return;
+    const selection = selectResearchEvidence(
+      question,
+      queries,
+      evidence,
+      'web_deep',
+    );
+    if (selection.complete) return;
+    const candidates = selectPageReadCandidates(selection, evidence, 2);
+    if (candidates.length === 0) return;
+    this.setRunState(
+      row.id,
+      row.profile_id,
+      'reading',
+      `Lecture ciblée de ${candidates.length.toString()} page(s)`,
+      new Date().toISOString(),
+    );
+    const results = await Promise.allSettled(
+      candidates.map(async (candidate) => ({
+        candidate,
+        text: await this.webPageReader!.fetchArticleText(candidate.url, signal),
+      })),
+    );
+    let enriched = 0;
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue;
+      const text = result.value.text.trim();
+      if (text.length < 200) continue;
+      const target = evidence.find(
+        (candidate) => candidate.url === result.value.candidate.url,
+      );
+      if (!target) continue;
+      target.content = text.slice(0, 20_000);
+      target.contentOrigin = 'page_read';
+      target.originalCharacters = text.length;
+      target.retainedCharacters = Math.min(20_000, text.length);
+      target.truncated = text.length > 20_000;
+      enriched += 1;
+    }
+    this.setRunState(
+      row.id,
+      row.profile_id,
+      'reading',
+      enriched > 0
+        ? `${enriched.toString()} page(s) utile(s) rapprochée(s)`
+        : 'Pages originales indisponibles · extraits conservés',
+      new Date().toISOString(),
+    );
+  }
+
   private recordWebUsage(credits: number): void {
     const now = new Date().toISOString();
     const month = now.slice(0, 7);
@@ -1305,14 +1429,19 @@ export class AssistantService {
     for (const candidate of candidates) {
       const normalized = normalizeResearchEvidence(candidate);
       if (!normalized) continue;
-      const url = canonicalUrl(normalized.url);
-      if (!url || evidence.some((item) => canonicalUrl(item.url) === url))
-        continue;
-      const domain = new URL(url).hostname.toLowerCase();
+      const url = cleanResearchUrl(normalized.url);
       if (
-        evidence.filter(
-          (item) => new URL(item.url).hostname.toLowerCase() === domain,
-        ).length >= 3
+        !url ||
+        evidence.some((item) =>
+          areDuplicateResearchEvidence(item, { ...normalized, url }),
+        )
+      )
+        continue;
+      const domain = normalizedResearchDomain(url);
+      if (!domain) continue;
+      if (
+        evidence.filter((item) => normalizedResearchDomain(item.url) === domain)
+          .length >= 3
       )
         continue;
       const source = { ...normalized, provider, url };
@@ -1365,7 +1494,8 @@ export class AssistantService {
           `S${(index + 1).toString()}`,
           source.title.slice(0, 500),
           source.url,
-          new URL(source.url).hostname.toLowerCase(),
+          normalizedResearchDomain(source.url) ??
+            new URL(source.url).hostname.toLowerCase(),
           source.publishedAt,
           retrievedAt,
           source.content.slice(0, 20_000),
@@ -1956,21 +2086,6 @@ function deterministicSearchQuery(history: AssistantMessage[]): string {
     .map((message) => message.content.replace(/\s+/gu, ' ').trim())
     .filter(Boolean);
   return users.join(' — ').slice(0, 500) || 'information demandée';
-}
-
-function canonicalUrl(input: string): string | null {
-  try {
-    const url = new URL(input);
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-    url.hash = '';
-    for (const key of [...url.searchParams.keys()]) {
-      if (/^(?:utm_.+|fbclid|gclid)$/iu.test(key)) url.searchParams.delete(key);
-    }
-    if (url.pathname !== '/') url.pathname = url.pathname.replace(/\/+$/u, '');
-    return url.toString();
-  } catch {
-    return null;
-  }
 }
 
 function exaFailure(error: unknown): {

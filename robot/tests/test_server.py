@@ -45,7 +45,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(context.exception.code, 401)
         context.exception.close()
 
-    def test_state_and_arm(self):
+    def test_state_switch_and_legacy_arm(self):
         state = json.load(self.request("/state"))
         self.assertEqual(state["mode"], "simulated")
         self.assertFalse(state["actuators"]["wheelsEnabled"])
@@ -54,9 +54,11 @@ class ServerTests(unittest.TestCase):
             "cameraServosEnabled": False,
         }))
         self.assertTrue(enabled["state"]["actuators"]["wheelsEnabled"])
+        self.assertTrue(enabled["state"]["armed"])
         armed = json.load(self.request("/arm", "POST", {"durationMs": 1000}))
         self.assertTrue(armed["accepted"])
         self.assertTrue(armed["state"]["armed"])
+        self.assertIsNone(armed["state"]["controlExpiresAt"])
 
     def test_rejects_non_json_and_large_token_configuration(self):
         with self.assertRaises(ValueError):
@@ -80,6 +82,15 @@ class ServerTests(unittest.TestCase):
             [b"frame-1", b"frame-2"],
         )
         self.assertEqual(stream.asserted_size, 16 * 1024)
+
+    def test_camera_accepts_bounded_bandwidth_profiles(self):
+        response = self.request("/camera/stream?profile=reduced")
+        self.assertEqual(response.status, 200)
+        response.close()
+        with self.assertRaises(urllib.error.HTTPError) as context:
+            self.request("/camera/stream?profile=unknown")
+        self.assertEqual(context.exception.code, 400)
+        context.exception.close()
 
 
 if __name__ == "__main__":

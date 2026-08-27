@@ -15,6 +15,9 @@ import type {
   AuthMember,
   GroceryClassificationRecord,
   InferenceStatus,
+  RobotCameraBandwidthProfile,
+  RobotCameraBandwidthStatus,
+  RobotVisualMemoryPurgeScope,
 } from '@friday/contracts';
 
 import { AuthGate } from './auth/AuthGate.js';
@@ -80,6 +83,11 @@ import {
 } from './pwa.js';
 import { syncGroceryClassifications } from './sync/grocery-classification-client.js';
 import { getInferenceStatus } from './sync/inference-client.js';
+import {
+  getRobotCameraBandwidth,
+  purgeRobotVisualMemory,
+  setRobotCameraBandwidth,
+} from './sync/robot-client.js';
 import {
   AuthenticationRequiredError,
   cancelActiveSync,
@@ -253,6 +261,14 @@ export function App() {
     string | null
   >(null);
   const [confirmAdultForget, setConfirmAdultForget] = useState(false);
+  const [robotBandwidth, setRobotBandwidth] =
+    useState<RobotCameraBandwidthStatus | null>(null);
+  const [robotSettingsBusy, setRobotSettingsBusy] = useState(false);
+  const [robotSettingsMessage, setRobotSettingsMessage] = useState<
+    string | null
+  >(null);
+  const [robotPurgeConfirmation, setRobotPurgeConfirmation] =
+    useState<RobotVisualMemoryPurgeScope | null>(null);
   const [pending, setPending] = useState(0);
   const [conflicts, setConflicts] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
@@ -421,6 +437,31 @@ export function App() {
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [settingsOpen]);
+
+  useEffect(() => {
+    if (
+      !settingsOpen ||
+      authSession?.member.role !== 'owner' ||
+      !navigator.onLine
+    )
+      return;
+    let cancelled = false;
+    window.queueMicrotask(() => {
+      void getRobotCameraBandwidth()
+        .then((status) => {
+          if (!cancelled) setRobotBandwidth(status);
+        })
+        .catch(() => {
+          if (!cancelled)
+            setRobotSettingsMessage(
+              'Réglages Robot momentanément indisponibles.',
+            );
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authSession?.member.role, settingsOpen]);
 
   useEffect(() => {
     if (!taskPendingDeletion) return;
@@ -888,8 +929,48 @@ export function App() {
     setPreferencesDraft(preferences);
     setAuthManagementMessage(null);
     setConfirmAdultForget(false);
+    setRobotPurgeConfirmation(null);
+    setRobotSettingsMessage(null);
     setSettingsOpen(true);
     void reloadAuthManagement();
+  }
+
+  async function changeRobotBandwidth(profile: RobotCameraBandwidthProfile) {
+    setRobotSettingsBusy(true);
+    setRobotSettingsMessage(null);
+    try {
+      const status = await setRobotCameraBandwidth(profile);
+      setRobotBandwidth(status);
+      setRobotSettingsMessage(
+        profile === 'reduced'
+          ? 'Flux réduit activé. La navigation a été arrêtée par sécurité.'
+          : 'Flux normal activé. La navigation a été arrêtée par sécurité.',
+      );
+    } catch (error) {
+      setRobotSettingsMessage(
+        error instanceof Error ? error.message : 'Modification impossible.',
+      );
+    } finally {
+      setRobotSettingsBusy(false);
+    }
+  }
+
+  async function purgeRobotPlaces(scope: RobotVisualMemoryPurgeScope) {
+    setRobotSettingsBusy(true);
+    setRobotSettingsMessage(null);
+    try {
+      const result = await purgeRobotVisualMemory(scope);
+      setRobotPurgeConfirmation(null);
+      setRobotSettingsMessage(
+        `${result.deletedPlaces.toString()} lieu(x) supprimé(s). La navigation a été arrêtée par sécurité.`,
+      );
+    } catch (error) {
+      setRobotSettingsMessage(
+        error instanceof Error ? error.message : 'Purge impossible.',
+      );
+    } finally {
+      setRobotSettingsBusy(false);
+    }
   }
 
   async function generatePairingCode() {
@@ -1962,6 +2043,103 @@ export function App() {
                   Se déconnecter
                 </button>
               </fieldset>
+              {authenticatedSession.member.role === 'owner' ? (
+                <fieldset>
+                  <legend>Robot</legend>
+                  <p>
+                    Le profil réduit garde l’image en 640 × 480, passe de 15 à 7
+                    images/s et compresse davantage. Gain estimé : environ 60 %
+                    de trafic caméra, selon la scène.
+                  </p>
+                  <div
+                    className="robot-bandwidth-options"
+                    role="group"
+                    aria-label="Consommation Wi-Fi du robot"
+                  >
+                    <button
+                      className={
+                        robotBandwidth?.profile === 'normal'
+                          ? 'primary-button'
+                          : 'secondary-button'
+                      }
+                      type="button"
+                      disabled={robotSettingsBusy}
+                      aria-pressed={robotBandwidth?.profile === 'normal'}
+                      onClick={() => void changeRobotBandwidth('normal')}
+                    >
+                      Normal
+                    </button>
+                    <button
+                      className={
+                        robotBandwidth?.profile === 'reduced'
+                          ? 'primary-button'
+                          : 'secondary-button'
+                      }
+                      type="button"
+                      disabled={robotSettingsBusy}
+                      aria-pressed={robotBandwidth?.profile === 'reduced'}
+                      onClick={() => void changeRobotBandwidth('reduced')}
+                    >
+                      Réduit
+                    </button>
+                  </div>
+                  <p>
+                    Mémoire des lieux : la dernière heure cible seulement les
+                    lieux créés depuis moins d’une heure. Les objets, vues,
+                    trajets et apprentissages associés sont supprimés avec eux.
+                  </p>
+                  {robotPurgeConfirmation ? (
+                    <div className="adult-forget-confirmation" role="alert">
+                      <p>
+                        {robotPurgeConfirmation === 'all'
+                          ? 'Effacer tous les lieux et tous les apprentissages autonomes ?'
+                          : 'Effacer les lieux créés pendant la dernière heure et leurs apprentissages associés ?'}
+                      </p>
+                      <div>
+                        <button
+                          type="button"
+                          disabled={robotSettingsBusy}
+                          onClick={() => setRobotPurgeConfirmation(null)}
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          className="delete-series-button"
+                          type="button"
+                          disabled={robotSettingsBusy}
+                          onClick={() =>
+                            void purgeRobotPlaces(robotPurgeConfirmation)
+                          }
+                        >
+                          {robotSettingsBusy ? 'Suppression…' : 'Confirmer'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="robot-memory-actions">
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={robotSettingsBusy}
+                        onClick={() => setRobotPurgeConfirmation('last_hour')}
+                      >
+                        Effacer la dernière heure
+                      </button>
+                      <button
+                        className="delete-series-button"
+                        type="button"
+                        disabled={robotSettingsBusy}
+                        onClick={() => setRobotPurgeConfirmation('all')}
+                      >
+                        Tout effacer
+                      </button>
+                    </div>
+                  )}
+                  {robotSettingsMessage ? (
+                    <p role="status">{robotSettingsMessage}</p>
+                  ) : null}
+                </fieldset>
+              ) : null}
               <fieldset>
                 <legend>Responsables</legend>
                 <p>

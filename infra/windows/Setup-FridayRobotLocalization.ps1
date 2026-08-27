@@ -22,13 +22,13 @@ $pythonPath = Join-Path $runtimeDirectory 'Scripts\python.exe'
 $requirementsPath = Join-Path $workspacePath 'tools\robot-localization\requirements.txt'
 
 if (-not (Test-Path -LiteralPath $requirementsPath)) {
-  throw "Dépendances de localisation introuvables : $requirementsPath"
+  throw "Dépendances de reconnaissance de lieux introuvables : $requirementsPath"
 }
 if (-not (Test-Path -LiteralPath $pythonPath)) {
   New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeDirectory) -Force | Out-Null
   & $PythonCommand -m venv $runtimeDirectory
   if ($LASTEXITCODE -ne 0) {
-    throw "La création de l'environnement Python de localisation a échoué."
+    throw "La création de l'environnement Python de reconnaissance a échoué."
   }
 }
 
@@ -41,4 +41,4 @@ if ($LASTEXITCODE -ne 0) {
   throw 'OpenCV est installé mais ne peut pas être importé.'
 }
 
-Write-Host "Localisation robot prête : $pythonPath" -ForegroundColor Green
+Write-Host "Reconnaissance de lieux prête : $pythonPath" -ForegroundColor Green

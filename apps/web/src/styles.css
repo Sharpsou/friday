@@ -3400,24 +3400,23 @@ textarea:focus-visible {
 }
 
 .robot-overlay-options {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 6px 7px 4px;
-}
-
-.robot-overlay-options label {
   min-height: 28px;
   display: flex;
-  flex: 0 0 auto;
   align-items: center;
-  gap: 5px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 0 7px;
+  margin: 6px 7px 4px;
+  padding: 0 10px;
   color: var(--muted);
+  background: rgb(var(--surface-rgb) / 38%);
   font-size: 0.7rem;
   font-weight: 750;
+}
+
+.robot-overlay-options[aria-pressed='true'] {
+  border-color: rgb(var(--accent-rgb) / 58%);
+  color: var(--mint);
+  background: rgb(var(--accent-rgb) / 13%);
 }
 
 .robot-motion-dock {
@@ -3435,6 +3434,13 @@ textarea:focus-visible {
   display: grid;
   justify-items: center;
   gap: 5px;
+}
+
+.robot-gamepad-status {
+  min-height: 1em;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 750;
 }
 
 .robot-power-control {
@@ -3564,17 +3570,6 @@ textarea:focus-visible {
   color: var(--muted);
   font-size: 0.62rem;
   text-align: center;
-}
-
-.robot-stop {
-  min-height: 34px;
-  border: 1px solid #ff8e82;
-  border-radius: 10px;
-  padding: 0 10px;
-  color: #fff;
-  background: #a82d28;
-  font-weight: 900;
-  letter-spacing: 0.08em;
 }
 
 .robot-memory summary {
@@ -3952,6 +3947,21 @@ textarea:focus-visible {
   padding: 0 11px;
   color: var(--text);
   background: rgb(var(--page-rgb) / 70%);
+}
+
+.robot-bandwidth-options,
+.robot-memory-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.robot-bandwidth-options button,
+.robot-memory-actions button {
+  min-height: 42px;
+  border-radius: 10px;
+  font-weight: 850;
 }
 
 .palette-grid {
@@ -5175,6 +5185,169 @@ textarea:focus-visible {
   }
 }
 
+.robot-graph-layout {
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) 1fr;
+  gap: 1rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.robot-graph-places {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+}
+
+.robot-graph-places button,
+.robot-graph-neighbors button {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem;
+  text-align: left;
+}
+
+.robot-graph-places button.is-current {
+  border-color: var(--color-success, #30a46c);
+}
+
+.robot-graph-places button.is-selected {
+  background: rgb(120 103 255 / 18%);
+}
+
+.robot-graph-detail {
+  overflow-y: auto;
+}
+
+.robot-graph-detail > header,
+.robot-graph-objects li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.robot-graph-place-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.robot-graph-object-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.robot-graph-confirmation {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0.9rem 0;
+  border: 1px solid rgb(var(--accent-rgb) / 40%);
+  border-radius: 0.75rem;
+  padding: 0.8rem;
+  background: rgb(var(--accent-rgb) / 10%);
+}
+
+.robot-graph-confirmation.is-danger {
+  border-color: rgb(255 139 139 / 44%);
+  background: var(--danger-surface);
+}
+
+.robot-graph-confirmation p,
+.robot-graph-confirmation small {
+  margin: 0;
+}
+
+.robot-graph-confirmation label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.robot-graph-confirmation select {
+  min-height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.65rem;
+  padding: 0 0.65rem;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.robot-graph-confirmation > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.robot-graph-views {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+.robot-graph-views img,
+.robot-graph-views .robot-map-object-placeholder {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 0.75rem;
+}
+
+.robot-graph-objects {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.robot-graph-objects span {
+  display: grid;
+}
+
+.robot-graph-neighbors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.robot-panorama-ring {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.robot-panorama-ring span {
+  border: 1px solid var(--border-color, #cad0d7);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.robot-panorama-ring span.is-canonical {
+  border-color: var(--accent-color, #3568d4);
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .robot-graph-layout {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .robot-graph-places {
+    max-height: 13rem;
+  }
+
+  .robot-graph-views {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -5184,4 +5357,20 @@ textarea:focus-visible {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+.robot-sleep-panel {
+  display: grid;
+  gap: 0.5rem;
+  min-height: 12rem;
+  place-content: center;
+  text-align: center;
+}
+
+.robot-sleep-panel h2,
+.robot-sleep-panel p {
+  margin: 0;
+}
+
+.robot-power-button {
+  white-space: nowrap;
 }

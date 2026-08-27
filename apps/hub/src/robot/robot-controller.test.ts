@@ -72,7 +72,7 @@ describe('Robot controller boundary', () => {
     await expect(controller.stop()).resolves.toMatchObject({ moving: false });
   });
 
-  it('simulates an armed expiring pulse without touching GPIO', async () => {
+  it('uses the wheel switch for expiring pulses without touching GPIO', async () => {
     const controller = new SimulatedRobotController();
     await expect(
       controller.setActuators({
@@ -82,7 +82,10 @@ describe('Robot controller boundary', () => {
     ).resolves.toMatchObject({
       actuators: { wheelsEnabled: true, cameraServosEnabled: false },
     });
-    await expect(controller.arm(1_000)).resolves.toMatchObject({ armed: true });
+    await expect(controller.state()).resolves.toMatchObject({
+      armed: true,
+      controlExpiresAt: null,
+    });
     const now = Date.now();
     await expect(
       controller.drive({
@@ -100,13 +103,13 @@ describe('Robot controller boundary', () => {
       moving: false,
     });
     await expect(controller.stop()).resolves.toMatchObject({
-      armed: false,
+      armed: true,
       moving: false,
     });
     await controller.close();
   });
 
-  it('starts actuators off and disabling wheels stops and disarms', async () => {
+  it('starts actuators off and disabling wheels stops locomotion', async () => {
     const controller = new SimulatedRobotController();
     await expect(controller.state()).resolves.toMatchObject({
       actuators: { wheelsEnabled: false, cameraServosEnabled: false },
@@ -116,13 +119,33 @@ describe('Robot controller boundary', () => {
       wheelsEnabled: true,
       cameraServosEnabled: true,
     });
-    await controller.arm(1_000);
     await expect(
       controller.setActuators({
         wheelsEnabled: false,
         cameraServosEnabled: true,
       }),
     ).resolves.toMatchObject({ armed: false, moving: false });
+    await controller.close();
+  });
+
+  it('switches between normal and reduced camera bandwidth profiles', async () => {
+    const controller = new SimulatedRobotController();
+    await expect(controller.cameraBandwidth()).resolves.toMatchObject({
+      profile: 'normal',
+      fps: 15,
+      jpegQuality: 70,
+      estimatedReductionPercent: 0,
+    });
+    await expect(
+      controller.setCameraBandwidth('reduced'),
+    ).resolves.toMatchObject({
+      profile: 'reduced',
+      width: 640,
+      height: 480,
+      fps: 7,
+      jpegQuality: 55,
+      estimatedReductionPercent: 60,
+    });
     await controller.close();
   });
 });

@@ -12,6 +12,7 @@ export interface RobotPlaceSignatureFeatures {
   descriptors: string;
   featureCount: number;
   keypoints: Array<[number, number, number]>;
+  luminance: number;
   perceptualHash: string;
   quality: number;
 }
@@ -30,6 +31,14 @@ export interface RobotPlaceMatch {
   score: number;
 }
 
+export interface RobotVisualMotionFeatures {
+  coherence: number;
+  medianFlowPx: number;
+  rotationRad: number;
+  scaleDelta: number;
+  trackCount: number;
+}
+
 export interface RobotPlaceRecognitionEngine {
   close(): Promise<void>;
   extract(
@@ -42,6 +51,11 @@ export interface RobotPlaceRecognitionEngine {
     candidates: RobotPlaceCandidate[],
     signal?: AbortSignal,
   ): Promise<RobotPlaceMatch[]>;
+  motion(
+    previousImage: Buffer,
+    currentImage: Buffer,
+    signal?: AbortSignal,
+  ): Promise<RobotVisualMotionFeatures>;
 }
 
 interface PendingRequest {
@@ -95,9 +109,24 @@ export class OpenCvPlaceRecognitionEngine implements RobotPlaceRecognitionEngine
     return result.matches;
   }
 
+  async motion(
+    previousImage: Buffer,
+    currentImage: Buffer,
+    signal?: AbortSignal,
+  ): Promise<RobotVisualMotionFeatures> {
+    return (await this.request(
+      {
+        operation: 'motion',
+        previousImage: previousImage.toString('base64'),
+        currentImage: currentImage.toString('base64'),
+      },
+      signal,
+    )) as RobotVisualMotionFeatures;
+  }
+
   async close(): Promise<void> {
     this.closed = true;
-    this.fail(new Error('Worker de localisation fermé.'));
+    this.fail(new Error('Worker de reconnaissance visuelle fermé.'));
     const process = this.process;
     this.process = null;
     if (!process || process.killed) return;
@@ -125,7 +154,9 @@ export class OpenCvPlaceRecognitionEngine implements RobotPlaceRecognitionEngine
       const timer = setTimeout(() => {
         this.pending.delete(id);
         signal?.removeEventListener('abort', abort);
-        reject(new Error('Délai du worker de localisation dépassé.'));
+        reject(
+          new Error('Délai du worker de reconnaissance visuelle dépassé.'),
+        );
       }, this.timeoutMs);
       this.pending.set(id, {
         resolve(value) {
@@ -175,7 +206,9 @@ export class OpenCvPlaceRecognitionEngine implements RobotPlaceRecognitionEngine
     try {
       response = JSON.parse(line) as WorkerResponse;
     } catch {
-      this.fail(new Error('Réponse invalide du worker de localisation.'));
+      this.fail(
+        new Error('Réponse invalide du worker de reconnaissance visuelle.'),
+      );
       return;
     }
     if (response.id === null) return;

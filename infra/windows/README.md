@@ -14,6 +14,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Install-
 
 `Friday - Arreter le service` arrête uniquement le processus Friday qui écoute sur le port `8443`, sans couper le Wi-Fi du PC. Une confirmation courte indique que le test hors ligne peut commencer. Si un autre programme utilise ce port, le raccourci refuse de l'arrêter.
 
+`Friday - Etat du service` indique uniquement si Friday tourne ou ne tourne pas, sans démarrer ni arrêter le hub.
+
 Après une évolution validée, le hub peut être reconstruit et redémarré en
 arrière-plan sans ouvrir Chrome :
 
@@ -22,7 +24,29 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\Start-Fr
 ```
 
 Ce redémarrage refuse d'arrêter un processus inconnu qui occuperait le port
-`8443`. Le raccourci de recette conserve son fonctionnement interactif.
+`8443`. Le raccourci de recette conserve son fonctionnement interactif. En mode
+`KeepHubRunning`, stdout et stderr sont détachés du lanceur puis écrits dans
+`D:\FridayData\logs\friday-hub.stdout.log` et
+`D:\FridayData\logs\friday-hub.stderr.log` afin que la fermeture du processus
+de lancement ne coupe pas le Hub.
+
+## Déploiement de la veille réseau AlphaBot2
+
+`Invoke-FridayPiStandbyInstall.ps1` ouvre une session SSH dédiée vers le Pi et
+laisse l’utilisateur saisir directement son mot de passe `sudo`. Le script ne
+stocke pas ce mot de passe. Il installe les unités déjà copiées sous
+`/home/pi/friday-robot/deploy`, maintient le robot éveillé puis laisse Codex ou
+l’opérateur vérifier les services.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  .\infra\windows\Invoke-FridayPiStandbyInstall.ps1
+```
+
+Ce helper n’est pas une commande de veille et ne valide pas le cycle physique.
+La configuration des jetons, l’ordre de déploiement, le retour arrière et la
+recette réelle restent centralisés dans le
+[runbook AlphaBot2](../../docs/runbooks/robot-alphabot2.md#veille-réseau-réactivable-bouton-uniquement).
 
 Pour tester l'indisponibilité du hub tout en gardant le téléphone connecté au Wi-Fi Maison :
 

@@ -1,10 +1,10 @@
 # Friday — guide complet fonctionnel et technique
 
-Date de référence : 25 août 2026
+Date de référence : 27 août 2026
 
 Public : lecteur à l’aise avec Python, R et SQL, mais débutant en TypeScript/React
 
-État décrit : candidat local vérifié avec migrations SQLite 1–25 et Dexie 1–7
+État décrit : candidat déployé avec migrations SQLite 1–32 et Dexie 1–7
 
 Pour une reprise rapide et les limites physiques, consulter d’abord
 [l’état canonique App + Robot](../27-etat-canonique-app-robot-2026-08-25.md).
@@ -40,7 +40,7 @@ Cette règle reste vraie même lorsque le PC est disponible. Il n’existe donc 
 | Chat                            | Implanté : Local, Friday, Web léger/approfondi, cache/outbox chiffrés, Qwen/Gemma, Tavily + Exa et pause/reprise       |
 | Mise à jour PWA                 | Implantée : détection persistante et activation après confirmation de l’utilisateur                                    |
 | Veille orchestrée               | Implantée : dossiers privés, sources RSS/Web, concepts, sujets, synthèses, cadence et runs persistants                 |
-| Robot                           | Implanté : téléopération, YOLO, mémoire, Carto, autonomie Dyna-Q, carte, `Va là` et relocalisation visuelle            |
+| Robot                           | Implanté : téléopération, YOLO, graphe topologique, panoramas, SARSA(λ), `Va là`, `Récup`, manette et veille réseau    |
 | Google Calendar Maison          | Non implanté ; la lecture et le cache offline restent le prochain lot naturel                                          |
 | Sauvegarde chiffrée automatisée | Conçue et documentée, mais pas encore implantée de bout en bout                                                        |
 | Résolution avancée des conflits | Reportée jusqu’à un signal d’usage réel ; le conflit est détecté et signalé, sans écran complet de résolution          |
@@ -49,7 +49,10 @@ Cette règle reste vraie même lorsque le PC est disponible. Il n’existe donc 
 
 ### 2.2 Niveau de preuve
 
-Le candidat du 25 août 2026 passe `pnpm verify` avec 294 tests Python/TypeScript et 25 scénarios Chrome mobile. Cela valide le code automatisé, pas tous les comportements physiques.
+Le candidat du 27 août 2026 passe `pnpm verify` avec 27 tests Robot Python,
+26 contrats, 15 tests domaine, 165 tests Hub, 104 tests PWA et 25 scénarios
+Chrome mobile. Cela valide le code automatisé, pas tous les comportements
+physiques.
 
 La persistance et la convergence offline des tâches ont été confirmées sur le Galaxy A17. Les recettes physiques complètes d’authentification, Courses, classement, `En course`, Budget, Chat et Veille restent ouvertes sur l’A17. Sur l’iPhone, mise à jour PWA, appairage du second adulte, authentification, redémarrage offline, convergence à deux appareils et suppression de l’auto-zoom des champs Tâche/Course sont confirmés ; seule l’observation d’usage prolongée reste ouverte.
 
@@ -428,24 +431,23 @@ Google Calendar reste en revanche non implanté : aucune table Calendar active n
 
 L’onglet Robot pilote un AlphaBot2 réel par une passerelle authentifiée. La PWA
 affiche la caméra, les détections, les switches d’actionneurs, le joystick, les
-presets de tête, les modes Manuel/Autonome, Carto et une carte tactile. Les
-commandes physiques ne sont jamais placées dans l’outbox et ne sont pas
-rejouées.
+presets de tête, les modes Manuel/Autonome, les repères visuels et `Va là`. Une
+manette standard peut piloter roues et caméra en Manuel. Les commandes physiques
+ne sont jamais placées dans l’outbox et ne sont pas rejouées.
 
-Le Pi garde le watchdog, les GPIO et l’arrêt local. Le PC exécute YOLO26s,
-consolide la mémoire des objets, apprend une politique Dyna-Q bornée et calcule
-la localisation visuelle ORB. La carte fusionne une odométrie approximative et
-des fermetures de boucle. Si le robot est déplacé à la main, Friday recherche
-un lieu connu et ouvre un nouveau segment plutôt que de dessiner un trajet
-fictif.
+Le Pi garde le watchdog, les GPIO, l’arrêt local et un agent réseau minimal de
+veille. Le PC exécute YOLO26s, ORB/RANSAC et le flot optique, construit un graphe
+de lieux et de passages, acquiert des panoramas corporels et apprend des
+habitudes SARSA(λ) qualitatives. Il n’existe plus de carte métrique `x/y`, de
+Dyna-Q ni de bouton Carto : les observations stables en Manuel et en Autonome
+alimentent la même mémoire topologique bornée. Les objets restent rattachés au
+lieu où ils ont été observés ; les personnes ne sont pas mémorisées durablement.
 
-En Manuel sans Carto, YOLO reste un affichage temps réel : aucune observation,
-présence, cellule, direction regardée, trajectoire ou image n’est ajoutée à la
-mémoire. Carto active une capture sélective ; les répétitions d’un même objet et
-point de vue sont échantillonnées toutes les cinq secondes, tandis qu’un
-changement utile peut être retenu immédiatement. L’interface mémoire montre les
-objets confirmés par pièce, masque les candidats par défaut et fournit filtre
-et renommage.
+La veille réseau est manuelle. Le Hub arrête mouvement, autonomie, caméra,
+runtime GPIO et inférence, tandis que l’agent réseau du Pi reste joignable. Le
+réveil revient en Manuel avec roues et servos désactivés, sans reprendre le run
+précédent. Le code est déployé ; la recette physique du premier cycle
+veille/réveil reste distincte.
 
 Cette verticale ne transforme pas la caméra monoculaire et les IR en SLAM
 métrique ou en évitement domestique garanti. L’état et les limites sont dans
@@ -583,7 +585,12 @@ PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL; -- sauf base :memory:
 ```
 
-Les migrations sont numérotées 1 à 25 et enregistrées dans `schema_migrations`. Une migration entière est transactionnelle. Les migrations 20 à 24 ajoutent progressivement mémoire Robot/mode Friday, Carto, autonomie, images-clés et relocalisation visuelle ; la 25 conserve les démonstrations humaines `Récup` et leur verdict d’apprentissage.
+Les migrations sont numérotées 1 à 32 et enregistrées dans
+`schema_migrations`. Une migration entière est transactionnelle. Les migrations
+20 à 25 représentent l’ancien prototype Robot ; la 26 retire ses tables. Les
+migrations 27 à 32 portent le graphe topologique visuel, les préférences Reco,
+le trim global, les panoramas/habitudes et le réglage des impulsions. Le détail
+et les sauvegardes de retour arrière restent centralisés dans le document 27.
 
 Principales familles de tables :
 
@@ -592,6 +599,8 @@ Principales familles de tables :
 - auth : `user`, `session`, `account`, `households`, `household_members`, `friday_devices`, `pairing_codes`, `device_approval_requests`, `auth_audit_log` ;
 - classement : `grocery_classification_jobs`, `grocery_classifications`, `grocery_classification_rules`, `grocery_classification_change_log` ;
 - Chat : `assistant_conversations`, `assistant_messages`, `assistant_runs`, `assistant_sources`, `assistant_run_events`, `assistant_research_attempts`, `assistant_web_usage`, `assistant_scheduler`.
+- Robot actif : `robot_visual_places`, vues, secteurs, ports, transitions,
+  objets, habitudes, récupérations, essais de route et préférences partagées.
 
 Les tables Budget stockent le payload métier complet en JSON validé, avec ID/révision/foyer/date également disponibles comme colonnes techniques. Les tables tâches et courses utilisent des colonnes SQL explicites.
 
@@ -870,8 +879,8 @@ Commencer par `packages/domain` si vous voulez lire du TypeScript sans React, HT
 | [`apps/web/src/App.tsx`](../../apps/web/src/App.tsx)                                       | coque principale, navigation, état global local, Agenda, Courses, réglages et orchestration sync |
 | [`apps/web/src/BudgetView.tsx`](../../apps/web/src/BudgetView.tsx)                         | calculs de présentation, formulaires et écran Budget                                             |
 | [`apps/web/src/AssistantView.tsx`](../../apps/web/src/AssistantView.tsx)                   | conversations, polling des runs, consentement, pause/reprise et composition                      |
-| [`apps/web/src/RobotView.tsx`](../../apps/web/src/RobotView.tsx)                           | vidéo, téléopération, modes, autonomie et accès Carto                                            |
-| [`apps/web/src/RobotMapView.tsx`](../../apps/web/src/RobotMapView.tsx)                     | carte tactile, objets, segments et relocalisation                                                |
+| [`apps/web/src/RobotView.tsx`](../../apps/web/src/RobotView.tsx)                           | vidéo, téléopération, manette, modes, autonomie, veille réseau et accès aux repères              |
+| [`apps/web/src/RobotGraphView.tsx`](../../apps/web/src/RobotGraphView.tsx)                 | graphe tactile de lieux, passages, objets, renommage, fusion et `Va là`                          |
 | [`apps/web/src/TaskCalendar.tsx`](../../apps/web/src/TaskCalendar.tsx)                     | vues Semaine/Mois                                                                                |
 | [`apps/web/src/ShoppingMode.tsx`](../../apps/web/src/ShoppingMode.tsx)                     | mode plein écran magasin                                                                         |
 | [`apps/web/src/ItemEditorDialogs.tsx`](../../apps/web/src/ItemEditorDialogs.tsx)           | édition tactile tâches/courses                                                                   |
@@ -896,7 +905,7 @@ Commencer par `packages/domain` si vous voulez lire du TypeScript sans React, HT
 | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | [`apps/hub/src/main.ts`](../../apps/hub/src/main.ts)                                                                         | variables d’environnement, TLS, chemin DB et écoute réseau                |
 | [`apps/hub/src/app.ts`](../../apps/hub/src/app.ts)                                                                           | construction Fastify, CSP, routes, validation, auth et fichiers statiques |
-| [`apps/hub/src/db/database.ts`](../../apps/hub/src/db/database.ts)                                                           | ouverture SQLite et migrations 1–25                                       |
+| [`apps/hub/src/db/database.ts`](../../apps/hub/src/db/database.ts)                                                           | ouverture SQLite et migrations 1–32                                       |
 | [`apps/hub/src/sync/sync-service.ts`](../../apps/hub/src/sync/sync-service.ts)                                               | idempotence, révisions, upserts, journal et pull                          |
 | [`apps/hub/src/auth/auth-service.ts`](../../apps/hub/src/auth/auth-service.ts)                                               | Better Auth, foyer fermé, appareils, approbation, révocation et audit     |
 | [`apps/hub/src/groceries/grocery-classification-service.ts`](../../apps/hub/src/groceries/grocery-classification-service.ts) | job persistant et application des rayons                                  |
@@ -908,8 +917,12 @@ Commencer par `packages/domain` si vous voulez lire du TypeScript sans React, HT
 | [`apps/hub/src/assistant/exa-mcp-search.ts`](../../apps/hub/src/assistant/exa-mcp-search.ts)                                 | client Exa MCP anonyme, diagnostic et temporisation                       |
 | [`apps/hub/src/watch/watch-service.ts`](../../apps/hub/src/watch/watch-service.ts)                                           | découvertes, runs, concepts, sujets et synthèses de Veille                |
 | [`apps/hub/src/budget/budget-seed.ts`](../../apps/hub/src/budget/budget-seed.ts)                                             | import idempotent d’un fichier normalisé hors dépôt                       |
-| [`apps/hub/src/robot/robot-mapping.ts`](../../apps/hub/src/robot/robot-mapping.ts)                                           | odométrie, mémoire visuelle, graphe de poses et relocalisation            |
-| [`apps/hub/src/robot/robot-autonomy.ts`](../../apps/hub/src/robot/robot-autonomy.ts)                                         | boucle autonome, Dyna-Q, capteurs, caméra et missions                     |
+| [`apps/hub/src/robot/robot-visual-topology.ts`](../../apps/hub/src/robot/robot-visual-topology.ts)                           | lieux, secteurs, passages, objets et persistance du graphe topologique    |
+| [`apps/hub/src/robot/robot-place-recognition.ts`](../../apps/hub/src/robot/robot-place-recognition.ts)                       | passerelle ORB/RANSAC et flot optique vers le worker OpenCV               |
+| [`apps/hub/src/robot/robot-panorama-survey.ts`](../../apps/hub/src/robot/robot-panorama-survey.ts)                           | acquisition corporelle stabilisée et fermeture visuelle des panoramas     |
+| [`apps/hub/src/robot/robot-habit-learning.ts`](../../apps/hub/src/robot/robot-habit-learning.ts)                             | habitudes SARSA(λ) qualitatives et généralisées                           |
+| [`apps/hub/src/robot/robot-autonomy.ts`](../../apps/hub/src/robot/robot-autonomy.ts)                                         | boucle autonome impulsion/stabilisation, navigation et `Récup`            |
+| [`apps/hub/src/robot/robot-power.ts`](../../apps/hub/src/robot/robot-power.ts)                                               | orchestration Hub de la veille réseau et du réveil sûr                    |
 
 ### 10.4 Tests
 
@@ -980,9 +993,9 @@ Les routes `/api/watch/*` couvrent l’aperçu privé, la validation et la déco
 ### 11.6 Robot
 
 Les routes `/api/robot/*` couvrent état, flux caméra, actionneurs, locomotion,
-presets, modes, Carto, carte, mémoire, autonomie, journal cognitif, missions et
-relocalisation. Elles exigent une session autorisée et ne sont jamais des
-opérations offline rejouables.
+orientation bornée, préférences partagées, graphe de repères, objets,
+autonomie, `Va là`, `Récup` et veille/réveil réseau. Elles exigent une session
+autorisée et ne sont jamais des opérations offline rejouables.
 
 Il n’existe volontairement pas de routes CRUD directes pour tâches/courses/budget : leurs mutations passent par `/api/sync/push`.
 

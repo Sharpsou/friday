@@ -14,7 +14,6 @@ interface HouseholdRow {
 }
 
 const MAX_FACTS = 60;
-const PERSON_RETENTION_MS = 24 * 60 * 60_000;
 
 export class FridayMemoryReader {
   constructor(private readonly database: Database.Database) {}
@@ -183,24 +182,23 @@ export class FridayMemoryReader {
     const facts: Array<Omit<FridayGroundedFact, 'id'>> = [];
     const objectRows = this.database
       .prepare(
-        `SELECT e.display_name, e.class_label, e.confidence, e.status,
-                e.sighting_count, e.last_seen_at, e.last_x, e.last_y,
-                r.name AS room_name
-           FROM robot_memory_entities e
-           JOIN robot_rooms r ON r.id = e.room_id
-          WHERE e.household_id = ? AND e.status != 'candidate'
-          ORDER BY e.last_seen_at DESC LIMIT 30`,
+        `SELECT o.display_name, o.class_label, o.confidence,
+                o.sighting_count, o.last_seen_at, o.place_id,
+                p.label AS place_label, p.status AS place_status
+           FROM robot_visual_objects o
+           JOIN robot_visual_places p ON p.id = o.place_id
+          WHERE o.household_id = ? AND p.status != 'ambiguous'
+          ORDER BY o.last_seen_at DESC LIMIT 30`,
       )
       .all(householdId) as Array<{
       class_label: string;
       confidence: number;
       display_name: string;
       last_seen_at: string;
-      last_x: number;
-      last_y: number;
-      room_name: string;
+      place_id: string;
+      place_label: string | null;
+      place_status: string;
       sighting_count: number;
-      status: string;
     }>;
     for (const row of objectRows) {
       const searchable = normalize(`${row.display_name} ${row.class_label}`);
@@ -214,35 +212,11 @@ export class FridayMemoryReader {
       facts.push({
         source: 'robot',
         title: row.display_name,
-        detail: `classe=${row.class_label}; pièce=${row.room_name}; position image=(${row.last_x.toFixed(2)}, ${row.last_y.toFixed(2)}); observations=${row.sighting_count.toString()}; statut=${row.status}`,
+        detail: `classe=${row.class_label}; lieu visuel=${row.place_label ?? row.place_id.slice(0, 8)}; observations=${row.sighting_count.toString()}; lieu=${row.place_status}`,
         observedAt: row.last_seen_at,
         confidence: row.confidence,
       });
     }
-    const presence = this.database
-      .prepare(
-        `SELECT room_name, confidence, first_seen_at, last_seen_at
-           FROM robot_presence_events
-          WHERE household_id = ? AND last_seen_at >= ?
-          ORDER BY last_seen_at DESC LIMIT 12`,
-      )
-      .all(
-        householdId,
-        new Date(Date.now() - PERSON_RETENTION_MS).toISOString(),
-      ) as Array<{
-      confidence: number;
-      first_seen_at: string;
-      last_seen_at: string;
-      room_name: string;
-    }>;
-    for (const row of presence)
-      facts.push({
-        source: 'robot',
-        title: `Présence anonyme · ${row.room_name}`,
-        detail: `personne non identifiée; première vue=${row.first_seen_at}; dernière vue=${row.last_seen_at}`,
-        observedAt: row.last_seen_at,
-        confidence: row.confidence,
-      });
     return facts;
   }
 }

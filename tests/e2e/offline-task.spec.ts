@@ -249,7 +249,7 @@ test('the private Watch digest is readable offline and keeps article feedback', 
           kind: 'watch',
           startedAt: '2026-08-12T09:02:00.000Z',
         },
-        queued: { assistant: 1, robot: 0, watch: 0 },
+        queued: { assistant: 1, watch: 0 },
       },
     }),
   );
@@ -449,7 +449,7 @@ test('the seven destinations fit at 360px and budget data can persist or be remo
     page.getByRole('region', { name: 'Robot', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('Caméra indisponible')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'ARRÊT' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'ARRÊT' })).toHaveCount(0);
   await navigation.getByRole('button', { name: 'Budget' }).click();
   await expect(page.getByRole('heading', { name: 'Budget' })).toBeVisible();
   await expect(
@@ -615,8 +615,12 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   let lastDriveIntensity: number | null = null;
   let lastDriveSteering: number | null = null;
   let lastCameraTilt: number | null = null;
+  let recognitionVisible = true;
+  let steeringTrimPercent = 0;
+  let panoramaPulseMs = 220;
   let mappingStatus: 'inactive' | 'paused' | 'recording' = 'inactive';
   let robotState = {
+    powerState: 'awake' as 'awake' | 'sleeping',
     available: true,
     connected: true,
     armed: false,
@@ -632,8 +636,9 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
       'camera_stream',
       'vision_objects',
       'vision_people',
-      'map_observer',
-      'autonomous_exploration',
+      'visual_topology',
+      'topological_autonomy',
+      'network_standby',
     ],
     operatingMode: 'manual' as 'autonomous' | 'manual',
     controlExpiresAt: null as string | null,
@@ -745,38 +750,98 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
     },
   });
   let humanRecovery: {
-    explicit: boolean;
     commandCount: number;
     startedAt: string;
   } | null = null;
   const robotAutonomy = () => ({
-    status:
-      robotState.operatingMode === 'autonomous'
+    status: humanRecovery
+      ? ('recovering' as const)
+      : robotState.operatingMode === 'autonomous'
         ? ('exploring' as const)
         : ('inactive' as const),
     runId:
       robotState.operatingMode === 'autonomous'
         ? 'a89af9e6-4f63-4c4e-9bc5-585fce269f85'
         : null,
-    mapSessionId: null,
     startedAt:
       robotState.operatingMode === 'autonomous'
         ? '2026-08-25T00:00:00.000Z'
         : null,
     updatedAt: '2026-08-25T00:00:00.000Z',
-    goal:
-      robotState.operatingMode === 'autonomous'
-        ? ('explore_frontier' as const)
-        : null,
+    currentPlaceId: '1507eb5a-72e4-473c-a982-4d6c8c47e75e',
+    targetPlaceId: null,
     action: null,
     availableActions: [],
     confidence: 0,
     speedPercent: 0,
     reward: null,
-    tdError: null,
-    reason: null,
-    episodeCount: 0,
+    reason: 'Observation visuelle.',
+    learningStepCount: 0,
+    imageUsable: true,
+    motionState: 'stationary' as const,
+    blockReason: null,
+    informationGain: 0,
+    localizationConfidence: 0.91,
+    habitConfidence: 0,
     humanRecovery,
+  });
+  const robotGraph = () => ({
+    version: 4,
+    currentPlaceId: '1507eb5a-72e4-473c-a982-4d6c8c47e75e',
+    places: [
+      {
+        id: '1507eb5a-72e4-473c-a982-4d6c8c47e75e',
+        status: 'confirmed' as const,
+        label: 'Salon',
+        confidence: 0.91,
+        viewCount: 1,
+        objectCount: 1,
+        panoramaStatus: 'complete' as const,
+        canonicalSectorId: '2b8912c0-836d-4fe8-9600-632cf5f1c531',
+        firstSeenAt: '2026-08-25T00:00:00.000Z',
+        lastSeenAt: '2026-08-25T00:10:00.000Z',
+      },
+    ],
+    views: [
+      {
+        id: '785a3690-4fb0-41f0-b34d-1cbf9bc5d417',
+        placeId: '1507eb5a-72e4-473c-a982-4d6c8c47e75e',
+        observedAt: '2026-08-25T00:10:00.000Z',
+        pan: 0,
+        tilt: 0.2,
+        quality: 120,
+        hasImage: false,
+      },
+    ],
+    sectors: [
+      {
+        id: '2b8912c0-836d-4fe8-9600-632cf5f1c531',
+        placeId: '1507eb5a-72e4-473c-a982-4d6c8c47e75e',
+        ordinal: 0,
+        quality: 120,
+        observedAt: '2026-08-25T00:10:00.000Z',
+        isCanonical: true,
+      },
+    ],
+    ports: [],
+    transitions: [],
+    objects: [
+      {
+        id: '8bf07ebd-9e1b-45f7-b95b-d771049ea365',
+        placeId: '1507eb5a-72e4-473c-a982-4d6c8c47e75e',
+        classLabel: 'lampe',
+        displayName: 'Lampe bureau',
+        confidence: 0.93,
+        sightingCount: 8,
+        lastSeenAt: '2026-08-25T00:10:00.000Z',
+      },
+    ],
+    storage: {
+      imageBytes: 0,
+      imageQuotaBytes: 33_554_432,
+      descriptorBytes: 1_600,
+      descriptorQuotaBytes: 8_388_608,
+    },
   });
   const robotMemory = {
     roomName: 'Salon',
@@ -819,12 +884,56 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   await page.route('**/api/robot/state', async (route) =>
     route.fulfill({ json: robotState }),
   );
-  await page.route('**/api/robot/map', async (route) =>
-    route.fulfill({ json: robotMap() }),
+  await page.route('**/api/robot/graph', async (route) =>
+    route.fulfill({ json: robotGraph() }),
   );
   await page.route('**/api/robot/autonomy', async (route) =>
     route.fulfill({ json: robotAutonomy() }),
   );
+  await page.route('**/api/robot/display-preferences', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const body = route.request().postDataJSON() as {
+        recognitionVisible: boolean;
+      };
+      recognitionVisible = body.recognitionVisible;
+    }
+    await route.fulfill({
+      json: {
+        recognitionVisible,
+        updatedAt: '2026-08-26T12:00:00.000Z',
+      },
+    });
+  });
+  await page.route('**/api/robot/control-preferences', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const body = route.request().postDataJSON() as {
+        steeringTrimPercent?: number;
+      };
+      if (body.steeringTrimPercent !== undefined)
+        steeringTrimPercent = body.steeringTrimPercent;
+    }
+    await route.fulfill({
+      json: {
+        steeringTrimPercent,
+        updatedAt:
+          steeringTrimPercent === 0 ? null : '2026-08-26T13:30:00.000Z',
+      },
+    });
+  });
+  await page.route('**/api/robot/panorama-preferences', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const body = route.request().postDataJSON() as {
+        panoramaPulseMs: number;
+      };
+      panoramaPulseMs = body.panoramaPulseMs;
+    }
+    await route.fulfill({
+      json: {
+        panoramaPulseMs,
+        updatedAt: panoramaPulseMs === 220 ? null : '2026-08-26T13:31:00.000Z',
+      },
+    });
+  });
   await page.route('**/api/robot/memory', async (route) =>
     route.fulfill({ json: robotMemory }),
   );
@@ -836,15 +945,14 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
       json: {
         accepted: true,
         state: robotState,
-        map: robotMap(),
+        graph: robotGraph(),
         autonomy: robotAutonomy(),
       },
     });
   });
-  await page.route('**/api/robot/autonomy/recovery', async (route) => {
+  await page.route('**/api/robot/autonomy/recovery/start', async (route) => {
     robotState = { ...robotState, operatingMode: 'manual', moving: false };
     humanRecovery = {
-      explicit: true,
       commandCount: 0,
       startedAt: '2026-08-25T00:00:00.000Z',
     };
@@ -852,7 +960,7 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
       json: {
         accepted: true,
         state: robotState,
-        map: robotMap(),
+        graph: robotGraph(),
         autonomy: robotAutonomy(),
       },
     });
@@ -871,7 +979,7 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
     const actuators = route
       .request()
       .postDataJSON() as typeof robotState.actuators;
-    robotState = { ...robotState, actuators };
+    robotState = { ...robotState, armed: actuators.wheelsEnabled, actuators };
     await route.fulfill({ json: { accepted: true, state: robotState } });
   });
   await page.route('**/api/robot/arm', async (route) => {
@@ -898,7 +1006,6 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
     robotState = {
       ...robotState,
       moving: false,
-      armed: false,
       controlExpiresAt: null,
     };
     await route.fulfill({ json: { accepted: true, state: robotState } });
@@ -916,6 +1023,20 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
     robotState = {
       ...robotState,
       cameraPose: { pan: command.pan, tilt: command.tilt },
+    };
+    await route.fulfill({ json: { accepted: true, state: robotState } });
+  });
+  await page.route('**/api/robot/power/*', async (route) => {
+    const sleeping = route.request().url().endsWith('/sleep');
+    robotState = {
+      ...robotState,
+      powerState: sleeping ? 'sleeping' : 'awake',
+      available: !sleeping,
+      cameraAvailable: !sleeping,
+      armed: false,
+      actuators: { wheelsEnabled: false, cameraServosEnabled: false },
+      moving: false,
+      operatingMode: 'manual',
     };
     await route.fulfill({ json: { accepted: true, state: robotState } });
   });
@@ -939,10 +1060,13 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   await expect(camera).toBeVisible();
   const cameraFrameBox = await page.locator('.robot-camera').boundingBox();
   expect(cameraFrameBox!.width / cameraFrameBox!.height).toBeCloseTo(4 / 3, 1);
-  const recognition = page.getByRole('checkbox', { name: 'Reco' });
-  await expect(recognition).toBeChecked();
+  const recognition = page.getByRole('button', { name: 'Reco affichée' });
+  await expect(recognition).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.robot-box', { hasText: 'Lit' })).toBeVisible();
-  await recognition.uncheck();
+  await recognition.click();
+  await expect(
+    page.getByRole('button', { name: 'Reco masquée' }),
+  ).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('.robot-box')).toHaveCount(0);
   await expect(
     page.getByRole('checkbox', {
@@ -955,30 +1079,22 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
     page.getByRole('combobox', { name: 'Mode du robot' }),
   ).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Manuel' })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Carto' })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Autonome' })).toBeEnabled();
-  await expect(page.getByText(/Mémoire en pause/u)).toBeVisible();
-  await page.getByText(/Objets mémorisés · 1 fiable/u).click();
+  await expect(page.getByText(/Repères visuels · 1 lieux/u)).toBeVisible();
+  await page.getByRole('button', { name: 'Repères' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'La carte du robot' }),
+  ).toBeVisible();
   await expect(page.getByText('Lampe bureau')).toBeVisible();
-  await expect(page.getByText('Chaise possible')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Voir 1 indice(s)' }).click();
-  await expect(page.getByText('Chaise possible')).toBeVisible();
+  await expect(page.getByText('Vue privée ou non conservée')).toBeVisible();
+  await page.getByRole('button', { name: 'Fermer' }).click();
+  await page.getByRole('button', { name: 'Mettre en veille' }).click();
   await expect(
-    page.getByRole('button', { name: 'Modifier le nom Lampe bureau' }),
+    page.getByRole('heading', { name: 'Robot en veille réseau' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Carte' }).click();
-  await expect(
-    page.getByRole('img', { name: 'Vue du dessus de la cartographie' }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: 'Regards visibles' }),
-  ).toBeVisible();
-  await expect(page.getByText(/0 images-clés/u)).toBeVisible();
-  await page.getByRole('button', { name: 'Voir Lit' }).click();
-  await expect(
-    page.getByText('5 observations · 3 points de vue'),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Fermer la carte' }).click();
+  await expect(camera).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Repères' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Réveiller' }).click();
+  await expect(camera).toBeVisible();
   const wheels = page.getByRole('switch', { name: 'Roues' });
   const cameraServos = page.getByRole('switch', { name: 'Caméra' });
   await expect(wheels).not.toBeChecked();
@@ -990,15 +1106,7 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   ).toBeEnabled();
   await page.getByRole('button', { name: 'Caméra centrer' }).click();
   await expect.poll(() => lastCameraTilt).toBe(0.2);
-  await page.getByRole('button', { name: 'Carto', exact: true }).click();
-  await expect(
-    page.getByRole('button', { name: 'Carto active' }),
-  ).toBeVisible();
   await page.getByRole('button', { name: 'Caméra gauche' }).click();
-  await expect(
-    page.getByRole('button', { name: 'Carto active' }),
-  ).toBeVisible();
-  expect(mappingStatus).toBe('recording');
   await page.getByRole('button', { name: 'Caméra centrer' }).click();
   await wheels.click();
   await expect(wheels).toBeChecked();
@@ -1034,7 +1142,12 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   await expect(trim).toHaveValue('0');
   await trim.fill('-5');
   await expect(trim).toHaveValue('-5');
-  await expect(page.getByText('G 5', { exact: true })).toBeVisible();
+  await expect(page.getByText('-5', { exact: true })).toBeVisible();
+  await expect.poll(() => steeringTrimPercent).toBe(-5);
+  const panoramaPulse = page.getByLabel('Durée impulsion panorama 360 degrés');
+  await expect(panoramaPulse).toHaveValue('220');
+  await panoramaPulse.fill('340');
+  await expect.poll(() => panoramaPulseMs).toBe(340);
   lastDriveDirection = null;
   lastDriveSteering = null;
   await page.mouse.move(
@@ -1072,7 +1185,7 @@ test('the real camera and physical actuator switches stay usable at 360px', asyn
   await expect(
     page.getByRole('button', { name: 'Rendre la main' }),
   ).toBeVisible();
-  await expect(page.getByText(/Récup · 0 commande/u)).toBeVisible();
+  await expect(page.getByText(/recovering/u)).toBeVisible();
   if (process.env.FRIDAY_VISUAL_CAPTURE === '1') {
     await page.screenshot({
       path: 'output/playwright/robot-compact-360.png',

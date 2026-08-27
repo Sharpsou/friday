@@ -19,7 +19,6 @@ class RobotController:
         self._hardware = hardware
         self._mode = mode
         self._operating_mode = "manual"
-        self._armed_until = None
         self._moving_until = None
         self._pose = CameraPose()
         self._wheels_enabled = False
@@ -40,7 +39,8 @@ class RobotController:
             self._assert_open()
             if not self._wheels_enabled:
                 raise CommandRejected("Roues désactivées.")
-            self._armed_until = utc_now() + timedelta(milliseconds=duration)
+            # Compatibilité avec les anciens clients : le switch Roues est
+            # désormais l'unique autorisation persistante de locomotion.
             return self.state()
 
     def drive(self, payload: object) -> dict[str, Any]:
@@ -60,8 +60,6 @@ class RobotController:
             if not self._wheels_enabled:
                 raise CommandRejected("Roues désactivées.")
             now = utc_now()
-            if not self._armed_until or self._armed_until <= now:
-                raise CommandRejected("Conduite non armée.")
             if self._operating_mode not in {"manual", "calibration", "autonomous"}:
                 raise CommandRejected("Téléopération interdite dans ce mode.")
             try:
@@ -98,7 +96,6 @@ class RobotController:
             self._assert_open()
             if not wheels_enabled:
                 self._safe_stop()
-                self._armed_until = None
             self._hardware.set_camera_servos_enabled(camera_servos_enabled)
             self._wheels_enabled = wheels_enabled
             self._camera_servos_enabled = camera_servos_enabled
@@ -110,14 +107,12 @@ class RobotController:
             raise CommandRejected("Mode invalide.")
         with self._lock:
             self._safe_stop()
-            self._armed_until = None
             self._operating_mode = body["mode"]
             return self.state()
 
     def stop(self) -> dict[str, Any]:
         with self._lock:
             self._safe_stop()
-            self._armed_until = None
             return self.state()
 
     def halt(self) -> dict[str, Any]:
@@ -133,7 +128,7 @@ class RobotController:
             return {
                 "available": not self._closed,
                 "connected": not self._closed,
-                "armed": bool(self._armed_until and self._armed_until > now),
+                "armed": self._wheels_enabled,
                 "mode": self._mode,
                 "cameraAvailable": "camera_stream" in self._hardware.capabilities,
                 "actuators": {
@@ -145,14 +140,14 @@ class RobotController:
                 "warning": None,
                 "capabilities": self._hardware.capabilities,
                 "operatingMode": self._operating_mode,
-                "controlExpiresAt": iso(self._armed_until if self._armed_until and self._armed_until > now else None),
+                "controlExpiresAt": None,
                 "cameraPose": {"pan": self._pose.pan, "tilt": self._pose.tilt},
                 "telemetry": telemetry.json(),
                 "vision": None,
             }
 
-    def open_camera(self):
-        return self._hardware.open_camera()
+    def open_camera(self, profile: str = "normal"):
+        return self._hardware.open_camera(profile)
 
     def close(self) -> None:
         with self._lock:
@@ -183,9 +178,7 @@ class RobotController:
 
     def _expire(self) -> None:
         now = utc_now()
-        if self._armed_until and self._armed_until <= now:
-            self._armed_until = None
-        if self._moving_until and (self._moving_until <= now or not self._armed_until):
+        if self._moving_until and self._moving_until <= now:
             self._safe_stop()
 
     def _safe_stop(self) -> None:

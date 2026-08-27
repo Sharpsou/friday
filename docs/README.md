@@ -1,7 +1,7 @@
 # Documentation Friday
 
-Ce répertoire sépare désormais clairement l’état présent, les décisions, les
-opérations et l’historique. L’audit complet est consigné dans
+Ce répertoire sépare l’état présent, les décisions, les opérations et
+l’historique. L’audit initial et son ré-audit du 27 août sont consignés dans
 [28-audit-documentation-app-robot-2026-08-25.md](28-audit-documentation-app-robot-2026-08-25.md).
 
 ## Parcours de reprise rapide
@@ -25,6 +25,7 @@ document 27 puis le code testé prévalent.
 | état global App + Robot          | [27 — état canonique](27-etat-canonique-app-robot-2026-08-25.md)                                                     |
 | développer ou vérifier           | [runbook développement](runbooks/development.md)                                                                     |
 | exploiter AlphaBot2              | [runbook Robot](runbooks/robot-alphabot2.md) et [checkpoint Récup](29-checkpoint-recuperation-humaine-2026-08-25.md) |
+| comprendre l’autonomie actuelle  | [30 — autonomie topologique visuelle](30-decision-autonomie-topologique-visuelle.md)                                 |
 | exploiter le Chat                | [runbook Assistant](runbooks/assistant-gemma.md)                                                                     |
 | exploiter la Veille              | [runbook Veille](runbooks/veille-rss.md)                                                                             |
 | classer les courses              | [runbook classement](runbooks/classement-courses.md)                                                                 |
@@ -39,9 +40,11 @@ document 27 puis le code testé prévalent.
 - **Canoniques** : `00`, `27`, ce fichier et les runbooks.
 - **Décisions actives** : `09`, `10`, les ADR et le modèle de menace. Le
   document 10 est une feuille de route cumulative, pas un état live.
-- **Checkpoints de domaine** : `12`, `13`, `15-checkpoint`, `17`, `18` et
-  `22` à `26` et `29`. Ils expliquent une verticale ou une étape datée ; le document
+- **Checkpoints de domaine** : `12`, `13`, `15-checkpoint`, `17`, `18`, `22` à
+  `26` et `29`. Ils expliquent une verticale ou une étape datée ; le document
   27 tranche l’état global courant.
+- **Décision Robot active** : `30`, complétée par le runbook pour
+  l’exploitation et la veille réseau.
 - **Vision produit Robot** : `19` et ADR-014. Ils décrivent aussi la cible
   future et ne prouvent pas sa présence sur AlphaBot2.
 - **Historique** : `01` à `08`, `11-prochaines-etapes`, `14`,

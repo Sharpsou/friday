@@ -33,12 +33,17 @@ export type TavilySearchDepth = 'basic' | 'advanced';
 
 export interface TavilyEvidence {
   content: string;
+  contentOrigin?:
+    'provider_excerpt' | 'provider_raw' | 'page_read' | 'selected_passages';
   format?: 'web_page' | 'video_transcript';
   origin?: string | null;
+  originalCharacters?: number;
   provider?: 'tavily' | 'exa';
   publishedAt: string | null;
   relevanceScore?: number;
+  retainedCharacters?: number;
   title: string;
+  truncated?: boolean;
   url: string;
 }
 
@@ -185,6 +190,15 @@ export class TavilySearchClient {
             title: result.title.trim() || new URL(result.url).hostname,
             url: result.url,
             content: (result.raw_content ?? result.content).slice(0, 20_000),
+            contentOrigin: result.raw_content
+              ? 'provider_raw'
+              : 'provider_excerpt',
+            originalCharacters: (result.raw_content ?? result.content).length,
+            retainedCharacters: Math.min(
+              20_000,
+              (result.raw_content ?? result.content).length,
+            ),
+            truncated: (result.raw_content ?? result.content).length > 20_000,
             publishedAt: normalizePublishedAt(result.published_date),
             ...(result.score === undefined
               ? {}

@@ -141,6 +141,12 @@ export function parseExaResults(text: string): TavilyEvidence[] {
       url: url.toString(),
       publishedAt: normalizePublishedAt(field(block, 'Published')),
       content,
+      contentOrigin: 'provider_excerpt',
+      originalCharacters: sanitizeExternalText(contentMatch?.[1] ?? '').length,
+      retainedCharacters: content.length,
+      truncated:
+        sanitizeExternalText(contentMatch?.[1] ?? '').length >
+        MAX_EXCERPT_CHARACTERS,
       relevanceScore: Math.max(0.3, 1 - index * 0.08),
     });
     if (normalized) evidence.push(normalized);

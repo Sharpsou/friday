@@ -1,4 +1,4 @@
-"""Worker OpenCV borné pour les signatures de lieux de Friday.
+"""Worker OpenCV borné pour la ressemblance entre lieux visuels Friday.
 
 Le protocole est volontairement simple : une requête JSON par ligne sur stdin,
 une réponse JSON par ligne sur stdout. Les images ne sont jamais écrites sur
@@ -19,6 +19,7 @@ import numpy as np
 WIDTH = 320
 HEIGHT = 240
 MAX_FEATURES = 500
+MAX_MOTION_FEATURES = 160
 
 
 def perceptual_hash(gray: np.ndarray) -> str:
@@ -70,12 +71,100 @@ def extract(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "perceptualHash": perceptual_hash(gray),
         "quality": quality,
+        "luminance": float(np.mean(gray)),
         "featureCount": len(keypoints),
         "keypoints": [
             [round(point.pt[0] / WIDTH, 6), round(point.pt[1] / HEIGHT, 6), round(point.angle, 3)]
             for point in keypoints
         ],
         "descriptors": base64.b64encode(descriptors.tobytes()).decode("ascii"),
+    }
+
+
+def decode_gray(encoded: str) -> np.ndarray:
+    image = cv2.imdecode(
+        np.frombuffer(base64.b64decode(encoded), dtype=np.uint8),
+        cv2.IMREAD_GRAYSCALE,
+    )
+    if image is None:
+        raise ValueError("Image JPEG illisible.")
+    return cv2.resize(image, (WIDTH, HEIGHT), interpolation=cv2.INTER_AREA)
+
+
+def motion(payload: dict[str, Any]) -> dict[str, Any]:
+    previous = decode_gray(payload["previousImage"])
+    current = decode_gray(payload["currentImage"])
+    points = cv2.goodFeaturesToTrack(
+        previous,
+        maxCorners=MAX_MOTION_FEATURES,
+        qualityLevel=0.01,
+        minDistance=7,
+        blockSize=7,
+    )
+    if points is None or len(points) < 12:
+        return {
+            "trackCount": 0,
+            "medianFlowPx": 0.0,
+            "rotationRad": 0.0,
+            "scaleDelta": 0.0,
+            "coherence": 0.0,
+        }
+    tracked, status, _ = cv2.calcOpticalFlowPyrLK(
+        previous,
+        current,
+        points,
+        None,
+        winSize=(21, 21),
+        maxLevel=3,
+        criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
+    )
+    if tracked is None or status is None:
+        return {
+            "trackCount": 0,
+            "medianFlowPx": 0.0,
+            "rotationRad": 0.0,
+            "scaleDelta": 0.0,
+            "coherence": 0.0,
+        }
+    accepted = status.ravel().astype(bool)
+    source = points.reshape(-1, 2)[accepted]
+    target = tracked.reshape(-1, 2)[accepted]
+    if len(source) < 12:
+        return {
+            "trackCount": int(len(source)),
+            "medianFlowPx": 0.0,
+            "rotationRad": 0.0,
+            "scaleDelta": 0.0,
+            "coherence": 0.0,
+        }
+    transform, inliers = cv2.estimateAffinePartial2D(
+        source,
+        target,
+        method=cv2.RANSAC,
+        ransacReprojThreshold=2.5,
+    )
+    flow = target - source
+    magnitudes = np.linalg.norm(flow, axis=1)
+    median_flow = float(np.median(magnitudes))
+    if transform is None:
+        rotation = 0.0
+        scale_delta = 0.0
+    else:
+        a = float(transform[0, 0])
+        b = float(transform[0, 1])
+        rotation = float(np.arctan2(b, a))
+        scale_delta = float(np.sqrt(a * a + b * b) - 1.0)
+    coherence = (
+        float(np.count_nonzero(inliers)) / max(1, len(source))
+        if inliers is not None
+        else 0.0
+    )
+    return {
+        "trackCount": int(len(source)),
+        "medianFlowPx": round(median_flow, 6),
+        "rotationRad": round(rotation, 6),
+        "scaleDelta": round(scale_delta, 6),
+        "coherence": round(coherence, 6),
     }
 
 
@@ -141,7 +230,9 @@ def respond(payload: dict[str, Any]) -> dict[str, Any]:
         return extract(payload)
     if operation == "match":
         return match(payload)
-    raise ValueError("Opération de localisation inconnue.")
+    if operation == "motion":
+        return motion(payload)
+    raise ValueError("Opération de reconnaissance visuelle inconnue.")
 
 
 for line in sys.stdin:

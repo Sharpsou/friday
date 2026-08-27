@@ -5,6 +5,7 @@ import {
   RobotActuatorsRequestSchema,
   RobotDetectionSchema,
   RobotDriveRequestSchema,
+  RobotPowerStatusSchema,
   RobotStateSchema,
 } from './index.js';
 
@@ -15,6 +16,18 @@ const timing = {
 };
 
 describe('Robot contracts', () => {
+  it('represents network standby independently from connectivity', () => {
+    expect(
+      RobotPowerStatusSchema.parse({
+        powerState: 'sleeping',
+        robotService: 'inactive',
+        cameraService: 'inactive',
+        updatedAt: '2026-08-27T00:00:00.000Z',
+        message: null,
+      }).powerState,
+    ).toBe('sleeping');
+  });
+
   it('accepts only short and slow AlphaBot drive pulses', () => {
     expect(
       RobotDriveRequestSchema.parse({

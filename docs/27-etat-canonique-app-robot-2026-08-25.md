@@ -1,209 +1,310 @@
 # État canonique Friday — application et robot
 
-Date : 25 août 2026
+Date de mise à jour : 27 août 2026
+Statut : **source de vérité d’implémentation**
 
-Statut : **source de vérité d’implémentation pour la reprise**
+## Application
 
-Référence auditée : commit applicatif `08cafa1`, puis évolution `Récup` du
-25 août 2026 ; base réelle SQLite 25, Dexie 7.
-Ce document consolide l’état présent ; les checkpoints antérieurs conservent
-les raisons, incidents et mesures de leur étape.
+Friday est un monorepo pnpm TypeScript : PWA React/Vite/Workbox offline-first,
+hub Fastify sur Windows, SQLite canonique sous `D:\FridayData`, Dexie chiffré
+et outbox sur les appareils, contrats Zod partagés et runtime Python séparé sur
+le Raspberry Pi.
 
-## 1. Vue d’ensemble
+La navigation comporte Aujourd’hui, Agenda, Courses, Budget, Chat, Veille et
+Robot. Auth fermée et partage à deux sont implantés. Agenda, Courses, Budget,
+Chat et Veille restent conformes aux décisions 09/10. Google Calendar n’est pas
+implanté ; Tailscale et les données Budget réelles restent derrière leurs
+portes documentées. Le Chat n’a aucune mutation métier ni commande Robot.
 
-Friday est un monorepo pnpm TypeScript :
+SQLite est en migration **32** et Dexie en version **7** :
 
-- PWA React/Vite/Workbox, offline-first, utilisée notamment sur le Galaxy A17
-  à `https://192.168.1.14:8443` ;
-- hub Fastify sur le PC Windows ;
-- SQLite canonique sous `D:\FridayData` ;
-- Dexie/IndexedDB chiffré et outbox sur chaque appareil ;
-- contrats Zod partagés et règles métier pures ;
-- runtime Python séparé sur le Raspberry Pi pour le matériel AlphaBot2 ;
-- calculs lourds Robot sur le PC, hors de la boucle matérielle du Pi.
+- 1–19 : Maison, auth, sync, Budget, Chat, recherche et Veille ;
+- 20–25 : ancien prototype Robot, conservé uniquement dans l’historique de
+  migration ;
+- 26 : suppression volontaire des 21 tables de ce prototype ;
+- 27 : six tables d’autonomie topologique visuelle.
+- 28 : préférence d’affichage Reco partagée et persistante par foyer.
+- 29 : trim de direction partagé et persistant par foyer.
+- 30 : reset du graphe non validé, panoramas corporels, ports, passages
+  qualifiés et habitudes SARSA globales.
+- 31 : durée globale et bornée des impulsions du panorama corporel.
+- 32 : extension de cette durée globale jusqu'à 1 000 ms.
 
-La commande d’autorité est `pnpm verify`. Le dernier candidat vérifié passe :
-21 tests Python, 22 contrats, 15 domaine, 153 hub, 91 PWA et 25 parcours
-Playwright mobiles, puis les builds de production.
+Les migrations 20–25 n’ont pas été réécrites. Les anciennes données Robot ne
+sont pas importées dans le nouveau modèle. Le retour arrière passe par la
+sauvegarde SQLite cohérente pré-migration 26, jamais par une copie WAL brute.
+La sauvegarde vérifiée avant le reset topologique est
+`D:\FridayData\backups\friday-pre-topological-habits-20260826-213945.sqlite` ;
+elle conserve une base en migration 29 intègre. La sauvegarde historique
+pré-trim reste `friday-pre-global-trim-20260826-132529.sqlite`.
 
-## 2. Application réellement présente
+## Robot AlphaBot2
 
-La navigation comporte sept destinations : `Aujourd’hui`, `Agenda`,
-`Courses`, `Budget`, `Chat`, `Veille` et `Robot`.
+Le matériel réel est un AlphaBot2-Pi sans encodeur, IMU, LiDAR ni pince : caméra
+CSI, deux IR avant, cinq capteurs de ligne et pan/tilt PCA9685. Le servo pan
+tremble encore par intermittence. Les IR ne certifient pas un évitement
+domestique.
 
-| Domaine   | État implanté                                                                                   | Limite ou preuve restante                                                  |
-| --------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Auth      | foyer fermé, propriétaire, second adulte par code, appareils et révocation                      | recettes A17 complètes distinctes ; iPhone auth/offline/convergence validé |
-| Agenda    | tâches, date/heure/durée, responsable, note, récurrence, vues Liste/Semaine/Mois                | plusieurs recettes A17 de détail restent ouvertes                          |
-| Courses   | partage offline, édition, rayon, classement, import photo et mode En course                     | recettes A17 de bout en bout encore à confirmer                            |
-| Budget    | réalisé/prévisionnel, récurrences, enveloppes, provisions et réserve                            | aucune donnée financière réelle avant la porte sécurité/sauvegarde         |
-| Chat      | modes `Local`, `Friday`, `Web léger`, `Web approfondi`, Qwen/Gemma, Tavily/Exa, file et reprise | aucune mutation métier directe ; Ollama reste sur le PC                    |
-| Veille    | dossiers privés, RSS/Web, concepts, sujets, synthèses et cadence persistante                    | recette d’usage prolongée ouverte                                          |
-| PWA       | cache chiffré, outbox, sync idempotente, mise à jour confirmée                                  | les affirmations appareil restent limitées aux recettes réelles            |
-| Calendar  | non implanté                                                                                    | futur lot possible, à décider avec l’utilisateur                           |
-| Tailscale | ADR acceptée                                                                                    | mise en œuvre explicitement en pause                                       |
+| Couche | Responsabilité                                                 |
+| ------ | -------------------------------------------------------------- |
+| PWA    | vidéo, Reco, joystick, actionneurs, modes, repères et `Va là`  |
+| PC     | YOLO, ORB/RANSAC/flot, graphe, SARSA et sécurité de navigation |
+| Pi     | GPIO, moteurs, servos, capteurs, watchdog et arrêt local       |
 
-Les écritures Agenda, Courses et Budget empruntent la même voie locale en
-ligne et hors ligne. Le Chat, la Veille et le Robot ont leurs propres services
-et permissions ; aucun modèle de langage ne possède une route générique de
-mutation métier ou d’actionneur.
+La PWA accepte aussi une manette Gamepad au mapping `standard`, prioritairement
+Xbox sur PC. En Manuel, le stick gauche réutilise la locomotion tactile et le
+stick droit applique un unique pas caméra borné par geste. Le tactile reste
+prioritaire, toute reprise exige un passage au neutre, la caméra reste immobile
+pendant le roulage et les sticks n’ont aucun effet en Autonome. La lecture
+Gamepad reste entièrement dans la PWA et ne modifie pas le Pi ; sa recette
+physique PC, Bluetooth et mobile reste ouverte. Le trim est toutefois une
+calibration globale du robot, relue depuis le Hub par toutes les PWA. La
+puissance reste locale au contrôleur ; tactile et manette l'utilisent
+directement. Le démarrage de l'autonomie transmet toute la plage 10–35 % au
+Hub et une modification pendant le run est appliquée à chaud sans redémarrage.
+Tactile, manette et autonomie consomment la même valeur de trim.
 
-## 3. Données et migrations
+Le bouton `Reco affichée/masquée` remplace la case locale. Son état est
+persisté par le Hub et relu par toutes les PWA : une modification sur mobile
+apparaît donc aussi sur le Web. Ce réglage masque uniquement les boîtes et leurs
+libellés ; YOLO, le graphe visuel et la cartographie continuent de fonctionner.
 
-- SQLite 1–19 : socle Maison, auth, sync, Budget, Chat, recherche et Veille ;
-- migration 20 : mémoire structurée Robot et mode Chat `Friday` ;
-- migration 21 : sessions Carto, trajectoire, pose et missions ;
-- migration 22 : autonomie, Dyna-Q, cellules et journal cognitif ;
-- migration 23 : points de vue, images-clés sélectives et liens objets ;
-- migration 24 : signatures de lieux, contraintes de poses, segments,
-  événements de relocalisation et calibration d’odométrie ;
-- migration 25 : démonstrations de récupération humaine, intention explicite
-  ou reprise manuelle implicite, verdict et score ;
-- Dexie 7 : schéma navigateur actuel.
+Le Pi redémarre toujours avec les deux switches OFF. Une commande physique n’emprunte jamais
+l’outbox et n’est jamais rejouée après redémarrage.
 
-Les migrations appliquées ne sont jamais réécrites. La base active a été
-migrée en 25 avec intégrité `ok`. Le snapshot cohérent pré-migration 25 est
-`D:\FridayData\backups\friday-pre-human-recovery-20260825-211114.sqlite`
-(migration 24, intégrité `ok`).
+Le switch Roues est l’unique autorisation persistante de locomotion ; il
+n’existe plus de bail d’armement à renouveler. Roues OFF coupe immédiatement les
+moteurs. `/halt`, `/stop`, les changements de mode et l’absence de commande
+fraîche arrêtent le mouvement sans réactiver ni désactiver implicitement les
+switches. Le champ `armed` et `/arm` restent temporairement compatibles avec les
+anciens clients, sans expiration propre. Dans la PWA, le switch Roues est la
+coupure persistante ; le bouton rouge `ARRÊT`, devenu redondant, n’est plus
+affiché.
 
-## 4. AlphaBot2 réellement présent
+## Nouveau mode autonome
 
-Le prototype est un AlphaBot2-Pi à roues différentielles, sans encodeurs, IMU,
-LiDAR ni pince. Il utilise un Raspberry Pi 3 sous Trixie 32 bits, une caméra
-CSI, deux IR avant, cinq capteurs de ligne et deux servos pan/tilt via PCA9685.
+La carte métrique, la pose `x/y`, l’odométrie simulée, le graphe SE(2), Dyna-Q,
+le journal cognitif et le conseil Qwen Robot ont été retirés. Le modèle actif
+est décrit dans
+[30 — autonomie topologique visuelle](30-decision-autonomie-topologique-visuelle.md).
 
-Les responsabilités sont séparées :
+Le robot reconnaît des scènes comme lieux, conserve au plus trois JPEG et douze
+secteurs légers par lieu, rattache les objets au lieu et apprend les passages
+orientés entre lieux. Manuel
+et Autonome nourrissent la même représentation ; il n’existe plus de bouton
+Carto. Un objet reste donc représenté quand il sort du champ.
 
-| Couche | Responsabilité                                                           |
-| ------ | ------------------------------------------------------------------------ |
-| PWA    | vidéo, joystick, presets caméra, switches, modes, Carto et carte tactile |
-| hub PC | auth, bornage, mémoire, YOLO, localisation visuelle, autonomie et Dyna-Q |
-| Pi     | GPIO, moteurs, servos, capteurs, watchdog et arrêt local                 |
+Le propriétaire peut renommer chaque repère depuis la carte. Ce nom humain ne
+change que le libellé : identité, signatures, objets, transitions, politique
+et destination `Va là` restent attachés au même UUID. Plusieurs repères peuvent
+décrire la même pièce ; un suffixe de scène (`Salon — canapé`) est alors plus
+précis qu’un nom de pièce dupliqué.
 
-Les commandes physiques ne passent jamais par l’outbox ou le service worker et
-ne sont jamais rejouées. Un redémarrage laisse les actionneurs désarmés et ne
-reprend ni mission ni exploration autonome.
+Deux apparences d'une même scène peuvent être fusionnées depuis `Repères`. Le
+repère affiché reste l'identité canonique ; au plus trois vues complémentaires
+sont conservées et les objets de même classe sont agrégés. Les passages du
+repère absorbé sont oubliés, car leurs secteurs panoramiques ne peuvent pas être
+redirigés sans preuve ; ils devront être reparcourus. Les habitudes globales
+restent intactes. La fusion arrête le robot et exige une confirmation
+propriétaire.
 
-## 5. Modes et autonomie
+Le propriétaire peut aussi supprimer un repère avec ses vues, objets,
+transitions et apprentissages, ou supprimer un objet seul. Un objet supprimé
+n'est pas interdit : il peut réapparaître si la perception le reconnaît de
+nouveau. Aucune nouvelle table SQLite n'est requise par ces opérations.
 
-- `Manuel` : joystick et presets existants ; `Carto` peut observer pendant la
-  conduite et reste active quand la caméra bouge. Sans Carto, YOLO reste
-  visible en direct mais aucune observation visuelle n’est persistée.
-- `Autonome` : exploration Dyna-Q démarrée explicitement par le propriétaire ;
-  Carto démarre automatiquement ; vitesses candidates 10–20 %, impulsions
-  bornées et masque capteurs/actionneurs.
-- roues coupées : les actions moteur disparaissent, mais la politique peut
-  choisir naturellement des observations caméra parmi les presets autorisés.
-- `Va là` : cible sur un trajet suffisamment documenté ; suspendue lorsque la
-  pose est perdue ou en relocalisation.
-- `Récup` : arrête l’autonomie et donne immédiatement le joystick à
-  l’utilisateur. `Rendre la main` réévalue la manœuvre avant de l’injecter
-  dans Dyna-Q. Un clic ordinaire sur `Manuel` ouvre aussi une observation,
-  mais comme signal faible.
-- Friday peut conseiller un objectif abstrait borné ; il ne choisit jamais une
-  puissance, une durée, une direction ou un angle servo.
+L’autonomie choisit des intentions qualitatives. Une décision visuelle à 4 Hz
+pilote une impulsion à la puissance utilisateur courante (10–35 %), renouvelée
+à 10 Hz et expirant après 300 ms. Sa durée compense la puissance : 180–500 ms
+pour l'avance normale, 140–400 ms pour les autres intentions. Le robot s'arrête
+ensuite, laisse 700 ms au châssis puis exige trois observations consécutives
+exploitables, stables et immobiles avant une autre décision. Une trame de plus
+de 700 ms, une image inutilisable, un IR bloqué, une rotation résiduelle, une
+pause d’observation ou l’arrêt utilisateur interrompt ou retarde le cycle.
+Après 15 s sans vision exploitable, le robot reste arrêté et demande la main.
 
-Le Dyna-Q apprend en ligne dans un espace d’actions fermé. Il ne peut pas
-dépasser les limites matérielles. La récompense utilise nouveauté de carte,
-qualité des points de vue, objets confirmés, sortie de blocage et progrès vers
-une cible. La localisation et le graphe de poses restent l’autorité ; le signal
-de confiance n’est qu’une composante de récompense.
+Le Worker OpenCV classe le flot visuel en immobilité, rotation caméra, rotation
+du châssis, translation ou incertitude. Un repère exige six images sur 1,5 s et
+une translation, sauf pour la toute première ancre. La localisation attend
+trois correspondances cohérentes : un mouvement de tête ou un UUID provisoire
+ne constitue plus un progrès.
 
-Une reprise humaine n’est donc jamais assimilée mécaniquement à une action
-optimale. Le signal explicite `Récup` doit comporter un déplacement mesurable,
-préserver la localisation et ne pas créer de nouvel obstacle. Le signal faible
-`Manuel` doit en plus être confirmé par un obstacle dégagé ou un progrès de
-carte. Les commandes sont ramenées aux actions autonomes bornées ; une action
-hors du masque capteurs est conservée dans l’historique mais non apprise. La
-fenêtre dure au plus cinq minutes et cent commandes, compressées en douze
-étapes. Voir le [checkpoint 29](29-checkpoint-recuperation-humaine-2026-08-25.md).
+Après un redémarrage, le graphe peut contenir des lieux alors que la pose
+topologique courante est inconnue. L’autonomie ne reste plus dans cette boucle
+d’attente : après 1,2 s stable, elle tente huit pivots de relocalisation avec la
+durée 360° globale, 700 ms de repos et trois images stables. Sans correspondance, deux IR libres
+autorisent un déplacement avant de 300 ms à la puissance utilisateur, suivi de
+2,5 s immobiles. Le
+flot de cette translation peut alors justifier une nouvelle ancre ; aucune
+transition n’est inventée depuis un lieu inconnu. Deux IR bloqués arrêtent la
+recherche.
 
-## 6. Carte, mémoire et déplacement physique à la main
+Un nouveau repère reçoit un panorama corporel : caméra centrée, impulsions de
+pivot à la puissance utilisateur, arrêt, 700 ms de repos puis trois frames
+immobiles. Leur durée
+globale est réglable sous le trim entre 120 et 1 000 ms, par pas de 20 ms ; la
+valeur initiale de 220 ms règle séparément la longueur du geste. Un changement
+de durée est partagé entre PWA et s'applique dès l'impulsion suivante ; un
+changement de puissance sur la PWA qui contrôle le run s'applique aussi à chaud,
+y compris au renouvellement d'une impulsion longue. Le
+tour est fermé après au moins six secteurs par une forte reconnaissance
+géométrique ORB/RANSAC ou un pHash très proche de la vue initiale. Une
+correspondance ORB ou pHash plus souple exige au moins trois occurrences d’un
+objet vu au début de l’acquisition ; un objet seul ne suffit jamais.
+Il n’abandonne plus après 30 s : il attend jusqu’à 2 s une image stable ; si la
+vue reste pauvre ou inexploitable, il la traverse par l’impulsion suivante sans
+enregistrer de faux secteur. Les impulsions continuent jusqu’à la fermeture, un
+arrêt utilisateur, les roues désactivées ou les deux IR bloqués. Seules 12
+signatures distinctes sont conservées.
 
-La pose de base intègre direction, puissance, trim et durée de roulage. Cette
-odométrie dérive. La localisation visuelle ajoute des signatures ORB 320×240,
-sans nouvelle image, et des contraintes SE(2) pour fermer les boucles.
-Les poses brutes sont conservées ; les coordonnées corrigées portent une
-révision et une source. Les dix premières fermetures restent en observation,
-puis la calibration de distance/rotation évolue d’au plus 2 % par correction
-et reste bornée à ±15 % des coefficients initiaux.
+La politique `topological-habits-v1` utilise SARSA(λ) sur un contexte sensoriel
+sans UUID. Elle apprend des habitudes locales mais ne contrôle ni les preuves
+topologiques ni les sécurités.
 
-La mémoire est bornée :
+`Va là` ne cible qu’un lieu confirmé et ne suit que des transitions confirmées.
+`Tester ce trajet` valide à la puissance utilisateur deux ou trois passages reliant A à B par un ou
+deux repères intermédiaires. Les retours présumés restent inutilisables avant
+leur vraie traversée.
+`Récup` passe en manuel, observe une courte manœuvre et ne l’apprend que si un
+dégagement des deux IR ou un changement de lieu prouve le progrès. La
+réapplication reste limitée par le plus petit plafond entre la puissance
+utilisateur et 20 %, à 140 ms par commande, et revalidée par les
+capteurs. Une marche arrière autonome n’est proposée qu’après une arrivée
+visuelle confirmée.
 
-- trajectoires : 2 000 points par session et 10 000 par foyer ;
-- observations visuelles : seulement pendant Carto, au plus une écriture par
-  objet et point de vue toutes les cinq secondes, sauf changement de vue ;
-- images-clés : 48 JPEG, 16 Mio, au plus 3 par objet et aucune frame où une
-  personne est détectée ;
-- signatures : 600, 12 Mio, descripteurs/empreinte/pose/objets mais aucune
-  copie d’image supplémentaire.
+La mémoire est bornée à 128 lieux, 3 vues par lieu, 512 objets, 32 Mio de JPEG
+et 8 Mio de descripteurs. Une frame contenant une personne ne conserve aucun
+JPEG, la personne est masquée dans la signature et aucune présence durable
+n’est créée.
 
-L’interface `Objets mémorisés` montre les entités confirmées en premier, les
-regroupe par pièce et masque par défaut les simples indices. Elle permet de
-filtrer par nom, type ou pièce, d’afficher les indices et de renommer chaque
-entrée. Le statut `Mémoire en pause` signifie qu’aucune observation durable ne
-s’ajoute ; le dernier état technique de pose peut néanmoins être remplacé sans
-créer d’historique afin de servir le contrôle manuel et `Récup`.
+Le nombre d’observations d’un objet représente des rencontres et non des
+frames : la visibilité continue n’ajoute rien ; le compteur augmente après un
+retour dans le lieu ou une absence de détection d’au moins 30 s. Un heartbeat
+de 30 s maintient `last_seen_at` sans incrémenter le compteur ni écrire à chaque
+image. Les valeurs historiques ne sont pas recalculées automatiquement.
 
-Quand le robot est soulevé ou déplacé physiquement :
+Les réglages propriétaire proposent un flux caméra `Normal` (640 × 480,
+15 images/s, JPEG 70) ou `Réduit` (640 × 480, 7 images/s, JPEG 55, réduction
+estimée à 60 %). La réduction se fait à la source sur le Pi ; changer de profil
+arrête la navigation et reconnecte le flux. Le même écran permet, après
+confirmation, de purger les lieux créés pendant la dernière heure ou toute la
+mémoire visuelle. Les vues, objets, transitions et apprentissages qui dépendent
+des lieux supprimés sont nettoyés ensemble.
 
-1. un changement de scène répété sans nouvelle commande de roues place la pose
-   en `relocalizing` ;
-2. les vues de transport ne sont pas mémorisées ;
-3. une correspondance confirmée avec un lieu connu replace la pose ;
-4. un nouveau segment est créé, sans faux trait entre les deux emplacements ;
-5. le bouton `Je l’ai déplacé` permet de provoquer explicitement la même
-   recherche ;
-6. après échec, la pose passe à `lost`, l’exploration peut continuer avec des
-   actions réduites et les capteurs, mais `Va là` reste suspendu.
+## IA du PC et communications
 
-La carte tactile affiche trajectoires par segment, pose, incertitude,
-corrections, directions regardées, objets nommés et événements de
-relocalisation. Elle accepte déplacement et zoom. Ce n’est pas encore un plan
-métrique des murs ni une reconstruction volumétrique de l’appartement.
+YOLO26s ONNX tourne dans un Worker Node isolé. OpenCV calcule ressemblance et
+mouvement visuel. SARSA(λ) note les habitudes globales avec progrès,
+information, non-avancement et blocage. Aucun LLM n’intervient dans la
+navigation.
 
-Une fermeture automatique exige deux frames cohérentes et des correspondances
-géométriques RANSAC suffisamment réparties dans l’image ; le simple fait de
-revoir un objet générique ne suffit jamais à déplacer la carte. Les seuils
-exacts et la preuve OpenCV sont conservés dans le
-[checkpoint 26](26-checkpoint-relocalisation-visuelle-2026-08-25.md).
+Le Chat Friday peut seulement lire les objets et lieux non ambigus avec des
+références `[F…]`. Il ne peut ni armer, ni déplacer, ni choisir une destination.
 
-## 7. Perception et questions au Chat
+Sa recherche Web est source-first : Tavily et Exa découvrent des documents,
+puis Friday normalise leurs URL, retire les paramètres de suivi, fusionne les
+doublons techniques et sélectionne dans le texte disponible les passages les
+plus directs relativement à la question. Le même classement généraliste sert à
+tous les sujets : pertinence pour la demande et les requêtes, diversité des
+domaines, puis fraîcheur seulement si elle est demandée. Il n'existe plus de
+profil métier ni de hiérarchie de domaines codée en dur. Une source ancienne
+informe le contexte mais ne prouve pas seule une nouveauté. Le routeur temporel
+local ne fournit la date civile au
+planificateur que pour une demande récente ou actuelle ; il préserve les années
+historiques demandées et corrige avant envoi les millésimes obsolètes inventés
+par le modèle. En approfondi, au plus deux pages originales peuvent être
+lues via le lecteur HTTPS/SSRF borné, puis une seule recherche corrective cible
+une lacune générale de pertinence, diversité ou fraîcheur ; au-delà, la réponse
+reste explicitement partielle. Auteur et auditeur reçoivent titre, URL, date,
+format et passages, sans étiquette d'autorité inventée. L'auditeur Qwen doit
+rendre un verdict sur chaque segment ; il corrige localement, retire une
+répétition ou un fait sans preuve, et un audit incomplet rétrograde le résultat
+persistant à `partial` sans boucle de régénération. Les citations groupées du
+modèle sont normalisées déterministement. Le banc
+local Qwen/Gemma/GPT-OSS relit SQLite sans l'écrire et conserve ses résultats
+privés hors Git dans `.analysis/`.
 
-YOLO26s ONNX tourne dans un Worker Node isolé sur le PC. Les objets confirmés
-sont consolidés avec position approximative, confiance, observations, points
-de vue et éventuelle image-clé. Les personnes restent anonymes et temporaires.
+## Niveau de preuve
 
-Le mode Chat `Friday` peut restituer en lecture seule des faits du foyer et de
-la mémoire Robot avec références `[F…]`, par exemple un dernier emplacement
-d’objet connu. Une affirmation comme « la lumière est allumée » exige encore
-un détecteur spécialisé et calibré ; la reconnaissance faciale n’est pas
-implantée.
+Le code, la migration et les tests logiciels sont distincts du déploiement et
+de la recette physique. La recette matérielle du nouveau graphe, de la conduite
+fluide, du noir, de `Va là` et de `Récup` reste ouverte. Aucun test automatisé
+ne prouve le comportement A17/iPhone/AlphaBot2 réel.
 
-## 8. Limites physiques et niveau de preuve
+Preuve logicielle et déploiement migration 32 du 26 août 2026 : `pnpm verify`
+vert (24 Robot Python, 25 contrats, 15 domaine, 159 Hub, 102 PWA et 25
+Playwright), build et health check A17 verts. La base active est en migration
+32 avec `integrity_check = ok` ; 4 repères, 18 secteurs, 4 transitions, le trim
+global à -5 et la durée panorama à 500 ms ont été conservés. La sauvegarde
+pré-migration 32 vérifiée est
+`D:\FridayData\backups\friday-pre-panorama-loop-20260826-232816.sqlite`. Cette
+preuve ne rétrovalide pas le comportement physique.
 
-- le servo pan tremble par intermittence ;
-- des sous-tensions historiques sont visibles, mais elles sont informatives et
-  ne bloquent plus artificiellement caméra, locomotion ou apprentissage ;
-- la caméra monoculaire ne donne pas une profondeur absolue fiable ;
-- les IR ne constituent pas un évitement domestique complet ;
-- autonomie, fermeture de boucle et déplacement manuel/relocalisation sont
-  testés logiciellement mais pas encore validés physiquement dans
-  l’appartement ;
-- aucun succès A17, iPhone ou matériel ne doit être inféré d’un test automatisé.
+Preuve logicielle et redéploiement passif du 27 août 2026 pour la puissance
+autonome à chaud : `pnpm verify` vert (24 Robot Python, 25 contrats, 15 domaine,
+160 Hub, 103 PWA et 25 Playwright), builds production et health check A17 verts
+avec `database = ok`. L'observation directe du Pi après redémarrage du Hub le
+montre connecté, immobile et en mode Manuel ; aucun essai moteur n'a été lancé.
+La recette physique d'un changement 10–35 % pendant un déplacement ou un
+panorama reste à faire en zone sûre.
 
-## 9. Reprise opérationnelle
+La correction de cadence du 27 août 2026 remplace le roulage autonome continu
+par des impulsions compensées selon la puissance, suivies de 700 ms de repos et
+de trois images stables. `pnpm verify` est vert avec 162 tests Hub, 103 PWA et
+25 Playwright. Le déploiement reste une preuve logicielle ; l'alternance réelle
+impulsion/stabilisation doit encore être observée sur l'AlphaBot2.
 
-1. lire `AGENTS.md`, `docs/00-reprise-nouveau-chat.md` et ce document ;
-2. inspecter `git status -sb` et `git log -5 --oneline` ;
-3. pour l’App, lire le runbook du domaine ;
-4. pour le Robot, lire [runbooks/robot-alphabot2.md](runbooks/robot-alphabot2.md)
-   et observer d’abord l’état sans mouvement ;
-5. après une évolution runtime : `pnpm verify`, puis
-   `infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning` ;
-6. ne lancer un mouvement physique qu’avec l’utilisateur, une zone dégagée,
-   un arrêt accessible et une recette explicite.
+Le paquet Pi a ensuite été réinstallé dans son virtualenv et ses 21 tests ont
+réussi. La réponse réelle expose `visual_topology` et
+`topological_autonomy` ; le parseur du Hub l’accepte. Un essai contrôlé a
+renouvelé huit commandes avant à 15 % toutes les 100 ms, puis confirmé
+`armed=false`, `moving=false`, roues désactivées et retour en Manuel.
 
-Prochains checkpoints utiles : recette physique de relocalisation après
-déplacement à la main, observation de la politique caméra/autonome, recettes
-A17 encore ouvertes et choix utilisateur du prochain lot applicatif.
+Le paquet Pi intégrant les profils caméra a été réinstallé et ses 24 tests ont
+réussi ; `friday-camera` et `friday-robot` ont redémarré actifs, roues et servos
+OFF. Une mesure directe de six secondes dans la même scène a donné 1 795 295
+octets en `Normal` contre 524 543 en `Réduit`, soit 70,8 % de trafic en moins.
+Le candidat A17 a ensuite été reconstruit, redémarré et son health check a
+répondu correctement. Aucune purge réelle n’a été exécutée.
+
+Après déploiement du comptage par rencontres, une observation réelle de 15 s,
+robot désarmé et immobile, a conservé exactement les compteurs Chaise 138,
+Bouteille 6, Livre 16 et Table 75. Les valeurs historiques restent inchangées ;
+seuls les futurs incréments suivent la nouvelle sémantique.
+
+Après une évolution runtime :
+
+```powershell
+pnpm verify
+infra/windows/Start-FridayRecipe.ps1 `
+  -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning
+```
+
+Avant tout mouvement : utilisateur présent, zone sûre, arrêt accessible et
+recette explicite. Lire le [runbook Robot](runbooks/robot-alphabot2.md).
+
+## Addendum 2026-08-27 — veille réseau AlphaBot2
+
+- La PWA et le Hub savent gérer une capacité optionnelle `network_standby` :
+  bouton manuel veille/réveil, écran de veille avec Repères toujours
+  consultables, états explicites `awake`, `sleeping`, `transitioning`,
+  `degraded`, `unavailable`.
+- L’agent Pi minimal, son target systemd, les helpers root bornés et le script
+  d’installation sont livrés dans `robot/deploy`. La caméra, le runtime GPIO et
+  la vision PC sont suspendus en veille ; le réseau et l’agent restent actifs.
+- Le réveil ne réactive ni les roues, ni les servos, ni l’autonomie. Il revient
+  en Manuel. Il n’existe pas de veille automatique.
+- `wakeUrl` et un `wakeToken` distinct sont maintenant configurés hors Git. Le
+  runtime utilisateur et ses 27 tests ont été déployés sur le Pi, puis les
+  unités systemd ont été installées le 27 août 2026. `friday-wake`,
+  `friday-camera`, `friday-robot` et `friday-awake.target` ont été vérifiés
+  actifs avec l’état désiré `awake`; roues et servos restaient désactivés et
+  `moving=false`. La sauvegarde préalable est
+  `/home/pi/friday-robot-backup-20260827-014257` et celle de la configuration
+  Hub est `D:\FridayData\robot\hub-before-network-standby-20260827-014855.json`.
+- Le bouton est désormais exposable par le Hub. Le cycle physique complet
+  veille puis réveil n’a pas encore été déclenché et reste la seule recette
+  ouverte de ce lot.
+- Gate logiciel du lot : `pnpm verify` vert avec 27 tests Robot Python, 26
+  contrats, 15 domaine, 165 Hub, 104 PWA, 25 Playwright et les builds de
+  production.
