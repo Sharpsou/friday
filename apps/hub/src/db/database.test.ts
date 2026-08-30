@@ -38,10 +38,70 @@ describe('hub database migrations', () => {
     const latest = database
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get() as { version: number };
+    const requirementColumn = database
+      .prepare(
+        `SELECT name, dflt_value FROM pragma_table_info('assistant_runs')
+          WHERE name = 'research_requirements_json'`,
+      )
+      .get();
+    const correctionColumns = database
+      .prepare(
+        `SELECT name, dflt_value FROM pragma_table_info('assistant_runs')
+          WHERE name IN ('evidence_assessment_json', 'evidence_review_count', 'audit_pass_count')
+          ORDER BY name`,
+      )
+      .all();
+    const groundingColumns = database
+      .prepare(
+        `SELECT name, dflt_value FROM pragma_table_info('assistant_runs')
+          WHERE name LIKE 'grounding_%' ORDER BY name`,
+      )
+      .all();
+    const processingTable = database
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'assistant_processing_attempts'",
+      )
+      .get();
+    const answerAuditTable = database
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'assistant_answer_audits'",
+      )
+      .get();
     database.close();
 
     expect(retiredTables).toEqual([]);
-    expect(latest.version).toBe(32);
+    expect(requirementColumn).toEqual({
+      name: 'research_requirements_json',
+      dflt_value: "'[]'",
+    });
+    expect(correctionColumns).toEqual([
+      { name: 'audit_pass_count', dflt_value: '0' },
+      { name: 'evidence_assessment_json', dflt_value: "'{}'" },
+      { name: 'evidence_review_count', dflt_value: '0' },
+    ]);
+    expect(groundingColumns).toEqual([
+      { name: 'grounding_accepted_claims', dflt_value: '0' },
+      { name: 'grounding_answer_shape', dflt_value: null },
+      { name: 'grounding_audit_passes', dflt_value: '0' },
+      { name: 'grounding_corrected_claims', dflt_value: '0' },
+      { name: 'grounding_correction_passes', dflt_value: '0' },
+      { name: 'grounding_corrective_search_used', dflt_value: '0' },
+      { name: 'grounding_coverage', dflt_value: null },
+      { name: 'grounding_covered_slots', dflt_value: '0' },
+      { name: 'grounding_critical_missing_slots', dflt_value: '0' },
+      { name: 'grounding_final_status', dflt_value: null },
+      { name: 'grounding_prompt_versions_json', dflt_value: "'{}'" },
+      { name: 'grounding_rejected_claims', dflt_value: '0' },
+      { name: 'grounding_rejection_reasons_json', dflt_value: "'{}'" },
+      { name: 'grounding_removed_claims', dflt_value: '0' },
+      { name: 'grounding_total_claims', dflt_value: '0' },
+      { name: 'grounding_verified_claims', dflt_value: '0' },
+      { name: 'grounding_verifier_used', dflt_value: '0' },
+      { name: 'grounding_version', dflt_value: null },
+    ]);
+    expect(latest.version).toBe(40);
+    expect(processingTable).toEqual({ name: 'assistant_processing_attempts' });
+    expect(answerAuditTable).toEqual({ name: 'assistant_answer_audits' });
   });
 
   it('adds optional time and duration columns to a version 1 database', () => {
@@ -139,6 +199,14 @@ describe('hub database migrations', () => {
       { version: 30 },
       { version: 31 },
       { version: 32 },
+      { version: 33 },
+      { version: 34 },
+      { version: 35 },
+      { version: 36 },
+      { version: 37 },
+      { version: 38 },
+      { version: 39 },
+      { version: 40 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -168,7 +236,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 32 });
+    expect(migrations.at(-1)).toEqual({ version: 40 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -204,7 +272,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 32 });
+    expect(migrations.at(-1)).toEqual({ version: 40 });
   });
 
   it('adds the five budget stores and the idempotent seed marker', () => {
@@ -451,7 +519,15 @@ describe('hub database migrations', () => {
         'duration_ms',
       ]),
     );
-    expect(sourceColumns.map((column) => column.name)).toContain('provider');
+    expect(sourceColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        'provider',
+        'evidence_group_id',
+        'evidence_group_confidence',
+        'evidence_group_representative_source_id',
+        'evidence_origin_key',
+      ]),
+    );
   });
 
   it('accepts the legacy Assistant source provider column during migration 19', () => {
@@ -650,7 +726,7 @@ describe('hub database migrations', () => {
       'robot_visual_ports',
       'robot_visual_transitions',
     ]);
-    expect(migration).toEqual({ version: 32 });
+    expect(migration).toEqual({ version: 40 });
   });
 
   it('extends the panorama pulse range without losing the global trim', () => {
@@ -684,5 +760,77 @@ describe('hub database migrations', () => {
       steering_trim_percent: -4,
       panorama_pulse_ms: 1000,
     });
+  });
+
+  it('adds evidence grouping metadata without changing existing sources', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 32);
+    database.pragma('foreign_keys = OFF');
+    database
+      .prepare(
+        `INSERT INTO assistant_sources(
+           run_id, source_id, title, url, domain, published_at, retrieved_at,
+           excerpt, provider
+         ) VALUES (?, 'S1', 'Source historique', 'https://example.com/a',
+                   'example.com', NULL, ?, 'extrait', 'tavily')`,
+      )
+      .run('run-before-v33', '2026-08-27T00:00:00.000Z');
+    database.pragma('foreign_keys = ON');
+
+    migrateDatabase(database);
+    const source = database
+      .prepare(
+        `SELECT title, evidence_group_id, evidence_group_confidence,
+                evidence_group_representative_source_id, evidence_origin_key
+           FROM assistant_sources WHERE run_id = ? AND source_id = 'S1'`,
+      )
+      .get('run-before-v33');
+    const migration = database
+      .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+      .get();
+    database.close();
+
+    expect(source).toEqual({
+      title: 'Source historique',
+      evidence_group_id: null,
+      evidence_group_confidence: 'single',
+      evidence_group_representative_source_id: null,
+      evidence_origin_key: null,
+    });
+    expect(migration).toEqual({ version: 40 });
+  });
+
+  it('preserves processing diagnostics and accepts the Web editorial stage', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 37);
+    database.pragma('foreign_keys = OFF');
+    database
+      .prepare(
+        `INSERT INTO assistant_processing_attempts(
+           run_id, stage, attempt, model, status, duration_ms, created_at
+         ) VALUES ('historical-run', 'web_extract', 1, 'gemma4', 'success', 12, ?)`,
+      )
+      .run('2026-08-30T00:00:00.000Z');
+
+    migrateDatabase(database);
+    database
+      .prepare(
+        `INSERT INTO assistant_processing_attempts(
+           run_id, stage, attempt, model, status, duration_ms, created_at
+         ) VALUES ('editorial-run', 'web_editorial', 1, 'gemma4', 'success', 8, ?)`,
+      )
+      .run('2026-08-30T00:01:00.000Z');
+    const rows = database
+      .prepare(
+        `SELECT run_id, stage, duration_ms FROM assistant_processing_attempts
+          ORDER BY id`,
+      )
+      .all();
+    database.close();
+
+    expect(rows).toEqual([
+      { run_id: 'historical-run', stage: 'web_extract', duration_ms: 12 },
+      { run_id: 'editorial-run', stage: 'web_editorial', duration_ms: 8 },
+    ]);
   });
 });

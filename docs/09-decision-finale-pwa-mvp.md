@@ -4,6 +4,12 @@ Date : 8 août 2026
 
 Statut : **référence produit active**. Ce document remplace les choix Flutter/native des documents précédents. L’exécution technique et les estimations agentiques sont définies dans [10-feuille-de-route-technique-implementation.md](10-feuille-de-route-technique-implementation.md).
 
+> **Chat — décision remplacée.** Les descriptions du moteur Chat, de ses
+> modèles, modes Web et propositions dans ce document sont historiques. Le
+> moteur a été retiré ; l’onglet est une archive privée en lecture seule. Sa
+> reconstruction est exclusivement régie par
+> [32-fondation-reconstruction-chat.md](32-fondation-reconstruction-chat.md).
+
 ## Décision
 
 Friday sera une Progressive Web App installable, servie par le PC familial sur le réseau local et capable de fonctionner hors ligne grâce à un cache applicatif et une base locale dans le navigateur.
@@ -35,7 +41,7 @@ Six destinations :
 2. **Agenda** : tâches, rendez-vous et vues liste/semaine/mois ;
 3. **Courses** : liste partagée et produits déjà achetés ;
 4. **Budget** : réalisé, prévisionnel, enveloppes, provisions et épargne partagés ;
-5. **Chat** : conversations privées par profil, Qwen 3.5 9B Q4 par défaut ou Gemma 4 sélectionnable avec modes `Local`, `Web léger` et `Web approfondi` via Tavily et Exa MCP côté hub ;
+5. **Chat** : archive privée par profil en lecture seule pendant la reconstruction définie par le document 32 ;
 6. **Veille** : digest et thèmes du profil actif.
 
 Un bouton `+` permanent hors Assistant ouvre la saisie rapide.

@@ -19,18 +19,8 @@ import {
   AuthStateResponseSchema,
   AssistantConversationSchema,
   AssistantConversationsResponseSchema,
-  AssistantCreateConversationRequestSchema,
-  AssistantExaUsageSchema,
   AssistantMessagesResponseSchema,
-  AssistantQueueSummarySchema,
-  AssistantResearchDiagnosticsResponseSchema,
-  AssistantRunEventsResponseSchema,
-  AssistantRunSchema,
-  AssistantSearchConsentRequestSchema,
-  AssistantSendMessageRequestSchema,
-  AssistantSubmissionResponseSchema,
   AssistantUpdateConversationRequestSchema,
-  AssistantWebUsageSchema,
   GroceryClassificationApplyRequestSchema,
   GroceryClassificationApplyResponseSchema,
   GroceryClassificationJobSchema,
@@ -83,16 +73,9 @@ import {
 } from '@friday/contracts';
 
 import {
-  OllamaAssistantEngine,
-  type AssistantEngine,
-} from './assistant/assistant-engine.js';
-import {
-  AssistantConflictError,
+  AssistantArchiveService,
   AssistantNotFoundError,
-  AssistantService,
 } from './assistant/assistant-service.js';
-import { TavilySearchClient } from './assistant/tavily-search.js';
-import { ExaMcpSearchClient } from './assistant/exa-mcp-search.js';
 import { ClosedAuthError, ClosedAuthService } from './auth/auth-service.js';
 import { loadOrCreateAuthSecret } from './auth/auth-secret.js';
 import { openDatabase } from './db/database.js';
@@ -109,7 +92,11 @@ import {
   type GroceryPhotoTranscriptionEngine,
 } from './groceries/ollama-photo-transcription-engine.js';
 import { SyncService } from './sync/sync-service.js';
-import { SecureFeedClient } from './watch/feed-client.js';
+import {
+  OllamaWatchEngine,
+  type WatchLanguageEngine,
+} from './watch/ollama-watch-engine.js';
+import { TavilySearchClient } from './watch/tavily-search.js';
 import { WatchNotFoundError, WatchService } from './watch/watch-service.js';
 import {
   DisabledRobotController,
@@ -138,10 +125,8 @@ export interface BuildHubOptions {
   logger?: boolean;
   classificationEngine?: GroceryClassificationEngine;
   photoTranscriptionEngine?: GroceryPhotoTranscriptionEngine;
-  assistantEngine?: AssistantEngine;
-  assistantWebPageReader?: Pick<SecureFeedClient, 'fetchArticleText'>;
-  tavilySearchClient?: TavilySearchClient;
-  exaMcpSearchClient?: ExaMcpSearchClient;
+  watchEngine?: WatchLanguageEngine;
+  watchSearchClient?: TavilySearchClient;
   ollamaBaseUrl?: string;
   ollamaModel?: string;
   ollamaTimeoutMs?: number;
@@ -168,10 +153,6 @@ const ClassificationJobParamsSchema = z
   .strict();
 const AssistantConversationParamsSchema = z
   .object({ id: z.string().uuid() })
-  .strict();
-const AssistantRunParamsSchema = z.object({ id: z.string().uuid() }).strict();
-const AssistantEventsQuerySchema = z
-  .object({ after: z.coerce.number().int().nonnegative().default(0) })
   .strict();
 const WatchParamsSchema = z.object({ id: z.string().uuid() }).strict();
 const WatchArticleParamsSchema = z
@@ -239,33 +220,22 @@ export async function buildHub(options: BuildHubOptions) {
         : {}),
     });
   let photoTranscriptionActive = false;
-  const assistantEngine =
-    options.assistantEngine ??
-    new OllamaAssistantEngine({
+  const watchEngine =
+    options.watchEngine ??
+    new OllamaWatchEngine({
       ...(options.ollamaBaseUrl ? { baseUrl: options.ollamaBaseUrl } : {}),
-      model: process.env.FRIDAY_ASSISTANT_MODEL ?? 'gemma4:e4b-it-qat',
-      qwenModel: process.env.FRIDAY_ASSISTANT_QWEN_MODEL ?? 'qwen3.5:9b-q4_K_M',
-      ...(process.env.FRIDAY_ASSISTANT_TIMEOUT_MS
+      model: process.env.FRIDAY_WATCH_MODEL ?? 'qwen3.5:9b-q4_K_M',
+      ...(process.env.FRIDAY_WATCH_TIMEOUT_MS
         ? {
-            timeoutMs: Number.parseInt(
-              process.env.FRIDAY_ASSISTANT_TIMEOUT_MS,
-              10,
-            ),
+            timeoutMs: Number.parseInt(process.env.FRIDAY_WATCH_TIMEOUT_MS, 10),
           }
         : {}),
     });
-  const tavily =
-    options.tavilySearchClient ??
+  const watchSearch =
+    options.watchSearchClient ??
     new TavilySearchClient(process.env.FRIDAY_TAVILY_API_KEY);
-  const assistant = new AssistantService(
-    database,
-    assistantEngine,
-    tavily,
-    options.exaMcpSearchClient ?? new ExaMcpSearchClient(),
-    undefined,
-    options.assistantWebPageReader ?? new SecureFeedClient(),
-  );
-  const watch = new WatchService(database, assistantEngine, undefined, tavily);
+  const assistant = new AssistantArchiveService(database);
+  const watch = new WatchService(database, watchEngine, undefined, watchSearch);
   const robot: RobotController =
     options.robotController ?? new DisabledRobotController();
   const robotTopology = new RobotVisualTopologyService(
@@ -1617,28 +1587,6 @@ export async function buildHub(options: BuildHubOptions) {
     }
   });
 
-  app.post('/api/assistant/conversations', async (request, reply) => {
-    if (!acceptsTrustedMutationOrigin(request.headers))
-      return reply.code(403).send({ error: 'untrusted_origin' });
-    const parsed = AssistantCreateConversationRequestSchema.safeParse(
-      request.body ?? {},
-    );
-    if (!parsed.success)
-      return reply.code(400).send({ error: 'invalid_assistant_conversation' });
-    try {
-      const session = await closedAuth.requireSession(request.headers);
-      return AssistantConversationSchema.parse(
-        assistant.createConversation(
-          session.member.profileId,
-          parsed.data.title,
-          parsed.data.mode,
-        ),
-      );
-    } catch (error) {
-      return sendClosedAuthError(error, reply);
-    }
-  });
-
   app.patch('/api/assistant/conversations/:id', async (request, reply) => {
     if (!acceptsTrustedMutationOrigin(request.headers))
       return reply.code(403).send({ error: 'untrusted_origin' });
@@ -1651,11 +1599,12 @@ export async function buildHub(options: BuildHubOptions) {
     try {
       const session = await closedAuth.requireSession(request.headers);
       return AssistantConversationSchema.parse(
-        assistant.updateConversation(
-          session.member.profileId,
-          params.data.id,
-          body.data,
-        ),
+        assistant.updateConversation(session.member.profileId, params.data.id, {
+          ...(body.data.archived === undefined
+            ? {}
+            : { archived: body.data.archived }),
+          ...(body.data.title === undefined ? {} : { title: body.data.title }),
+        }),
       );
     } catch (error) {
       if (error instanceof AssistantNotFoundError)
@@ -1677,10 +1626,6 @@ export async function buildHub(options: BuildHubOptions) {
     } catch (error) {
       if (error instanceof AssistantNotFoundError)
         return reply.code(404).send({ error: 'assistant_not_found' });
-      if (error instanceof AssistantConflictError)
-        return reply
-          .code(409)
-          .send({ error: 'assistant_conflict', message: error.message });
       return sendClosedAuthError(error, reply);
     }
   });
@@ -1713,183 +1658,26 @@ export async function buildHub(options: BuildHubOptions) {
     async (request, reply) => {
       if (!acceptsTrustedMutationOrigin(request.headers))
         return reply.code(403).send({ error: 'untrusted_origin' });
-      const params = AssistantConversationParamsSchema.safeParse(
-        request.params,
-      );
-      const body = AssistantSendMessageRequestSchema.safeParse(request.body);
-      if (!params.success || !body.success)
-        return reply.code(400).send({ error: 'invalid_assistant_message' });
       try {
-        const session = await closedAuth.requireSession(request.headers);
-        return AssistantSubmissionResponseSchema.parse(
-          assistant.submit(session.member.profileId, params.data.id, body.data),
-        );
-      } catch (error) {
-        if (error instanceof AssistantNotFoundError)
-          return reply.code(404).send({ error: 'assistant_not_found' });
-        if (error instanceof AssistantConflictError)
-          return reply
-            .code(409)
-            .send({ error: 'assistant_conflict', message: error.message });
-        return sendClosedAuthError(error, reply);
-      }
-    },
-  );
-
-  app.get('/api/assistant/runs/:id', async (request, reply) => {
-    const params = AssistantRunParamsSchema.safeParse(request.params);
-    if (!params.success)
-      return reply.code(400).send({ error: 'invalid_assistant_run' });
-    try {
-      const session = await closedAuth.requireSession(request.headers);
-      return AssistantRunSchema.parse(
-        assistant.getRun(session.member.profileId, params.data.id),
-      );
-    } catch (error) {
-      if (error instanceof AssistantNotFoundError)
-        return reply.code(404).send({ error: 'assistant_not_found' });
-      return sendClosedAuthError(error, reply);
-    }
-  });
-
-  app.get('/api/assistant/web/usage', async (request, reply) => {
-    try {
-      await closedAuth.requireSession(request.headers);
-      return AssistantWebUsageSchema.parse(await assistant.webUsage());
-    } catch (error) {
-      return sendClosedAuthError(error, reply);
-    }
-  });
-
-  app.get('/api/assistant/web/exa-usage', async (request, reply) => {
-    try {
-      await closedAuth.requireSession(request.headers);
-      return AssistantExaUsageSchema.parse(assistant.exaUsage());
-    } catch (error) {
-      return sendClosedAuthError(error, reply);
-    }
-  });
-
-  app.get(
-    '/api/assistant/conversations/:id/research-diagnostics',
-    async (request, reply) => {
-      const params = AssistantConversationParamsSchema.safeParse(
-        request.params,
-      );
-      if (!params.success)
-        return reply
-          .code(400)
-          .send({ error: 'invalid_assistant_conversation' });
-      try {
-        const session = await closedAuth.requireSession(request.headers);
-        return AssistantResearchDiagnosticsResponseSchema.parse(
-          assistant.researchDiagnostics(
-            session.member.profileId,
-            params.data.id,
-          ),
-        );
-      } catch (error) {
-        if (error instanceof AssistantNotFoundError)
-          return reply.code(404).send({ error: 'assistant_not_found' });
-        return sendClosedAuthError(error, reply);
-      }
-    },
-  );
-
-  app.post('/api/assistant/runs/:id/search-consent', async (request, reply) => {
-    if (!acceptsTrustedMutationOrigin(request.headers))
-      return reply.code(403).send({ error: 'untrusted_origin' });
-    const params = AssistantRunParamsSchema.safeParse(request.params);
-    const body = AssistantSearchConsentRequestSchema.safeParse(request.body);
-    if (!params.success || !body.success)
-      return reply.code(400).send({ error: 'invalid_assistant_consent' });
-    try {
-      const session = await closedAuth.requireSession(request.headers);
-      return AssistantRunSchema.parse(
-        assistant.consent(
-          session.member.profileId,
-          params.data.id,
-          body.data.approved,
-          body.data.queries,
-        ),
-      );
-    } catch (error) {
-      if (error instanceof AssistantNotFoundError)
-        return reply.code(404).send({ error: 'assistant_not_found' });
-      if (error instanceof AssistantConflictError)
-        return reply.code(409).send({
-          error: 'assistant_conflict',
-          message: error.message,
+        await closedAuth.requireSession(request.headers);
+        return reply.code(410).send({
+          error: 'chat_reconstruction',
+          message:
+            'Le moteur Chat a été retiré pour être reconstruit. Les conversations existantes restent consultables.',
         });
-      return sendClosedAuthError(error, reply);
-    }
-  });
-
-  app.get('/api/assistant/runs/:id/events', async (request, reply) => {
-    const params = AssistantRunParamsSchema.safeParse(request.params);
-    const query = AssistantEventsQuerySchema.safeParse(request.query);
-    if (!params.success || !query.success)
-      return reply.code(400).send({ error: 'invalid_assistant_events' });
-    try {
-      const session = await closedAuth.requireSession(request.headers);
-      return AssistantRunEventsResponseSchema.parse(
-        assistant.listEvents(
-          session.member.profileId,
-          params.data.id,
-          query.data.after,
-        ),
-      );
-    } catch (error) {
-      if (error instanceof AssistantNotFoundError)
-        return reply.code(404).send({ error: 'assistant_not_found' });
-      return sendClosedAuthError(error, reply);
-    }
-  });
-
-  for (const action of ['cancel', 'retry'] as const) {
-    app.post(`/api/assistant/runs/:id/${action}`, async (request, reply) => {
-      if (!acceptsTrustedMutationOrigin(request.headers))
-        return reply.code(403).send({ error: 'untrusted_origin' });
-      const params = AssistantRunParamsSchema.safeParse(request.params);
-      if (!params.success)
-        return reply.code(400).send({ error: 'invalid_assistant_run' });
-      try {
-        const session = await closedAuth.requireSession(request.headers);
-        return AssistantRunSchema.parse(
-          action === 'cancel'
-            ? assistant.cancel(session.member.profileId, params.data.id)
-            : assistant.retry(session.member.profileId, params.data.id),
-        );
       } catch (error) {
-        if (error instanceof AssistantNotFoundError)
-          return reply.code(404).send({ error: 'assistant_not_found' });
-        if (error instanceof AssistantConflictError)
-          return reply
-            .code(409)
-            .send({ error: 'assistant_conflict', message: error.message });
         return sendClosedAuthError(error, reply);
       }
-    });
-  }
-
-  app.get('/api/assistant/queue/summary', async (request, reply) => {
-    try {
-      const session = await closedAuth.requireSession(request.headers);
-      return AssistantQueueSummarySchema.parse(
-        assistant.queueSummary(session.member.profileId),
-      );
-    } catch (error) {
-      return sendClosedAuthError(error, reply);
-    }
-  });
+    },
+  );
 
   app.get('/api/inference/status', async (request, reply) => {
     try {
       await closedAuth.requireSession(request.headers);
       return InferenceStatusSchema.parse(
-        assistantEngine.getInferenceStatus?.() ?? {
+        watchEngine.getInferenceStatus?.() ?? {
           active: null,
-          queued: { assistant: 0, watch: 0 },
+          queued: { watch: 0 },
         },
       );
     } catch (error) {
@@ -2207,7 +1995,7 @@ export async function buildHub(options: BuildHubOptions) {
     await robotAutonomy.close();
     await robot.close();
     await watch.stop();
-    await assistant.stop();
+    await watchEngine.close?.();
     await groceryClassification.stop();
     database.close();
   });

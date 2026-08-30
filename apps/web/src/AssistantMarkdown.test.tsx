@@ -24,6 +24,10 @@ describe('AssistantMarkdown', () => {
 
     expect(html).toContain('<strong>importante</strong>');
     expect(html).toContain('href="#assistant-source-message-1-S1"');
+    expect(html).toContain('id="assistant-source-message-1-S1"');
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('[S1] Source');
+    expect(html).toContain('example.com · Consulté le');
     expect(html).toContain('<li>élément</li>');
   });
 
@@ -38,5 +42,30 @@ describe('AssistantMarkdown', () => {
 
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('renders a grounded comparison table with linked citations', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMarkdown
+        content={
+          '| Modèle | Point fort |\n| --- | --- |\n| Alpha | Facile à utiliser [S1] |'
+        }
+        messageId="message-3"
+        sources={[
+          {
+            id: 'S1',
+            title: 'Essai Alpha',
+            url: 'https://example.com/alpha',
+            domain: 'example.com',
+            publishedAt: null,
+            retrievedAt: '2026-08-30T00:00:00.000Z',
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('<table>');
+    expect(html).toContain('<th>Modèle</th>');
+    expect(html).toContain('href="#assistant-source-message-3-S1"');
   });
 });

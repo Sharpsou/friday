@@ -4,7 +4,11 @@ Date : 9 août 2026
 
 Statut : procédure cible documentée ; commandes et interface non encore implantées
 
-Ce runbook accompagne l'[ADR-008](../adr/008-sauvegarde-portable-chiffree.md). Il ne doit pas être interprété comme une fonction déjà disponible.
+Ce runbook accompagne l'[ADR-008](../adr/008-sauvegarde-portable-chiffree.md).
+Le découpage d'implémentation, les tests négatifs et les gates de livraison sont
+préparés dans le
+[plan de durcissement prioritaire](../31-plan-durcissement-prioritaire.md#5-chantier-p0-b--sauvegarde-chiffrée-et-restauration-prouvée).
+Il ne doit pas être interprété comme une fonction déjà disponible.
 
 ## But
 

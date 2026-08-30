@@ -1,10 +1,8 @@
 import {
   AssistantConversationSchema,
   AssistantMessageSchema,
-  AssistantSendMessageRequestSchema,
   type AssistantConversation,
   type AssistantMessage,
-  type AssistantSendMessageRequest,
 } from '@friday/contracts';
 
 import { decryptJson, encryptJson } from '../crypto/vault.js';
@@ -15,8 +13,6 @@ const conversationAad = (id: string, deviceId: string) =>
   `assistant-conversation:${id}:${deviceId}`;
 const messageAad = (id: string, deviceId: string) =>
   `assistant-message:${id}:${deviceId}`;
-const outboxAad = (id: string, deviceId: string) =>
-  `assistant-outbox:${id}:${deviceId}`;
 
 export async function cacheAssistantState(
   conversations: AssistantConversation[],
@@ -100,69 +96,4 @@ export async function listCachedAssistantMessages(
       ),
     ),
   );
-}
-
-export async function queueAssistantMessage(
-  conversationId: string,
-  input: AssistantSendMessageRequest,
-): Promise<void> {
-  const parsed = AssistantSendMessageRequestSchema.parse(input);
-  const { deviceId, key, profileId } = await getDeviceContext();
-  await fridayDb.assistantOutbox.put({
-    clientRequestId: parsed.clientRequestId,
-    conversationId,
-    profileId,
-    createdAt: new Date().toISOString(),
-    encrypted: await encryptJson(
-      key,
-      parsed,
-      outboxAad(parsed.clientRequestId, deviceId),
-    ),
-  });
-}
-
-export async function listQueuedAssistantMessages(): Promise<
-  Array<{ conversationId: string; input: AssistantSendMessageRequest }>
-> {
-  const { deviceId, key, profileId } = await getDeviceContext();
-  const rows = await fridayDb.assistantOutbox
-    .where('profileId')
-    .equals(profileId)
-    .sortBy('createdAt');
-  return Promise.all(
-    rows.map(async (row) => ({
-      conversationId: row.conversationId,
-      input: parseQueuedAssistantInput(
-        await decryptJson(
-          key,
-          row.encrypted,
-          outboxAad(row.clientRequestId, deviceId),
-        ),
-      ),
-    })),
-  );
-}
-
-function parseQueuedAssistantInput(
-  input: unknown,
-): AssistantSendMessageRequest {
-  if (
-    input &&
-    typeof input === 'object' &&
-    'mode' in input &&
-    input.mode === 'classic'
-  ) {
-    return AssistantSendMessageRequestSchema.parse({
-      ...input,
-      mode: 'local',
-      thinkingPolicy: 'auto',
-    });
-  }
-  return AssistantSendMessageRequestSchema.parse(input);
-}
-
-export async function removeQueuedAssistantMessage(
-  clientRequestId: string,
-): Promise<void> {
-  await fridayDb.assistantOutbox.delete(clientRequestId);
 }

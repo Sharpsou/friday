@@ -4,7 +4,7 @@ import { isIP } from 'node:net';
 
 import { Readability } from '@mozilla/readability';
 import { XMLParser } from 'fast-xml-parser';
-import { JSDOM } from 'jsdom';
+import { JSDOM, VirtualConsole } from 'jsdom';
 
 const MAX_FEED_BYTES = 2 * 1024 * 1024;
 const MAX_PAGE_BYTES = 3 * 1024 * 1024;
@@ -74,7 +74,10 @@ export class SecureFeedClient {
     }
     if (!first.contentType.includes('text/html'))
       throw new Error('La source ne fournit ni page HTML ni flux RSS/Atom.');
-    const dom = new JSDOM(first.text, { url: first.url });
+    const dom = new JSDOM(first.text, {
+      url: first.url,
+      virtualConsole: quietVirtualConsole(),
+    });
     const advertisedCandidates = [
       ...dom.window.document.querySelectorAll('link[rel="alternate"]'),
     ]
@@ -151,14 +154,15 @@ export class SecureFeedClient {
     const dom = new JSDOM(response.text, {
       runScripts: undefined,
       url: response.url,
+      virtualConsole: quietVirtualConsole(),
     });
     const article = new Readability(dom.window.document, {
       maxElemsToParse: 50_000,
     }).parse();
-    return (article?.textContent ?? dom.window.document.body.textContent ?? '')
-      .replace(/\s+/gu, ' ')
-      .trim()
-      .slice(0, 20_000);
+    return structuredArticleText(
+      article?.content ?? dom.window.document.body.innerHTML,
+      response.url,
+    );
   }
 
   private async robotsAllows(
@@ -243,6 +247,43 @@ export class SecureFeedClient {
       url: response.url || safeUrl,
     };
   }
+}
+
+export function structuredArticleText(html: string, url: string): string {
+  const document = new JSDOM(html, {
+    runScripts: undefined,
+    url,
+    virtualConsole: quietVirtualConsole(),
+  }).window.document;
+  const blocks = [
+    ...document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,tr,blockquote'),
+  ]
+    .filter(
+      (element) =>
+        !element.parentElement?.closest('li,tr') || element.matches('li,tr'),
+    )
+    .map((element) => {
+      if (element.matches('tr'))
+        return [...element.querySelectorAll('th,td')]
+          .map((cell) => cell.textContent?.replace(/\s+/gu, ' ').trim() ?? '')
+          .filter(Boolean)
+          .join(' | ');
+      return element.textContent?.replace(/\s+/gu, ' ').trim() ?? '';
+    })
+    .filter(Boolean);
+  const distinct = blocks.filter(
+    (block, index) => index === 0 || block !== blocks[index - 1],
+  );
+  const structured = distinct.join('\n\n').trim();
+  return (structured || document.body.textContent || '')
+    .replace(/[ \t]+/gu, ' ')
+    .replace(/\n{3,}/gu, '\n\n')
+    .trim()
+    .slice(0, 20_000);
+}
+
+function quietVirtualConsole(): VirtualConsole {
+  return new VirtualConsole();
 }
 
 async function assertPublicHttpsUrl(input: string): Promise<string> {

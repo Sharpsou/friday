@@ -1298,47 +1298,13 @@ export const GroceryPhotoTranscriptionResponseSchema = z
   })
   .strict();
 
-export const AssistantModeSchema = z.enum([
-  'local',
-  'web_light',
-  'web_deep',
-  'friday',
-]);
-export const AssistantModelSchema = z.enum(['gemma4', 'qwen3.5']);
-export const AssistantThinkingPolicySchema = z.enum(['auto', 'forced']);
-export const AssistantResearchOutcomeSchema = z.enum([
-  'not_needed',
-  'completed',
-  'partial',
-  'unavailable',
-  'quota_exhausted',
-]);
-export const AssistantStoredModeSchema = z.enum(['auto', 'web', 'classic']);
-export const AssistantStoredEffectiveModeSchema = z.enum(['web', 'classic']);
-export const AssistantStoredWebDepthSchema = z.enum(['fast', 'deep']);
-export const AssistantRunStatusSchema = z.enum([
-  'queued',
-  'preparing',
-  'awaiting_search_consent',
-  'searching',
-  'reading',
-  'verifying',
-  'writing',
-  'completed',
-  'cancel_requested',
-  'cancelled',
-  'failed',
-]);
-export const AssistantConversationSchema = z
-  .object({
-    id: UuidSchema,
-    title: z.string().trim().min(1).max(80),
-    mode: AssistantModeSchema.default('local'),
-    archivedAt: UtcInstantSchema.nullable(),
-    createdAt: UtcInstantSchema,
-    updatedAt: UtcInstantSchema,
-  })
-  .strict();
+export const AssistantConversationSchema = z.object({
+  id: UuidSchema,
+  title: z.string().trim().min(1).max(80),
+  archivedAt: UtcInstantSchema.nullable(),
+  createdAt: UtcInstantSchema,
+  updatedAt: UtcInstantSchema,
+});
 export const AssistantSourceSchema = z
   .object({
     id: z.string().regex(/^S[1-9]\d*$/u),
@@ -1349,144 +1315,21 @@ export const AssistantSourceSchema = z
     retrievedAt: UtcInstantSchema,
   })
   .strict();
-export const AssistantRunEventSchema = z
-  .object({
-    sequence: z.number().int().positive(),
-    runId: UuidSchema,
-    status: AssistantRunStatusSchema,
-    label: z.string().min(1).max(160),
-    createdAt: UtcInstantSchema,
-  })
-  .strict();
-export const AssistantMessageSchema = z
-  .object({
-    id: UuidSchema,
-    conversationId: UuidSchema,
-    role: z.enum(['user', 'assistant']),
-    content: z.string().max(100_000),
-    requestedMode: AssistantStoredModeSchema.nullable(),
-    effectiveMode: AssistantStoredEffectiveModeSchema.nullable(),
-    webDepth: AssistantStoredWebDepthSchema.nullable().optional(),
-    mode: AssistantModeSchema.default('local'),
-    model: AssistantModelSchema.default('gemma4'),
-    thinkingPolicy: AssistantThinkingPolicySchema.default('auto'),
-    thinkingUsed: z.boolean().default(false),
-    researchOutcome: AssistantResearchOutcomeSchema.default('not_needed'),
-    creditsUsed: z.number().int().nonnegative().default(0),
-    runId: UuidSchema.nullable(),
-    sources: z.array(AssistantSourceSchema),
-    progressEvents: z.array(AssistantRunEventSchema).default([]),
-    createdAt: UtcInstantSchema,
-  })
-  .strict();
-export const AssistantRunSchema = z
-  .object({
-    id: UuidSchema,
-    conversationId: UuidSchema,
-    userMessageId: UuidSchema,
-    assistantMessageId: UuidSchema.nullable(),
-    requestedMode: AssistantStoredModeSchema,
-    effectiveMode: AssistantStoredEffectiveModeSchema.nullable(),
-    webDepth: AssistantStoredWebDepthSchema.nullable().optional(),
-    mode: AssistantModeSchema.default('local'),
-    model: AssistantModelSchema.default('gemma4'),
-    thinkingPolicy: AssistantThinkingPolicySchema.default('auto'),
-    thinkingUsed: z.boolean().default(false),
-    researchOutcome: AssistantResearchOutcomeSchema.default('not_needed'),
-    creditsUsed: z.number().int().nonnegative().default(0),
-    status: AssistantRunStatusSchema,
-    stageLabel: z.string().min(1).max(160),
-    queuePosition: z.number().int().positive().nullable(),
-    searchQueries: z.array(z.string().min(1).max(500)).max(6),
-    error: z
-      .object({ code: z.string().min(1), message: z.string().min(1) })
-      .strict()
-      .nullable(),
-    createdAt: UtcInstantSchema,
-    updatedAt: UtcInstantSchema,
-  })
-  .strict();
-export const AssistantCreateConversationRequestSchema = z
-  .object({
-    title: z.string().trim().min(1).max(80).default('Nouvelle conversation'),
-    mode: AssistantModeSchema.default('local'),
-  })
-  .strict();
+export const AssistantMessageSchema = z.object({
+  id: UuidSchema,
+  conversationId: UuidSchema,
+  role: z.enum(['user', 'assistant']),
+  content: z.string().max(100_000),
+  sources: z.array(AssistantSourceSchema),
+  createdAt: UtcInstantSchema,
+});
 export const AssistantUpdateConversationRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(80).optional(),
     archived: z.boolean().optional(),
-    mode: AssistantModeSchema.optional(),
   })
   .strict()
-  .refine(
-    (value) =>
-      value.title !== undefined ||
-      value.archived !== undefined ||
-      value.mode !== undefined,
-  );
-export const AssistantSendMessageRequestSchema = z
-  .object({
-    clientRequestId: UuidSchema,
-    content: z.string().trim().min(1).max(8_000),
-    mode: AssistantModeSchema,
-    model: AssistantModelSchema.default('qwen3.5'),
-    thinkingPolicy: AssistantThinkingPolicySchema.default('auto'),
-  })
-  .strict();
-export const AssistantSearchConsentRequestSchema = z
-  .object({
-    approved: z.boolean(),
-    queries: z.array(z.string().trim().min(1).max(500)).min(1).max(6),
-  })
-  .strict();
-export const AssistantWebUsageSchema = z
-  .object({
-    month: z.string().regex(/^\d{4}-\d{2}$/u),
-    creditsUsed: z.number().int().nonnegative(),
-    remainingBasicSearches: z.number().int().nonnegative(),
-    source: z.enum(['tavily', 'local']),
-    softLimit: z.number().int().positive(),
-    deepLimit: z.number().int().positive(),
-    hardLimit: z.number().int().positive(),
-  })
-  .strict();
-export const AssistantExaUsageSchema = z
-  .object({
-    month: z.string().regex(/^\d{4}-\d{2}$/u),
-    calls: z.number().int().nonnegative(),
-    successes: z.number().int().nonnegative(),
-    emptyResults: z.number().int().nonnegative(),
-    rateLimits: z.number().int().nonnegative(),
-    failures: z.number().int().nonnegative(),
-    status: z.enum(['untested', 'available', 'rate_limited', 'unavailable']),
-    lastAttemptAt: UtcInstantSchema.nullable(),
-    message: z.string().max(160).nullable(),
-    cooldownUntil: UtcInstantSchema.nullable(),
-  })
-  .strict();
-export const ResearchDiagnosticSchema = z
-  .object({
-    runId: UuidSchema,
-    provider: z.enum(['tavily', 'exa']),
-    status: z.enum([
-      'success',
-      'empty',
-      'rate_limited',
-      'unavailable',
-      'failed',
-      'skipped',
-    ]),
-    calls: z.number().int().nonnegative(),
-    results: z.number().int().nonnegative(),
-    durationMs: z.number().int().nonnegative(),
-    message: z.string().max(160),
-    sourceIds: z.array(z.string().regex(/^S[1-9]\d*$/u)),
-  })
-  .strict();
-export const AssistantResearchDiagnosticsResponseSchema = z
-  .object({ diagnostics: z.array(ResearchDiagnosticSchema) })
-  .strict();
+  .refine((value) => value.title !== undefined || value.archived !== undefined);
 export const AssistantConversationsResponseSchema = z
   .object({ conversations: z.array(AssistantConversationSchema) })
   .strict();
@@ -1494,38 +1337,20 @@ export const AssistantMessagesResponseSchema = z
   .object({
     conversation: AssistantConversationSchema,
     messages: z.array(AssistantMessageSchema),
-    activeRun: AssistantRunSchema.nullable(),
-  })
-  .strict();
-export const AssistantSubmissionResponseSchema = z
-  .object({ message: AssistantMessageSchema, run: AssistantRunSchema })
-  .strict();
-export const AssistantRunEventsResponseSchema = z
-  .object({
-    events: z.array(AssistantRunEventSchema),
-    cursor: z.number().int().nonnegative(),
-  })
-  .strict();
-export const AssistantQueueSummarySchema = z
-  .object({
-    pending: z.number().int().nonnegative(),
-    activeRun: AssistantRunSchema.nullable(),
   })
   .strict();
 
-export const InferenceWorkloadKindSchema = z.enum(['assistant', 'watch']);
 export const InferenceStatusSchema = z
   .object({
     active: z
       .object({
-        kind: InferenceWorkloadKindSchema,
+        kind: z.literal('watch'),
         startedAt: UtcInstantSchema,
       })
       .strict()
       .nullable(),
     queued: z
       .object({
-        assistant: z.number().int().nonnegative(),
         watch: z.number().int().nonnegative(),
       })
       .strict(),
@@ -2016,36 +1841,9 @@ export type GroceryPhotoTranscriptionRequest = z.infer<
 export type GroceryPhotoTranscriptionResponse = z.infer<
   typeof GroceryPhotoTranscriptionResponseSchema
 >;
-export type AssistantMode = z.infer<typeof AssistantModeSchema>;
-export type AssistantModel = z.infer<typeof AssistantModelSchema>;
-export type AssistantThinkingPolicy = z.infer<
-  typeof AssistantThinkingPolicySchema
->;
-export type AssistantResearchOutcome = z.infer<
-  typeof AssistantResearchOutcomeSchema
->;
-export type AssistantStoredEffectiveMode = z.infer<
-  typeof AssistantStoredEffectiveModeSchema
->;
-export type AssistantStoredWebDepth = z.infer<
-  typeof AssistantStoredWebDepthSchema
->;
-export type AssistantRunStatus = z.infer<typeof AssistantRunStatusSchema>;
 export type AssistantConversation = z.infer<typeof AssistantConversationSchema>;
 export type AssistantSource = z.infer<typeof AssistantSourceSchema>;
 export type AssistantMessage = z.infer<typeof AssistantMessageSchema>;
-export type AssistantRun = z.infer<typeof AssistantRunSchema>;
-export type AssistantRunEvent = z.infer<typeof AssistantRunEventSchema>;
-export type AssistantSendMessageRequest = z.infer<
-  typeof AssistantSendMessageRequestSchema
->;
-export type AssistantWebUsage = z.infer<typeof AssistantWebUsageSchema>;
-export type AssistantExaUsage = z.infer<typeof AssistantExaUsageSchema>;
-export type ResearchDiagnostic = z.infer<typeof ResearchDiagnosticSchema>;
-export type AssistantResearchDiagnosticsResponse = z.infer<
-  typeof AssistantResearchDiagnosticsResponseSchema
->;
-export type InferenceWorkloadKind = z.infer<typeof InferenceWorkloadKindSchema>;
 export type InferenceStatus = z.infer<typeof InferenceStatusSchema>;
 export type WatchCadence = z.infer<typeof WatchCadenceSchema>;
 export type WatchStatus = z.infer<typeof WatchStatusSchema>;

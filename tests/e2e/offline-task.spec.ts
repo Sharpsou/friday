@@ -249,14 +249,14 @@ test('the private Watch digest is readable offline and keeps article feedback', 
           kind: 'watch',
           startedAt: '2026-08-12T09:02:00.000Z',
         },
-        queued: { assistant: 1, watch: 0 },
+        queued: { watch: 1 },
       },
     }),
   );
 
   await page.goto('/');
   await expect(page.getByText('IA occupée par la Veille')).toBeVisible();
-  await expect(page.getByText('1 demande Chat en attente')).toBeVisible();
+  await expect(page.getByText('1 traitement Veille en attente')).toBeVisible();
   await expect(page.getByText('Actualisation de la veille')).toBeVisible();
   await expect(page.getByText(/Analyse des articles · 7\/30/u)).toBeVisible();
   await page.getByRole('button', { name: 'Veille', exact: true }).click();
@@ -359,67 +359,80 @@ test('the private Watch digest is readable offline and keeps article feedback', 
   await context.setOffline(false);
 });
 
-test('the private Assistant keeps an encrypted message queued offline', async ({
+test('the private Chat exposes only its historical archive', async ({
   context,
   page,
 }) => {
+  const conversationId = '31bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const messageId = '21bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const conversation = {
+    id: conversationId,
+    title: 'Conversation historique sourcée',
+    archivedAt: null,
+    createdAt: '2026-08-10T10:00:00.000Z',
+    updatedAt: '2026-08-10T12:00:00.000Z',
+  };
+  await page.route('**/api/assistant/conversations', (route) =>
+    route.fulfill({ json: { conversations: [conversation] } }),
+  );
+  await page.route(
+    `**/api/assistant/conversations/${conversationId}/messages`,
+    (route) =>
+      route.fulfill({
+        json: {
+          conversation,
+          messages: [
+            {
+              id: messageId,
+              conversationId,
+              role: 'assistant',
+              content: 'Cette réponse historique cite sa preuve [S1].',
+              sources: [
+                {
+                  id: 'S1',
+                  title: 'Source historique affichée',
+                  url: 'https://example.com/archive-source',
+                  domain: 'example.com',
+                  publishedAt: '2026-08-09T08:00:00.000Z',
+                  retrievedAt: '2026-08-10T09:00:00.000Z',
+                },
+              ],
+              createdAt: '2026-08-10T12:00:00.000Z',
+            },
+          ],
+        },
+      }),
+  );
   await page.goto('/');
   await page.getByRole('button', { name: 'Chat', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Chat' })).toBeVisible();
   await expect(page.getByText('Personnel', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Chat' })).toHaveCount(0);
-  await expect(page.getByText(/Exa · \d+ appel/u)).toBeVisible();
-  const newConversationButton = page.locator('.fab');
-  await expect(newConversationButton).toHaveAccessibleName(
-    'Nouvelle conversation',
+  await expect(page.getByText('Chat en reconstruction')).toBeVisible();
+  const citation = page.getByRole('link', { name: 'S1', exact: true });
+  await expect(citation).toHaveAttribute(
+    'href',
+    `#assistant-source-${messageId}-S1`,
   );
-  await newConversationButton.click();
+  await citation.click();
+  const displayedSource = page.locator(`#assistant-source-${messageId}-S1`);
+  await expect(displayedSource).toBeVisible();
   await expect(
-    page
-      .getByRole('complementary', { name: 'Conversations' })
-      .getByText('Nouvelle conversation', { exact: true }),
-  ).toBeVisible();
-  const composer = page.getByPlaceholder('Écrivez à Friday…');
-  await expect(composer).toBeVisible();
-  const wrappingProbe = page.locator('[data-testid="assistant-wrap-probe"]');
-  await page.locator('.assistant-messages').evaluate((messages) => {
-    messages.insertAdjacentHTML(
-      'beforeend',
-      `<article class="assistant-message is-assistant" data-testid="assistant-wrap-probe">
-        <div class="assistant-markdown">
-          <p>${'TexteSansEspace'.repeat(30)}</p>
-          <pre><code>${'LigneDeCodeTresLongue'.repeat(25)}</code></pre>
-          <table><tbody><tr><td>${'CelluleTresLongue'.repeat(25)}</td></tr></tbody></table>
-        </div>
-      </article>`,
-    );
-  });
-  await expect(wrappingProbe).toBeVisible();
-  expect(
-    await wrappingProbe.evaluate((message) =>
-      [
-        message,
-        ...message.querySelectorAll(
-          '.assistant-markdown, p, pre, code, table, td',
-        ),
-      ]
-        .filter((element) => element.scrollWidth > element.clientWidth)
-        .map((element) => ({
-          element: element.tagName,
-          clientWidth: element.clientWidth,
-          scrollWidth: element.scrollWidth,
-        })),
-    ),
-  ).toEqual([]);
-  await wrappingProbe.evaluate((probe) => probe.remove());
-  await context.setOffline(true);
-  await composer.fill('Question conservée hors ligne');
-  await page.getByRole('button', { name: 'Envoyer' }).click();
-  await expect(page.getByText('En attente de connexion')).toBeVisible();
+    displayedSource.getByRole('link', {
+      name: '[S1] Source historique affichée',
+    }),
+  ).toHaveAttribute('href', 'https://example.com/archive-source');
+  await expect(displayedSource).toContainText('example.com · Publié le');
+  await expect(page.getByPlaceholder('Écrivez à Friday…')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Envoyer' })).toHaveCount(0);
+  await expect(page.locator('.fab')).toHaveCount(0);
 
+  await context.setOffline(true);
   await page.reload();
   await page.getByRole('button', { name: 'Chat', exact: true }).click();
-  await expect(page.getByText('En attente de connexion')).toBeVisible();
+  await expect(page.getByText('Chat en reconstruction')).toBeVisible();
+  await expect(page.locator(`#assistant-source-${messageId}-S1`)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Envoyer' })).toHaveCount(0);
   await context.setOffline(false);
 });
 
@@ -1749,9 +1762,7 @@ test('a recurring task can delete one occurrence or its whole series offline', a
   await expect(page.getByText(title)).toHaveCount(0);
 });
 
-test('local settings persist names, palette and the optional Gemma model', async ({
-  page,
-}) => {
+test('local settings persist names and palette', async ({ page }) => {
   const title = `Tâche Alice ${crypto.randomUUID()}`;
   await page.goto('/');
   await page.evaluate(async () => navigator.serviceWorker.ready);
@@ -1759,11 +1770,6 @@ test('local settings persist names, palette and the optional Gemma model', async
   await page.getByRole('button', { name: 'Ouvrir les réglages' }).click();
   const dialog = page.getByRole('dialog', { name: 'Réglages' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Modèle local')).toHaveValue('qwen3.5');
-  await expect(
-    dialog.getByLabel('Modèle local').locator('option[value="gemma4"]'),
-  ).toHaveText('Gemma 4 E4B QAT · thinking approfondi');
-  await dialog.getByLabel('Modèle local').selectOption('gemma4');
   await dialog.getByLabel('Premier responsable').fill('Alice');
   await dialog.getByLabel('Deuxième responsable').fill('Bob');
   await dialog.getByLabel('Aujourd’hui').fill('7');
@@ -1793,7 +1799,6 @@ test('local settings persist names, palette and the optional Gemma model', async
   await page.getByRole('button', { name: 'Ouvrir les réglages' }).click();
   await expect(page.getByLabel('Aujourd’hui')).toHaveValue('7');
   await expect(page.getByLabel('Chaque liste Agenda')).toHaveValue('15');
-  await expect(page.getByLabel('Modèle local')).toHaveValue('gemma4');
 });
 
 test('local settings limit today and agenda task lists', async ({ page }) => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { AssistantEngine } from '../assistant/assistant-engine.js';
-import { TavilySearchClient } from '../assistant/tavily-search.js';
+import type { WatchLanguageEngine } from './ollama-watch-engine.js';
+import { TavilySearchClient } from './tavily-search.js';
 import { openDatabase } from '../db/database.js';
 import type { SecureFeedClient } from './feed-client.js';
 
@@ -160,10 +160,7 @@ describe('watch scheduling', () => {
         };
       },
     } as unknown as SecureFeedClient;
-    const engine: AssistantEngine = {
-      answer: async () => ({ content: '' }),
-      generateTitle: async () => 'Titre',
-    };
+    const engine: WatchLanguageEngine = {};
     const first = new WatchService(database, engine, feedClient);
     await new Promise((resolve) => setTimeout(resolve, 25));
     await first.stop();
@@ -208,10 +205,7 @@ describe('watch scheduling', () => {
             '2026-08-12T11:00:00.000Z', '2026-08-12T11:05:00.000Z')`,
       )
       .run(watchId, watchId);
-    const engine: AssistantEngine = {
-      answer: async () => ({ content: '' }),
-      generateTitle: async () => 'Titre',
-    };
+    const engine: WatchLanguageEngine = {};
     const service = new WatchService(database, engine);
     try {
       expect(service.overview('profile-a').runs).toEqual([
@@ -270,10 +264,7 @@ describe('watch scheduling', () => {
         };
       },
     } as unknown as SecureFeedClient;
-    const engine: AssistantEngine = {
-      answer: async () => ({ content: '' }),
-      generateTitle: async () => 'Titre',
-    };
+    const engine: WatchLanguageEngine = {};
     const first = new WatchService(database, engine, feedClient);
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const run = database
@@ -336,10 +327,7 @@ describe('watch scheduling', () => {
            0, 0, ?, ?)`,
       )
       .run('76bc3ea7-e269-46b3-9ac7-1c8cb7b310bb', watchId, now, now);
-    const engine: AssistantEngine = {
-      answer: async () => ({ content: '' }),
-      generateTitle: async () => 'Titre',
-    };
+    const engine: WatchLanguageEngine = {};
     const service = new WatchService(database, engine);
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const run = database
@@ -379,10 +367,7 @@ describe('watch profile boundaries and state idempotence', () => {
       }),
       fetchArticleText: async () => '',
     } as unknown as SecureFeedClient;
-    const engine: AssistantEngine = {
-      answer: async () => ({ content: '' }),
-      generateTitle: async () => 'Titre',
-    };
+    const engine: WatchLanguageEngine = {};
     const service = new WatchService(database, engine, feedClient);
     try {
       const watch = await service.create(
@@ -578,9 +563,7 @@ describe('watch topic memory', () => {
       )
       .run();
     let analysisAttempts = 0;
-    const engine: AssistantEngine = {
-      answer: async () => ({ content: '' }),
-      generateTitle: async () => 'Titre',
+    const engine: WatchLanguageEngine = {
       analyzeWatchArticle: async () => {
         analysisAttempts += 1;
         throw new Error('Réponse JSON invalide');
@@ -658,9 +641,7 @@ describe('watch source discovery', () => {
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
     const tavily = new TavilySearchClient('test', fetcher as typeof fetch);
-    const engine: AssistantEngine = {
-      answer: async () => ({ content: '' }),
-      generateTitle: async () => 'Titre',
+    const engine: WatchLanguageEngine = {
       planWatchDiscovery: async () => ({
         concepts: ['Modèles', 'Python'],
         themes: [

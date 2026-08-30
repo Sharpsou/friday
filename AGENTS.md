@@ -54,9 +54,12 @@ historiques 01–08 ou les anciens checkpoints Robot pour contredire le document
 ## État technique courant
 
 - Navigation : Aujourd’hui, Agenda, Courses, Budget, Chat, Veille, Robot.
-- SQLite 32 ; Dexie 7.
-- `pnpm verify` de référence : 27 tests Python, 26 contrats, 15 domaine, 165
-  hub, 104 PWA, 25 Playwright et builds production.
+- SQLite 40 ; Dexie 7.
+- Le moteur Chat est retiré : l'onglet est une archive privée en lecture seule
+  pendant sa reconstruction. La reprise est définie par
+  `docs/32-fondation-reconstruction-chat.md`.
+- `pnpm verify` de référence : 27 tests Python, 26 contrats, 15 domaine, 193
+  hub, 105 PWA, 25 Playwright et builds production.
 - Candidat déployé sur l’origine A17 ; health check et intégrité SQLite `ok`.
 - Sauvegardes de référence et retours arrière récents : document 27 et runbooks,
   jamais Git.

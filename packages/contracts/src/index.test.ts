@@ -3,10 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   AuthBootstrapRequestSchema,
   AuthPairRequestSchema,
-  AssistantExaUsageSchema,
-  AssistantResearchDiagnosticsResponseSchema,
-  AssistantRunSchema,
-  AssistantSendMessageRequestSchema,
+  AssistantConversationSchema,
+  AssistantMessageSchema,
   BudgetEntryRecordSchema,
   BudgetEnvelopeRecordSchema,
   BudgetRecurringTemplateRecordSchema,
@@ -26,6 +24,33 @@ import {
   TaskRecordSchema,
   WatchUpdateRequestSchema,
 } from './index.js';
+
+describe('Chat archive contracts', () => {
+  it('strips legacy mode metadata while keeping the private archive readable', () => {
+    expect(
+      AssistantConversationSchema.parse({
+        id: '41bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        title: 'Conversation historique',
+        mode: 'web_deep',
+        archivedAt: null,
+        createdAt: '2026-08-30T12:00:00.000Z',
+        updatedAt: '2026-08-30T12:01:00.000Z',
+      }),
+    ).not.toHaveProperty('mode');
+    expect(
+      AssistantMessageSchema.parse({
+        id: '51bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        conversationId: '41bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+        role: 'assistant',
+        content: 'Réponse historique',
+        mode: 'web_deep',
+        model: 'gemma4',
+        sources: [],
+        createdAt: '2026-08-30T12:01:00.000Z',
+      }),
+    ).not.toHaveProperty('mode');
+  });
+});
 
 describe('Robot display preference contracts', () => {
   it('accepts only an explicit shared recognition visibility flag', () => {
@@ -96,92 +121,6 @@ describe('Watch contracts', () => {
     expect(WatchUpdateRequestSchema.parse({ localTime: '09:00' })).toEqual({
       localTime: '09:00',
     });
-  });
-});
-
-describe('Assistant contracts', () => {
-  it('exposes separate local Exa usage and private research diagnostics', () => {
-    expect(
-      AssistantExaUsageSchema.parse({
-        month: '2026-08',
-        calls: 3,
-        successes: 2,
-        emptyResults: 0,
-        rateLimits: 1,
-        failures: 0,
-        status: 'rate_limited',
-        lastAttemptAt: '2026-08-13T00:00:00.000Z',
-        message: 'Limite gratuite Exa atteinte.',
-        cooldownUntil: '2026-08-13T01:00:00.000Z',
-      }).calls,
-    ).toBe(3);
-    expect(
-      AssistantResearchDiagnosticsResponseSchema.safeParse({
-        diagnostics: [
-          {
-            runId: '41bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
-            provider: 'exa',
-            status: 'success',
-            calls: 1,
-            results: 4,
-            durationMs: 812,
-            message: 'Exa a fourni des sources.',
-            sourceIds: ['S1', 'S2'],
-          },
-        ],
-      }).success,
-    ).toBe(true);
-  });
-
-  it('bounds offline submissions and exposes a persistent queue state', () => {
-    expect(
-      AssistantSendMessageRequestSchema.parse({
-        clientRequestId: '41bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
-        content: 'Utilise le modèle par défaut',
-        mode: 'local',
-      }).model,
-    ).toBe('qwen3.5');
-    expect(
-      AssistantSendMessageRequestSchema.safeParse({
-        clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
-        content: 'Réponds localement',
-        mode: 'local',
-        model: 'qwen3.5',
-      }).success,
-    ).toBe(true);
-    expect(
-      AssistantRunSchema.safeParse({
-        id: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
-        conversationId: '61bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
-        userMessageId: '51bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
-        assistantMessageId: null,
-        requestedMode: 'auto',
-        effectiveMode: 'web',
-        webDepth: 'fast',
-        status: 'queued',
-        stageLabel: 'Dans la file',
-        queuePosition: 2,
-        searchQueries: [],
-        error: null,
-        createdAt: '2026-08-10T12:00:00.000Z',
-        updatedAt: '2026-08-10T12:00:00.000Z',
-      }).success,
-    ).toBe(true);
-    expect(
-      AssistantSendMessageRequestSchema.safeParse({
-        clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
-        content: 'Recherche en ligne',
-        mode: 'classic',
-      }).success,
-    ).toBe(false);
-    expect(
-      AssistantSendMessageRequestSchema.safeParse({
-        clientRequestId: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
-        content: 'Modèle arbitraire',
-        mode: 'local',
-        model: 'modele-non-autorise',
-      }).success,
-    ).toBe(false);
   });
 });
 

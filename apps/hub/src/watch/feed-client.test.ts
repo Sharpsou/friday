@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseFeedText, SecureFeedClient } from './feed-client.js';
+import {
+  parseFeedText,
+  SecureFeedClient,
+  structuredArticleText,
+} from './feed-client.js';
 
 describe('watch feed client', () => {
   it('normalizes and deduplicates tracking parameters in an RSS feed', () => {
@@ -38,5 +42,16 @@ describe('watch feed client', () => {
     await expect(
       client.validate('https://localhost/feed', new AbortController().signal),
     ).rejects.toThrow('réseau privé');
+  });
+
+  it('preserves headings, list items and table rows as separate evidence blocks', () => {
+    const text = structuredArticleText(
+      '<article><h2>Modèle Atlas</h2><p>Prix : 299 €.</p><h2>Modèle Nova</h2><ul><li>Enceinte fermée</li></ul><table><tr><th>Bruit</th><td>Faible</td></tr></table></article>',
+      'https://example.com/comparison',
+    );
+
+    expect(text).toContain('Modèle Atlas\n\nPrix : 299 €.');
+    expect(text).toContain('Modèle Nova\n\nEnceinte fermée');
+    expect(text).toContain('Bruit | Faible');
   });
 });

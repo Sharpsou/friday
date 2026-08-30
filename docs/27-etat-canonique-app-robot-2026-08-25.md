@@ -1,6 +1,6 @@
 # État canonique Friday — application et robot
 
-Date de mise à jour : 27 août 2026
+Date de mise à jour : 30 août 2026
 Statut : **source de vérité d’implémentation**
 
 ## Application
@@ -10,13 +10,33 @@ hub Fastify sur Windows, SQLite canonique sous `D:\FridayData`, Dexie chiffré
 et outbox sur les appareils, contrats Zod partagés et runtime Python séparé sur
 le Raspberry Pi.
 
+Le moteur Chat est retiré en vue d'une reconstruction. Les modes Local, Friday,
+Web léger et Web approfondi, le choix de modèle, la création, l'envoi, les
+runs, la recherche et l'orchestration LLM ne sont plus exposés. L'onglet Chat
+est une archive privée : lecture des conversations et sources historiques,
+archivage, restauration et suppression. Une ancienne PWA qui tente
+d'envoyer reçoit HTTP 410 et ne déclenche aucun modèle.
+
+Les migrations Assistant jusqu'à 40 et les données existantes restent en place
+pour préserver l'historique et la compatibilité SQLite ; elles sont désormais
+historiques et ne définissent pas le futur harnais. La Veille utilise des
+adaptateurs Qwen et Tavily propres à son domaine. La reconstruction est régie
+par [32 — fondation du nouveau Chat](32-fondation-reconstruction-chat.md), qui
+remplace les addenda Chat plus bas comme instruction active.
+
+Le retrait est déployé sur l'origine A17. `pnpm verify` passe avec 27 tests
+Robot, 25 contrats, 15 domaine, 107 Hub, 100 PWA et 25 Playwright. Le health
+check répond `status=ok`, `database=ok`, `ollama=not-required`. La SQLite active
+reste en migration 40, intègre et sans violation de clé étrangère ; les quatre
+conversations et huit messages présents lors du contrôle ont été préservés.
+
 La navigation comporte Aujourd’hui, Agenda, Courses, Budget, Chat, Veille et
 Robot. Auth fermée et partage à deux sont implantés. Agenda, Courses, Budget,
-Chat et Veille restent conformes aux décisions 09/10. Google Calendar n’est pas
+Chat et Veille restent privés par profil. Google Calendar n’est pas
 implanté ; Tailscale et les données Budget réelles restent derrière leurs
 portes documentées. Le Chat n’a aucune mutation métier ni commande Robot.
 
-SQLite est en migration **32** et Dexie en version **7** :
+SQLite est en migration **40** et Dexie en version **7** :
 
 - 1–19 : Maison, auth, sync, Budget, Chat, recherche et Veille ;
 - 20–25 : ancien prototype Robot, conservé uniquement dans l’historique de
@@ -29,6 +49,20 @@ SQLite est en migration **32** et Dexie en version **7** :
   qualifiés et habitudes SARSA globales.
 - 31 : durée globale et bornée des impulsions du panorama corporel.
 - 32 : extension de cette durée globale jusqu'à 1 000 ms.
+- 33 : relations généralistes entre sources Web d'un même run Assistant,
+  sans modifier le contrat historique des messages.
+- 34 : exigences de recherche privées et bornées persistées avec chaque run
+  Assistant.
+- 35 : matrice privée de preuves et compteurs bornés des passes d'évaluation
+  et d'audit.
+- 36 : rapport privé et borné de validation `grounded-claims-v2`.
+- 37 : tentatives privées de traitement par run, bornées à deux par étape et
+  exposées avec des messages sûrs dans le Chat.
+- 38 : étape de rédaction Web fermée dans les diagnostics de traitement.
+- 39 : contrat de forme de réponse et audit privé borné de chaque claim, sans
+  texte de claim ni citation brute.
+- 40 : rapport `grounded-answer-v3`, journal privé des audits de réponse et
+  étapes bornées rédaction/audit/révision du mode Web approfondi.
 
 Les migrations 20–25 n’ont pas été réécrites. Les anciennes données Robot ne
 sont pas importées dans le nouveau modèle. Le retour arrière passe par la
@@ -205,24 +239,45 @@ Sa recherche Web est source-first : Tavily et Exa découvrent des documents,
 puis Friday normalise leurs URL, retire les paramètres de suivi, fusionne les
 doublons techniques et sélectionne dans le texte disponible les passages les
 plus directs relativement à la question. Le même classement généraliste sert à
-tous les sujets : pertinence pour la demande et les requêtes, diversité des
-domaines, puis fraîcheur seulement si elle est demandée. Il n'existe plus de
+tous les sujets : pertinence pour la demande et les requêtes, adéquation entre
+chaque exigence et son type de preuve attendu, diversité des domaines, puis
+fraîcheur seulement si elle est demandée. Le plan contient au plus six exigences
+persistées ; une exigence critique du mauvais type reste ouverte et alimente
+l'unique correction bornée. Il n'existe plus de
 profil métier ni de hiérarchie de domaines codée en dur. Une source ancienne
 informe le contexte mais ne prouve pas seule une nouveauté. Le routeur temporel
 local ne fournit la date civile au
 planificateur que pour une demande récente ou actuelle ; il préserve les années
 historiques demandées et corrige avant envoi les millésimes obsolètes inventés
-par le modèle. En approfondi, au plus deux pages originales peuvent être
-lues via le lecteur HTTPS/SSRF borné, puis une seule recherche corrective cible
-une lacune générale de pertinence, diversité ou fraîcheur ; au-delà, la réponse
-reste explicitement partielle. Auteur et auditeur reçoivent titre, URL, date,
-format et passages, sans étiquette d'autorité inventée. L'auditeur Qwen doit
-rendre un verdict sur chaque segment ; il corrige localement, retire une
-répétition ou un fait sans preuve, et un audit incomplet rétrograde le résultat
-persistant à `partial` sans boucle de régénération. Les citations groupées du
-modèle sont normalisées déterministement. Le banc
+par le modèle. Le léger conserve Tavily seul, cinq sources, deux lectures et
+deux crédits ; l'approfondi conserve Tavily + Exa, huit sources, quatre lectures
+et quatre crédits. Les deux modes évaluent les preuves avant rédaction et
+peuvent effectuer une seule recherche corrective, avec un déclenchement plus
+strict en léger. Auteur et auditeur reçoivent titre, URL, date, format et
+passages, sans étiquette d'autorité inventée. L'auditeur Qwen rend un verdict
+positionnel compact sur chaque segment ; une seconde passe unique récupère une
+sortie incomplète ou invalide. Friday valide les corrections et recalcule les
+citations localement. Une sortie totalement inexploitable ne diffuse plus le
+brouillon et rétrograde le résultat à `insufficient`, sans troisième audit ni
+boucle de régénération. Les citations
+groupées ou parenthésées du modèle sont normalisées déterministement. Le banc
 local Qwen/Gemma/GPT-OSS relit SQLite sans l'écrire et conserve ses résultats
 privés hors Git dans `.analysis/`.
+
+Avant la limite finale de huit sources, une couche déterministe rapproche les
+pages qui partagent une URL d'origine profonde et des marqueurs factuels
+distinctifs. Ce groupe compte comme une seule information indépendante et
+conserve au plus deux pages. Une ressemblance sans origine commune est seulement
+signalée comme probable, sans fusion ni chaînage. Le calcul est transversal aux
+sujets, sans taxonomie métier, embedding, appel LLM ou recherche supplémentaire.
+Auteur et auditeur voient les mêmes relations ; la PWA les affiche sous les
+sources via une route privée optionnelle compatible avec les anciens clients.
+Les relations probables exigent maintenant une signature factuelle compatible :
+des identifiants distinctifs divergents bloquent le rapprochement. La couverture
+requiert aussi deux unités comportant une preuve directe, et l'audit Web borné
+contrôle soutien, adéquation à la relation demandée et temporalité. Ces garde-fous
+restent généralistes et sans taxonomie métier. Les colonnes de migration 35
+sont historiques et ne sont plus alimentées par le pipeline actif.
 
 ## Niveau de preuve
 
@@ -282,6 +337,274 @@ infra/windows/Start-FridayRecipe.ps1 `
 
 Avant tout mouvement : utilisateur présent, zone sûre, arrêt accessible et
 recette explicite. Lire le [runbook Robot](runbooks/robot-alphabot2.md).
+
+## Addendum 2026-08-27 — regroupement généraliste des sources Web
+
+- La migration SQLite 33 ajoute aux sources Assistant un groupe, un niveau
+  `certain|probable|single`, une représentante et une clé d'origine interne
+  bornée. Les anciennes lignes restent `single` et le contrat historique des
+  messages n'est pas modifié.
+- Une origine commune certaine compte une fois dans la couverture et conserve
+  au plus deux pages. Une relation probable est affichée mais n'est jamais
+  fusionnée. Aucun nouveau modèle, embedding, appel réseau ou règle métier par
+  sujet n'a été ajouté.
+- La sauvegarde cohérente pré-migration est
+  `D:\FridayData\backups\friday-pre-evidence-groups-20260827-101108.sqlite` :
+  migration 32 et `integrity_check = ok`.
+- Gate logiciel : `pnpm verify` vert avec 27 tests Robot, 26 contrats,
+  15 domaine, 175 Hub, 104 PWA et 25 Playwright. Le candidat a été reconstruit
+  et redémarré ; health check `ok`, base active en migration 33 et
+  `integrity_check = ok`.
+- Cette preuve ne remplace pas une recette UX réelle d'une nouvelle recherche
+  Web sur l'A17.
+
+## Addendum 2026-08-27 — contrôle généraliste de pertinence Web
+
+- Une signature factuelle fondée sur les identifiants, nombres et termes rares
+  évite de rapprocher deux résultats seulement parce qu'ils partagent un sujet.
+- La sélection exige deux unités de preuve directe et privilégie ces pages pour
+  la lecture bornée. L'unique audit Qwen vérifie soutien, attribution et
+  temporalité ; aucune boucle, taxonomie métier ou génération supplémentaire.
+- `pnpm verify` vert : 27 tests Robot, 26 contrats, 15 domaine, 178 Hub,
+  104 PWA et 25 Playwright. Le candidat a été reconstruit et redémarré ; health
+  check `ok`. Une nouvelle réponse réelle reste une validation distincte.
+
+## Addendum 2026-08-27 — audit Web récupérable
+
+- Le contrat d'audit ne répète plus les citations ni une couverture globale ;
+  sa sortie passe à 4096 tokens et les appels JSON Qwen ont un
+  `presence_penalty` nul.
+- Chaque verdict est validé isolément. Friday conserve les corrections sûres,
+  refuse une suppression globale excessive et distingue audit complet,
+  partiel, tronqué, invalide ou indisponible sans persister la sortie brute.
+- Une qualification de passage non contractuelle telle que `[S1, P2]` est
+  ramenée à `[S1]` avant l'audit ; les identifiants `P` ne sont jamais exposés
+  comme des sources et ne peuvent plus rendre tous les segments invérifiables.
+- Un banc local dédié compare Qwen, Ministral Review et GPT-OSS sur le même
+  harnais. La première mesure conserve Qwen : Ministral dépasse la borne sur le
+  dossier réel et GPT-OSS n'a produit aucun audit structuré exploitable.
+- La recette réelle d'une nouvelle réponse Web reste distincte de cette preuve
+  automatisée et doit confirmer un nombre de segments vérifiés supérieur à zéro.
+
+## Addendum 2026-08-27 — exigences de preuve et audit fermé
+
+- Le plan Web extrait au plus six exigences généralistes et leur type de preuve
+  attendu. Elles sont privées au run, persistées par la migration 34 et
+  reconstruites déterministement si le plan structuré est invalide.
+- La sélection privilégie les documents qui couvrent encore une exigence
+  critique. Une mention pertinente provenant du mauvais type de source reste
+  `partial` et alimente l'unique recherche corrective existante.
+- Le schéma d'audit contient exactement les identifiants des segments envoyés ;
+  seules des variantes non ambiguës sont normalisées. Un audit partiel est
+  signalé dans la réponse et un audit à zéro segment échoue fermé sans diffuser
+  le brouillon.
+- Aucun modèle, appel Web, retry, second audit ou boucle d'orchestration n'a été
+  ajouté.
+- Sauvegarde cohérente pré-migration :
+  `D:\FridayData\backups\friday-pre-research-requirements-20260827T190018Z.sqlite`,
+  migration 33 et `integrity_check = ok`.
+- `pnpm verify` vert : 27 tests Robot, 26 contrats, 15 domaine, 190 Hub,
+  104 PWA et 25 Playwright. Le candidat a été reconstruit et redémarré ;
+  `/api/health` répond `ok`, base active en migration 34 et
+  `integrity_check = ok`.
+- La qualité d'une nouvelle réponse Web réelle reste une recette UX distincte.
+
+## Addendum 2026-08-27 — recherche adaptative et correction bornée
+
+- Web léger et approfondi partagent désormais sélection, relations de sources,
+  lecture originale, matrice exigences/preuves et audit fermé. Le léger reste
+  Tavily-only avec des plafonds plus bas et ne corrige qu'une lacune critique
+  ou une preuve directe insuffisante.
+- Le modèle du run évalue les preuves avant rédaction. Une unique recherche
+  corrective peut être suivie d'une unique réévaluation ; les sources restent
+  des données hostiles et le classement déterministe peut rétrograder un soutien
+  du mauvais type.
+- L'audit devient positionnel et accepte une seule seconde passe. Aucun segment
+  factuel non contrôlé n'est diffusé quand les suppressions rendent le résultat
+  inexploitable ; il n'existe ni troisième audit ni réécriture complète.
+- La migration 35 ajoute seulement la matrice privée et deux compteurs bornés.
+  La sauvegarde pré-migration
+  `D:\FridayData\backups\friday-pre-corrective-research-20260827T230810.sqlite`
+  est intègre en migration 34. `pnpm verify` est vert avec 27 tests Robot,
+  26 contrats, 15 domaine, 193 Hub, 104 PWA et 25 Playwright. Le candidat a été
+  reconstruit et redémarré ; `/api/health`, la migration 35 active et
+  `integrity_check` sont verts. Une nouvelle conversation A17 reste une recette
+  UX distincte.
+
+## Addendum 2026-08-28 — benchmark généraliste du Chat
+
+- Un corpus v1 public et synthétique couvre 60 cas : 48 Web équilibrés entre
+  huit catégories, 16 variantes réseau et 12 demandes locales/conversationnelles.
+- Un corpus difficile v2 séparé ajoute 32 dossiers synthétiques sur les angles
+  morts du premier banc : négation étayée, preuves réparties, contradiction,
+  origine commune, date du fait, entité/version, page longue ou tronquée et
+  source hostile. Il compare aussi plusieurs structures du pipe, permute
+  l'ordre des sources et rend les échecs critiques non compensables.
+- Le runner compare séparément planificateur, évaluateur de preuves, rédacteur,
+  auditeur et pipeline figé. Les appels Ollama sont sérialisés, reproductibles
+  par graine, checkpointés après chaque cas et suspendus si un Chat réel est en
+  cours.
+- Les suites end-to-end figées emploient deux auditeurs locaux distincts du
+  candidat. Moins de deux verdicts valides, une divergence supérieure à 0,35
+  ou un désaccord sur une erreur critique rend la note subjective non
+  concluante ; le score déterministe reste alors seul utilisé.
+- Les rapports sont hors Git sous `D:\FridayData\evaluations`. La suite réseau
+  exige `--allow-network`; elle reste hors de `pnpm verify` et peut consommer les
+  quotas Tavily/Exa.
+- L'inventaire ne reconnaît que des tags maintenus dans une liste de confiance.
+  Les téléchargements optionnels sont bornés à trois challengers, sérialisés et
+  refusés sous 20 Go libres. Aucun modèle ni contenu Web ne peut injecter un tag.
+- Une campagne fumée Qwen sur huit tâches a produit un rapport reprenable sans
+  erreur : planificateur 0,839, évaluateur 0,750, rédacteur 0,810 et auditeur
+  1,000. Ce résultat valide le harnais, pas la supériorité d'un modèle.
+- La reprise du même smoke a ajouté deux pipelines figés complets à 0,883 en
+  environ 145 secondes chacun. Ministral Review a produit un jugement valide,
+  mais GPT-OSS non : avec un seul juge exploitable, la note subjective est
+  correctement restée `inconclusive` et n'a pas modifié le score déterministe.
+- Les trois challengers qualifiés ont été téléchargés séquentiellement le
+  28 août : `lfm2.5:8b` (5,2 Go), `granite4.1:3b` (2,1 Go) et
+  `ministral-3:3b` (3,0 Go). Ils sont disponibles pour le banc mais ne sont pas
+  sélectionnés dans le Chat.
+- Le smoke multi-modèles de 24 tâches est sans erreur de contrat. Sur seulement
+  deux cas, LFM2.5 et Granite 4.1 obtiennent 1,000 comme évaluateurs, Ministral
+  3B 0,879 comme rédacteur et Granite 4.1 0,864 comme planificateur. Tous les
+  verdicts restent `inconclusive` : cet échantillon qualifie les chemins
+  d'exécution mais ne justifie aucune bascule avant la grande campagne.
+- Le benchmark ne modifie jamais la configuration du Chat. Une bascule de
+  modèle exige encore une campagne comparative concluante et un checkpoint
+  utilisateur.
+- Gate logicielle du lot : `pnpm verify` vert avec 27 tests Robot Python,
+  26 contrats, 15 domaine, 202 Hub, 104 PWA, 25 Playwright et les builds de
+  production. La suite réseau et la grande campagne modèles restent des
+  mesures volontaires, hors de cette gate déterministe.
+- Le candidat a été reconstruit et redémarré via le runbook ; le health check
+  local répond sur `https://127.0.0.1:8443`. Aucune recette qualitative mobile
+  ni grande campagne comparative n'est déduite de ce redémarrage.
+
+## Addendum 2026-08-29 — Grounded Claims v2
+
+- Les deux campagnes complètes ont conduit à retenir Gemma 4 E4B QAT comme
+  modèle unique des nouveaux messages Chat. Le choix envoyé par une ancienne
+  PWA reste accepté pour compatibilité mais le hub le remplace par Gemma ; les
+  métadonnées historiques Qwen restent lisibles.
+- Le chemin Web est ramené à une structure unique : planification temporelle et
+  exigences déterministes, Tavily/Exa, sélection et lecture, au plus une
+  recherche corrective, extraction de claims Gemma, validation déterministe,
+  puis un seul lot Gemma optionnel pour les relations ambiguës.
+- Il n'existe plus de planificateur LLM, rédacteur Web libre, évaluateur
+  sémantique de preuves, audit global par segments ou boucle de réécriture. Les
+  anciens scripts de benchmark associés à ces rôles ont été retirés ; leurs
+  rapports restent conservés sous `D:\FridayData\evaluations`.
+- Chaque claim doit référencer une source connue et une citation exacte. Le hub
+  refuse les nombres, dates ou identifiants non ancrés, les indépendances
+  fictives, la date du document utilisée comme date du fait, les vidéos seules
+  insuffisantes, les instructions de source et les sorties de contrat
+  invalides. L'échec est fermé et devient une limite visible.
+- La migration 36 ajoute au run un rapport `grounded-claims-v2` privé et borné :
+  couverture, claims acceptés/vérifiés/refusés, vérificateur utilisé, motifs
+  agrégés et versions des prompts. Les colonnes de migration 35 sont conservées
+  uniquement pour l'historique.
+- `pnpm verify` est vert : 27 tests Robot, 26 contrats, 15 domaine, 172 Hub,
+  104 PWA, 25 Playwright et les builds. La sauvegarde pré-migration
+  `friday-pre-grounded-claims-v2-20260829T202212Z.sqlite` est intègre en
+  migration 35. Le candidat a été reconstruit et redémarré ; la base active est
+  en migration 36, `integrity_check = ok`, et `/api/health` répond `ok`.
+- Une nouvelle recherche réelle légère et approfondie reste une recette
+  qualitative A17 séparée de ces preuves automatisées.
+
+## Addendum 2026-08-29 — harnais borné commun aux quatre modes
+
+- Les sorties structurées Web et Friday distinguent désormais transport JSON,
+  normalisation des identifiants et validation sémantique. Seuls une sortie
+  vide, un JSON invalide ou un contrat invalide autorisent une réparation ; il
+  n'existe qu'une tentative supplémentaire et elle ne relance aucune source.
+- Une information actuelle n'exige plus automatiquement deux origines. Deux
+  groupes indépendants restent obligatoires pour une exigence déclarée
+  indépendante ou critique ; la date du fait reste obligatoire pour le
+  caractère actuel.
+- Local conserve l'historique conversationnel et autorise une seule
+  continuation après `done_reason=length`. Friday passe par des claims `F*` et
+  dispose d'un rendu déterministe des faits autorisés en dernier repli.
+- La migration 37 ajoute les tentatives privées de traitement par run : étape,
+  tentative bornée à deux, modèle, état, durée, tokens et code sûr. La PWA les
+  affiche séparément des diagnostics de recherche et du rapport d'ancrage.
+- `pnpm verify` est vert : 27 tests Robot, 26 contrats, 15 domaine, 178 Hub,
+  104 PWA, 25 Playwright et les builds. Le snapshot cohérent
+  `friday-pre-chat-harness-v3-20260829T211502Z.sqlite` est intègre en migration 36. Le candidat a été reconstruit et redémarré ; la base active est en
+  migration 37, `integrity_check = ok`, sans violation de clé étrangère, et
+  `/api/health` répond `status=ok`, `database=ok`.
+- Aucune qualité de réponse mobile réelle n'est déduite de ces preuves ; une
+  recette des quatre modes reste distincte.
+
+## Addendum 2026-08-30 — correction post-audit du Chat Web
+
+- Les modes Web partagent désormais une boucle unique et bornée : première
+  recherche, sélection, extraction des claims, puis au plus une correction sur
+  l'exigence réellement absente. La correction conserve le premier dossier si
+  le réseau ou la seconde extraction échoue et ne lance aucune boucle ouverte.
+- Les demandes multi-critères gardent un sujet générique commun dans leurs
+  requêtes. Une relance réutilise au plus quatre sources publiques récentes de
+  la même conversation et du même profil ; aucune requête ni association
+  privée n'est mutualisée.
+- Le prompt d'extraction v3 distingue observation, comparaison et conclusion.
+  Deux origines indépendantes sont exigées pour conclure sur une exigence
+  critique, pas pour restituer une observation directe. Les variantes
+  typographiques des citations sont réalignées sur le texte original ; nombres,
+  dates et identifiants restent contrôlés uniquement contre les citations.
+- Le registre de claims accepté est désormais transmis à un unique rédacteur
+  Gemma fermé, sans passages bruts ni accès aux moteurs. Il choisit une forme
+  narrative, comparative, procédurale, sélective ou brève ; chaque fragment
+  référence ses claims et le hub fabrique les citations. Une invention, une
+  exigence perdue ou un contrat invalide provoque le repli déterministe sur les
+  claims vérifiés, sans nouvelle recherche ni boucle de réécriture.
+- Il n'existe toujours ni rédacteur libre, ni LangGraph, ni nouveau modèle, ni
+  règle liée à un produit ou un domaine particulier. Les préambules génériques
+  sont retirés des requêtes sans forcer d'année lorsqu'elle n'est pas utile.
+- La migration 38 ajoute uniquement l'étape privée `web_editorial` aux
+  diagnostics de traitement ; aucun texte brut n'est persisté. `pnpm verify`
+  est vert avec 27 tests Robot, 26 contrats, 15 domaine, 193 Hub, 105 PWA,
+  25 Playwright et les builds de production. Le snapshot cohérent
+  `friday-pre-grounded-editor-20260830T015457.sqlite` est intègre en migration 37. Le candidat a été reconstruit et redémarré ; la base active est en
+  migration 38 et `/api/health` répond `status=ok`, `database=ok`, avec
+  `integrity_check = ok` et aucune violation de clé étrangère.
+- Aucune recherche réelle ni génération Ollama n'a été lancée pendant le
+  déploiement. La qualité d'une conversation réelle reste une recette UX
+  séparée.
+
+## Addendum 2026-08-30 — harnais Web atomique et banc isolé
+
+- Le contrat actif passe aux prompts extracteur/vérificateur v4 et rédacteur
+  v2. Les sources sont découpées en atomes identifiés ; l'auditeur conserve
+  seulement les indexes qu'il soutient et le hub réapplique ensuite tous les
+  contrôles déterministes sur ce sous-ensemble.
+- La provenance des pages n'est plus écrasée par la sélection de passages. Les
+  lectures sont dédupliquées par URL canonique et une redirection ou une source
+  secondaire ne peut pas devenir implicitement une page primaire.
+- La couverture est calculée sur les seuls claims finaux. Une exigence de
+  source primaire/autoritative sans source de ce niveau est signalée partielle,
+  et les questions temporelles affichent la publication la plus récente comme
+  simple repère documentaire.
+- SQLite 39 ajoute `assistant_grounding_claim_audits` et trois champs bornés de
+  contrat de réponse. Les audits restent privés par profil et ne persistent ni
+  texte de claim ni citation brute.
+- Le banc actif passe par le véritable `AssistantService`, dans une SQLite
+  jetable, et ne modifie pas le Chat de production. Le cinquième cycle réel a
+  produit 3 claims vérifiés sur le cas récent et 4 sur le comparatif ; les deux
+  contrats structurés sont allés jusqu'au rédacteur. Les rapports complets
+  restent hors Git sous `D:\FridayData\evaluations\assistant-refinement`.
+- Les dernières lacunes observées ont été traitées sans nouveau rôle :
+  normalisation bornée du JSON, contrôle de niveau de source, repère temporel
+  documentaire, termes budgétaires génériques et correction du barème qui
+  confondait un tableau Markdown avec une liste plate.
+- La gate finale est verte : 27 tests Robot, 26 contrats, 15 domaine, 200 Hub,
+  105 PWA, 25 Playwright et les builds de production. Le snapshot cohérent
+  `friday-pre-grounded-audit-v4-20260830T100443Z.sqlite` est intègre en
+  migration 38. Le candidat a été reconstruit et redémarré ; `/api/health`
+  répond `status=ok`, `database=ok`, et la base active est en migration 39 avec
+  `integrity_check = ok`, zéro violation de clé étrangère et la table d'audit
+  présente.
+- Cette preuve ne remplace pas une nouvelle recette qualitative réelle sur
+  l'A17 après déploiement.
 
 ## Addendum 2026-08-27 — veille réseau AlphaBot2
 

@@ -9,10 +9,11 @@ l’historique. L’audit initial et son ré-audit du 27 août sont consignés d
 Lire dans cet ordre :
 
 1. [00-reprise-nouveau-chat.md](00-reprise-nouveau-chat.md) — handoff court ;
-2. [27-etat-canonique-app-robot-2026-08-25.md](27-etat-canonique-app-robot-2026-08-25.md) — vérité d’implémentation App + Robot ;
-3. [09-decision-finale-pwa-mvp.md](09-decision-finale-pwa-mvp.md) — décisions produit encore actives ;
-4. [10-feuille-de-route-technique-implementation.md](10-feuille-de-route-technique-implementation.md) — principes d’exécution, tests et gates ;
-5. le runbook du domaine modifié.
+2. [32-fondation-reconstruction-chat.md](32-fondation-reconstruction-chat.md) pour toute reprise du Chat ;
+3. [27-etat-canonique-app-robot-2026-08-25.md](27-etat-canonique-app-robot-2026-08-25.md) — vérité d’implémentation App + Robot ;
+4. [09-decision-finale-pwa-mvp.md](09-decision-finale-pwa-mvp.md) — décisions produit encore actives ;
+5. [10-feuille-de-route-technique-implementation.md](10-feuille-de-route-technique-implementation.md) — principes d’exécution, tests et gates ;
+6. le runbook du domaine modifié.
 
 `AGENTS.md`, à la racine, reste l’autorité sur la façon de travailler dans le
 workspace. En cas d’écart factuel entre un ancien checkpoint et le code, le
@@ -23,10 +24,12 @@ document 27 puis le code testé prévalent.
 | Besoin                           | Document                                                                                                             |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | état global App + Robot          | [27 — état canonique](27-etat-canonique-app-robot-2026-08-25.md)                                                     |
+| reconstruire le Chat             | [32 — fondation du nouveau Chat](32-fondation-reconstruction-chat.md)                                                |
+| préparer les urgences techniques | [31 — plan de durcissement prioritaire](31-plan-durcissement-prioritaire.md)                                         |
 | développer ou vérifier           | [runbook développement](runbooks/development.md)                                                                     |
 | exploiter AlphaBot2              | [runbook Robot](runbooks/robot-alphabot2.md) et [checkpoint Récup](29-checkpoint-recuperation-humaine-2026-08-25.md) |
 | comprendre l’autonomie actuelle  | [30 — autonomie topologique visuelle](30-decision-autonomie-topologique-visuelle.md)                                 |
-| exploiter le Chat                | [runbook Assistant](runbooks/assistant-gemma.md)                                                                     |
+| vérifier l'archive Chat          | [runbook Chat](runbooks/assistant-gemma.md)                                                                          |
 | exploiter la Veille              | [runbook Veille](runbooks/veille-rss.md)                                                                             |
 | classer les courses              | [runbook classement](runbooks/classement-courses.md)                                                                 |
 | reprendre le Budget              | [runbook Budget](runbooks/reprise-budget.md)                                                                         |
@@ -40,6 +43,8 @@ document 27 puis le code testé prévalent.
 - **Canoniques** : `00`, `27`, ce fichier et les runbooks.
 - **Décisions actives** : `09`, `10`, les ADR et le modèle de menace. Le
   document 10 est une feuille de route cumulative, pas un état live.
+- **Plan d’implémentation actif** : `31` ordonne les chantiers urgents, mais ne
+  constitue jamais une preuve que les fonctions décrites sont livrées.
 - **Checkpoints de domaine** : `12`, `13`, `15-checkpoint`, `17`, `18`, `22` à
   `26` et `29`. Ils expliquent une verticale ou une étape datée ; le document
   27 tranche l’état global courant.

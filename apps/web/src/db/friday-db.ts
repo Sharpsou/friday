@@ -69,14 +69,6 @@ export interface AssistantMessageRow {
   profileId: string;
 }
 
-export interface AssistantOutboxRow {
-  clientRequestId: string;
-  conversationId: string;
-  createdAt: string;
-  encrypted: EncryptedEnvelope;
-  profileId: string;
-}
-
 export interface WatchSnapshotRow {
   encrypted: EncryptedEnvelope;
   profileId: string;
@@ -97,7 +89,6 @@ export interface WatchOutboxRow {
 class FridayDatabase extends Dexie {
   assistantConversations!: EntityTable<AssistantConversationRow, 'id'>;
   assistantMessages!: EntityTable<AssistantMessageRow, 'id'>;
-  assistantOutbox!: EntityTable<AssistantOutboxRow, 'clientRequestId'>;
   budgetEntries!: EntityTable<BudgetRow, 'id'>;
   budgetEnvelopes!: EntityTable<BudgetRow, 'id'>;
   budgetPlannedExpenses!: EntityTable<BudgetRow, 'id'>;

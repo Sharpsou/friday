@@ -163,14 +163,8 @@ function InferenceIndicator({ status }: { status: InferenceStatus }) {
   const activeLabel =
     status.active?.kind === 'watch'
       ? 'IA occupée par la Veille'
-      : status.active?.kind === 'assistant'
-        ? 'IA occupée par le Chat'
-        : 'IA en attente';
+      : 'IA en attente';
   const waiting: string[] = [];
-  if (status.queued.assistant > 0)
-    waiting.push(
-      `${status.queued.assistant.toString()} demande${status.queued.assistant > 1 ? 's' : ''} Chat en attente`,
-    );
   if (status.queued.watch > 0)
     waiting.push(
       `${status.queued.watch.toString()} traitement${status.queued.watch > 1 ? 's' : ''} Veille en attente`,
@@ -204,7 +198,6 @@ export function App() {
   const [budgetState, setBudgetState] = useState(EMPTY_BUDGET_STATE);
   const [budgetQuickAddOpen, setBudgetQuickAddOpen] = useState(false);
   const [watchCreatorOpen, setWatchCreatorOpen] = useState(false);
-  const [assistantCreateRequest, setAssistantCreateRequest] = useState(0);
   const [inferenceStatus, setInferenceStatus] =
     useState<InferenceStatus | null>(null);
   const [classificationPreviewOpen, setClassificationPreviewOpen] =
@@ -1145,9 +1138,7 @@ export function App() {
       ) : null}
 
       {inferenceStatus &&
-      (inferenceStatus.active ||
-        inferenceStatus.queued.assistant > 0 ||
-        inferenceStatus.queued.watch > 0) ? (
+      (inferenceStatus.active || inferenceStatus.queued.watch > 0) ? (
         <InferenceIndicator status={inferenceStatus} />
       ) : null}
 
@@ -1735,10 +1726,7 @@ export function App() {
               </section>
             }
           >
-            <AssistantView
-              assistantModel={preferences.assistantModel}
-              createRequest={assistantCreateRequest}
-            />
+            <AssistantView />
           </Suspense>
         ) : null}
 
@@ -2208,35 +2196,6 @@ export function App() {
                 </div>
               </fieldset>
               <fieldset>
-                <legend>Modèle du Chat</legend>
-                <p>
-                  Le modèle choisi sera utilisé pour les nouveaux messages sur
-                  cet appareil. Une demande relancée conserve son modèle
-                  initial.
-                </p>
-                <label htmlFor="assistant-model">
-                  <span>Modèle local</span>
-                  <select
-                    id="assistant-model"
-                    value={preferencesDraft.assistantModel}
-                    onChange={(event) =>
-                      setPreferencesDraft((current) => ({
-                        ...current,
-                        assistantModel:
-                          event.target.value === 'qwen3.5'
-                            ? 'qwen3.5'
-                            : 'gemma4',
-                      }))
-                    }
-                  >
-                    <option value="qwen3.5">Qwen 3.5 9B Q4 · recommandé</option>
-                    <option value="gemma4">
-                      Gemma 4 E4B QAT · thinking approfondi
-                    </option>
-                  </select>
-                </label>
-              </fieldset>
-              <fieldset>
                 <legend>Nombre de tâches affichées</legend>
                 <label htmlFor="today-task-limit">
                   <span>Aujourd’hui</span>
@@ -2290,27 +2249,21 @@ export function App() {
         </div>
       ) : null}
 
-      {destination !== 'robot' ? (
+      {destination !== 'robot' && destination !== 'assistant' ? (
         <button
           className="fab"
           type="button"
           onClick={
-            destination === 'assistant'
-              ? () => setAssistantCreateRequest((current) => current + 1)
-              : destination === 'groceries'
-                ? openGroceryQuickAdd
-                : destination === 'budget'
-                  ? () => setBudgetQuickAddOpen(true)
-                  : destination === 'watch'
-                    ? () => setWatchCreatorOpen(true)
-                    : openQuickAdd
+            destination === 'groceries'
+              ? openGroceryQuickAdd
+              : destination === 'budget'
+                ? () => setBudgetQuickAddOpen(true)
+                : destination === 'watch'
+                  ? () => setWatchCreatorOpen(true)
+                  : openQuickAdd
           }
           aria-label={
-            destination === 'assistant'
-              ? 'Nouvelle conversation'
-              : destination === 'watch'
-                ? 'Créer une veille'
-                : 'Ajouter rapidement'
+            destination === 'watch' ? 'Créer une veille' : 'Ajouter rapidement'
           }
         >
           +

@@ -4,6 +4,12 @@
 > d’exécution restent utiles, mais ses encarts datés ne décrivent pas tous
 > l’état live. Pour la reprise et les migrations actuelles, consulter
 > [27-etat-canonique-app-robot-2026-08-25.md](27-etat-canonique-app-robot-2026-08-25.md).
+>
+> **Chat — sections historiques remplacées.** Les sections décrivant l’ancien
+> moteur, ses routes, modèles, recherches et files ne constituent plus une
+> cible d’implémentation. Le moteur est retiré et le HTTP d’envoi reste `410` ;
+> [32-fondation-reconstruction-chat.md](32-fondation-reconstruction-chat.md)
+> est l’unique fondation active de sa reconstruction.
 
 Date : 8 août 2026
 

@@ -27,11 +27,11 @@ import {
 } from '@friday/contracts';
 
 import type {
-  AssistantEngine,
+  WatchLanguageEngine,
   WatchAnalysis,
   WatchSynthesis,
-} from '../assistant/assistant-engine.js';
-import { TavilySearchClient } from '../assistant/tavily-search.js';
+} from './ollama-watch-engine.js';
+import { TavilySearchClient } from './tavily-search.js';
 import { SecureFeedClient, type ValidatedFeed } from './feed-client.js';
 
 const FETCH_INTERVAL_MS = 6 * 60 * 60_000;
@@ -100,7 +100,7 @@ export class WatchService {
 
   constructor(
     private readonly database: Database.Database,
-    private readonly engine: AssistantEngine,
+    private readonly engine: WatchLanguageEngine,
     private readonly feedClient = new SecureFeedClient(),
     private readonly tavily = new TavilySearchClient(undefined),
   ) {

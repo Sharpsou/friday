@@ -7,7 +7,6 @@
     "build": "tsup src/main.ts src/robot/robot-vision-worker.ts --format esm --target node24 --sourcemap --clean --external better-sqlite3 --external onnxruntime-node --external sharp",
     "dev": "tsx watch src/main.ts",
     "eval:grocery-classification": "tsx src/groceries/evaluate-grocery-classification.ts",
-    "eval:assistant-research": "tsx src/assistant/evaluate-research-models.ts",
     "seed:budget": "tsx src/budget/budget-seed.ts",
     "start": "node dist/main.js",
     "test": "vitest run --maxWorkers=4",

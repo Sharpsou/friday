@@ -1,5 +1,12 @@
 # Friday — guide complet fonctionnel et technique
 
+> **Important — Chat en reconstruction.** Toutes les descriptions ci-dessous
+> de l’ancien moteur Chat (modes, modèles, recherche, file, outbox et routes
+> d’envoi) sont conservées comme historique, mais sont remplacées par
+> [`docs/32-fondation-reconstruction-chat.md`](../32-fondation-reconstruction-chat.md).
+> L’état actif est une archive privée en lecture seule ; aucun envoi n’est
+> réactivé avant validation humaine du nouveau banc hors ligne.
+
 Date de référence : 27 août 2026
 
 Public : lecteur à l’aise avec Python, R et SQL, mais débutant en TypeScript/React
@@ -365,9 +372,14 @@ L’écran montre :
 
 Les données financières réelles ne doivent pas être chargées avant validation de BitLocker, des ACL de `D:\FridayData` et d’une sauvegarde préalable.
 
-### 5.9 Chat
+### 5.9 Chat — archive active et moteur historique
 
-Le Chat est privé par profil, contrairement aux données Maison. Une route vérifie toujours le profil de la session avant de retourner conversation, messages ou run.
+Le Chat actif est privé par profil et limité à la consultation, l’archivage et
+la suppression de conversations historiques. Une route vérifie toujours le
+profil de la session avant de retourner les conversations ou messages. Les
+citations `[S…]` renvoient à la liste de sources affichée sous chaque ancienne
+réponse. Toute la description de moteur qui suit dans cette section est
+historique et ne doit pas être utilisée pour réactiver l’envoi.
 
 Chaque conversation choisit un mode :
 
@@ -417,7 +429,9 @@ Les seuils mensuels Tavily sont 750 crédits pour l’alerte, 850 pour bloquer l
 
 #### Offline du Chat
 
-Les conversations et réponses déjà chargées restent lisibles depuis le cache chiffré. Un message rédigé hors ligne est placé dans une outbox Chat séparée et envoyé au retour réseau avec son `clientRequestId`. Créer une nouvelle conversation exige toutefois le hub.
+Les conversations et réponses déjà chargées restent lisibles depuis le cache
+chiffré. L’ancienne outbox est conservée pour compatibilité historique mais
+n’est plus alimentée : aucun message ne peut être rédigé ou envoyé.
 
 Le Chat ne dispose d’aucune route permettant de modifier directement Agenda, Courses ou Budget.
 
@@ -976,15 +990,10 @@ Les routes publiques génériques d’inscription/connexion Better Auth sont mas
 
 ### 11.4 Chat
 
-| Groupe        | Routes                                             |
-| ------------- | -------------------------------------------------- |
-| conversations | lister, créer, modifier, archiver/supprimer        |
-| messages      | lire l’historique et soumettre un message          |
-| runs          | lire, mettre en pause/annuler, reprendre/réessayer |
-| consentement  | accepter ou refuser les requêtes nettoyées         |
-| événements    | lire le journal opérationnel d’un run              |
-| quota         | lire l’usage Web mensuel                           |
-| file          | résumé des demandes privées du profil              |
+Les routes actives permettent seulement de lister, renommer,
+archiver/supprimer les conversations privées et de lire leurs messages. Toute
+tentative d’envoi reçoit HTTP `410`. Les anciennes routes de runs,
+consentement, quota et file ne sont plus enregistrées.
 
 ### 11.5 Veille
 
@@ -1139,15 +1148,13 @@ Il faut au minimum :
 
 Commencez dans `packages/domain/src/index.test.ts` avec une fixture lisible. Changez ensuite la fonction pure. Évitez de placer une formule uniquement dans `BudgetView.tsx`, car elle deviendrait difficile à tester et à réutiliser.
 
-### 13.5 Modifier l’Assistant
+### 13.5 Modifier le Chat
 
-Séparez trois niveaux :
-
-- interface/polling/cache : `apps/web` ;
-- orchestration et persistance : `assistant-service.ts` ;
-- modèle/prompts/HTTP Ollama : `assistant-engine.ts`.
-
-Toute nouvelle source Web doit être une décision produit et sécurité explicite. Les voies Internet actuelles du Chat sont Tavily et le MCP Exa anonyme ; la Veille utilise RSS/Atom, la lecture HTTP bornée et un complément Tavily limité. Ne donnez pas au Chat un accès direct aux mutations métier.
+L’archive active se limite à `apps/web`, au client/cache de lecture et à
+`assistant-service.ts`. Le futur moteur se développe uniquement dans le banc
+hors ligne décrit par le document 32, sans route HTTP ni dépendance PWA. Ne
+réintroduisez pas les anciens moteurs supprimés et ne donnez jamais au Chat un
+accès direct aux mutations métier.
 
 ### 13.6 Modifier la base SQLite
 
