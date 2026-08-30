@@ -1,7 +1,7 @@
 # Runbook Chat — état de reconstruction
 
 Date : 30 août 2026
-Statut : moteur retiré, archive historique uniquement
+Statut : archive historique active, banc hors ligne implanté
 
 Le Chat n'envoie plus de message et n'appelle plus Ollama, Tavily ou Exa. Les
 anciens modes et le sélecteur de modèle ont été supprimés. La PWA permet encore
@@ -33,3 +33,53 @@ Aucune variable `FRIDAY_ASSISTANT_*` n'est utilisée. La Veille possède désorm
 son moteur Qwen et son client Tavily propres, configurés par
 `FRIDAY_WATCH_MODEL`, `FRIDAY_WATCH_TIMEOUT_MS` et la clé Tavily déjà exploitée
 par ce domaine. Cette isolation ne préjuge pas du futur Chat.
+
+## Banc hors ligne
+
+Le workspace `packages/chat-eval` ne doit jamais être importé par `apps/hub` ou
+`apps/web`. Il n'expose aucune route et écrit seulement sous
+`D:\FridayData\evaluations\chat-foundation-v1`.
+
+Initialiser une seule fois l'arborescence privée et inventorier les anciens
+manifests en lecture seule :
+
+```powershell
+pnpm --filter @friday/chat-eval corpus:init
+```
+
+Compléter `corpus-draft.json` avec les pages originales et critères humains,
+passer chaque fiche à `ready_to_freeze`, puis geler une seule fois :
+
+```powershell
+pnpm --filter @friday/chat-eval corpus:freeze
+```
+
+Le fichier `corpus.json` est créé avec l'option exclusive : un second gel
+échoue au lieu d'écraser la validation. Lancer d'abord le développement, puis
+la validation seulement lorsque les ajustements sont terminés :
+
+```powershell
+pnpm --filter @friday/chat-eval evaluate -- --split=development
+pnpm --filter @friday/chat-eval evaluate -- --split=validation
+```
+
+Chaque commande compare les deux couples Gemma/Qwen sur trois graines. Les
+réponses complètes et la clé restent dans `results`; `reviews` reçoit les
+sorties A/B sans nom de modèle. Aucun prompt, page brute, secret ou chaîne de
+raisonnement n'est journalisé.
+
+Une erreur de schéma, une URL/HTML/citation inventée, un timeout ou une sortie
+trop grande produit un code sûr et arrête la tentative concernée. Il n'existe
+pas de réparation JSON ni de boucle supplémentaire. Tant que les 20 fiches ne
+sont pas gelées et jugées humainement, le HTTP d'envoi reste `410`.
+
+Contrôler le banc seul avec :
+
+```powershell
+pnpm --filter @friday/chat-eval typecheck
+pnpm --filter @friday/chat-eval test
+```
+
+La gate de livraison reste `pnpm verify`. Les tests hostiles couvrent injection
+directe/indirecte, exfiltration, fausse citation, URL inventée, HTML hostile et
+JSON invalide.

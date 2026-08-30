@@ -1,7 +1,7 @@
 # Fondation de la reconstruction du Chat Friday
 
-Date : 30 août 2026  
-Statut : **document fondateur du prochain Chat**
+Date : 30 août 2026
+Statut : **fondation hors ligne implantée ; corpus à compléter et geler**
 
 ## 1. Décision prise
 
@@ -132,22 +132,31 @@ de durée, et traiter toute page comme une donnée hostile.
 
 Le code extrait des passages continus avec titre de page, intertitre, URL et
 quelques phrases de contexte. Le classement dépend de la question, de la
-proximité lexicale/sémantique, du caractère primaire de la source et de la
-diversité. Il ne transforme pas les passages en claims ni en cartes.
+proximité lexicale et de la diversité des sources. Une proximité sémantique ou
+un reranker n'est ajouté que si le banc démontre la limite de ce point de
+départ. Il ne transforme pas les passages en claims ni en cartes.
 
-Contrat minimal envisagé :
+Contrats implantés :
 
 ```ts
-interface EvidencePassage {
-  id: string;
-  sourceId: string;
+interface EvidenceSource {
+  id: `S${number}`;
   url: string;
   title: string;
+  publishedAt?: string;
+  retrievedAt: string;
+}
+
+interface EvidencePassage {
+  id: `P${number}`;
+  sourceId: EvidenceSource['id'];
   heading?: string;
   text: string;
-  publishedAt?: string;
 }
 ```
+
+L'URL reste exclusivement dans `EvidenceSource`. Le modèle ne voit et ne cite
+que les identifiants de passage ; le code résout ensuite `P → S → URL`.
 
 Le texte doit rester assez long pour préserver le sens. Les limites portent
 sur le dossier total, pas sur une phrase artificiellement raccourcie.
@@ -161,25 +170,33 @@ vu des bancs, pas une décision irrévocable.
 
 ### 4.6 Audit
 
-Un seul auditeur indépendant reçoit la question, le brouillon et exactement les
-mêmes passages. Son contrat reste petit :
+Un seul auditeur indépendant reçoit la question, des unités découpées
+déterministiquement après rédaction et exactement les mêmes passages. Il ne
+recopie pas les phrases :
 
 ```ts
+interface AuditUnit {
+  id: `U${number}`;
+  text: string;
+  citedPassageIds: EvidencePassage['id'][];
+}
+
 interface AnswerAudit {
-  factualIssues: Array<{
-    sentence: string;
-    verdict: 'supported' | 'unsupported' | 'contradicted';
-    passageIds: string[];
-    reason: string;
+  units: Array<{
+    unitId: AuditUnit['id'];
+    verdict: 'supported' | 'unsupported' | 'contradicted' | 'not_factual';
+    passageIds: EvidencePassage['id'][];
+    reason?: string;
   }>;
   usefulness: 'answers' | 'partial' | 'misses';
   missingAspects: string[];
-  decision: 'pass' | 'revise' | 'insufficient_evidence';
+  evidenceSufficiency: 'sufficient' | 'insufficient';
 }
 ```
 
-Le Hub valide les identifiants, mais ne prétend pas juger sémantiquement un
-sujet par des regex métier. Qwen est le premier candidat auditeur issu du banc.
+Zod refuse les champs supplémentaires, doublons et identifiants hors dossier.
+La décision `pass|revise|research|partial` appartient au code, jamais à
+l'auditeur. Qwen est le premier candidat auditeur issu du banc.
 
 ### 4.7 Correction bornée
 
@@ -217,7 +234,7 @@ hors ligne sur des dossiers de pages figés.
 
 1. Constituer 10 cas de développement et 10 cas de validation, généralistes :
    actualité, explication, comparaison, recommandation, procédure, local,
-   scientifique, technique et relance contextuelle.
+   scientifique, technique, haut risque et relance contextuelle.
 2. Pour chaque cas, conserver question, pages lues, réponse attendue sous forme
    de critères et jugement humain. Ne pas encoder les mots attendus dans le
    pipeline.
@@ -249,17 +266,16 @@ le corpus avant de devenir une gate.
 - un index/RAG ou LangGraph avant que le chemin linéaire ait démontré sa limite ;
 - des appels modèles supplémentaires sans gain mesuré sur le banc gelé.
 
-## 8. Point de reprise pour un nouveau chat
+## 8. Point de reprise utilisateur
 
-Le prochain travail commence ici, pas dans l'ancien runbook :
+La fondation logicielle est désormais implantée. Le prochain checkpoint n'est
+pas une reconnexion de l'interface :
 
-1. vérifier que le Chat déployé est toujours une archive en lecture seule ;
-2. inventorier les dossiers figés utiles sous `D:\FridayData\evaluations` sans
-   copier de données privées dans Git ;
-3. spécifier `EvidencePassage` et `AnswerAudit` dans un petit prototype séparé ;
-4. implanter le banc hors ligne avant tout endpoint d'envoi ;
-5. présenter les résultats humains avant de choisir définitivement les modèles
-   et de reconnecter l'interface.
+1. compléter les 20 fiches privées avec questions, critères et pages originales ;
+2. faire relire puis geler les 10 cas de développement et 10 de validation ;
+3. exécuter trois graines sur les deux couples de modèles ;
+4. comparer les sorties A/B anonymisées ;
+5. décider seulement ensuite si un modèle et le harnais franchissent les seuils.
 
 Toute proposition qui ajoute plus d'une étape ou d'une boucle doit démontrer
 son gain sur la validation gelée et justifier son coût de maintenance.
@@ -273,3 +289,83 @@ le runbook Windows. `/api/health` répond `status=ok`, `database=ok` et
 `ollama=not-required`. La SQLite active reste en migration 40 avec
 `integrity_check=ok`, aucune violation de clé étrangère, quatre conversations
 et huit messages historiques préservés au moment du contrôle.
+
+## 10. Fondation implantée
+
+Le workspace privé [`packages/chat-eval`](../packages/chat-eval) n'est importé ni
+par le Hub ni par la PWA et n'enregistre aucune route. Il fournit :
+
+- les contrats Zod stricts `EvidenceSource`, `EvidencePassage`, `AuditUnit`,
+  `AnswerAudit` et corpus gelé ;
+- l'extraction de paragraphes continus et un classement lexical diversifié,
+  borné par défaut à 8 sources, 12 passages et 24 000 caractères ;
+- les prompts courts versionnés, avec preuves externes séparées et critères
+  humains absents des appels modèles ;
+- le routage déterministe renforcé, puis un classifieur local uniquement pour
+  les ambiguïtés, limité à trois requêtes ;
+- un client Ollama limité à `localhost`, avec délai, annulation, taille de
+  réponse, file, concurrence, tokens et schéma `format` bornés ;
+- rédaction Markdown libre, audit structuré indépendant, une révision ou une
+  recherche ciblée au plus, puis suppression déterministe des unités rejetées ;
+- métriques séparées de soutien, contradiction, précision/complétude des
+  citations, utilité, suffisance, vide et jugement humain ;
+- sorties A/B anonymisées pour Gemma rédacteur + Qwen auditeur et l'inverse,
+  sur les graines 17, 29 et 43.
+
+Le dossier privé `D:\FridayData\evaluations\chat-foundation-v1` contient les
+sous-dossiers `pages`, `imports`, `results`, `reviews` et un brouillon de 20
+fiches. Il reste délibérément non exécutable : aucune page originale exploitable
+n'a été trouvée dans les anciens manifests, qui ont été lus sans modification.
+Le gel échoue tant qu'une fiche n'est pas explicitement `ready_to_freeze`.
+
+## 11. Analyse du code et dette technique
+
+### Nettoyage effectué
+
+- ancien moteur Chat, recherches Tavily/Exa, mémoire Friday, sélection de
+  recherche, évaluateur et tests associés supprimés du runtime ;
+- dépendances Veille encore actives isolées dans son domaine ;
+- helper de durée et styles Chat orphelins supprimés ;
+- documentation 09, 10 et guide complet marquée comme historique pour le Chat ;
+- sources `[S…]` de l'archive de nouveau rendues avec titre, domaine, date et
+  lien sûr, testées au niveau composant et navigateur ;
+- `noUnusedLocals` et `noUnusedParameters` actifs pour tous les projets
+  TypeScript. Aucun autre symbole TypeScript inutilisé n'est signalé.
+
+### Quarantaine volontaire, pas code à supprimer
+
+Les tables `assistant_*`, leurs colonnes et migrations SQLite 10–40, ainsi que
+les anciens stores Dexie dont `assistantOutbox`, restent présents. Le moteur ne
+les utilise plus pour produire une réponse ; l'archive lit encore conversations,
+messages et sources. Les migrations réelles et les stores déjà créés ne doivent
+être ni réécrits ni supprimés.
+
+### Dette consignée pour des lots séparés
+
+- `apps/web/src/App.tsx` : environ 2 837 lignes ;
+- `apps/hub/src/app.ts` : environ 2 004 lignes ;
+- `packages/contracts/src/index.ts` : environ 1 947 lignes ;
+- `apps/hub/src/db/database.ts` : environ 1 873 lignes, migrations historiques
+  comprises ;
+- chunk principal PWA : environ 544,6 kB minifié avant gzip ;
+- `inlineDynamicImports` de Workbox est déprécié ;
+- une future réintégration devra enregistrer les routes dans un plugin Fastify
+  Chat dédié et promouvoir les contrats validés vers un module Assistant
+  séparé, sans réutiliser les tables du vieux moteur par défaut.
+
+Ces points ne justifient pas d'élargir ce lot. En particulier, découper les
+quatre gros fichiers ou migrer Workbox sans test fonctionnel dédié ajouterait
+un risque sans améliorer la qualité mesurée du Chat.
+
+## 12. Preuve de la fondation hors ligne
+
+La gate finale `pnpm verify` passe après intégration du workspace : 27 tests
+Robot, 32 tests `chat-eval` dont le corpus hostile, 25 contrats, 15 domaine, 107
+Hub, 100 PWA, les builds de production et 25 scénarios Playwright mobiles.
+L'analyse d'imports confirme qu'aucun fichier du Hub ou de la PWA n'importe le
+banc. Le corpus privé compte bien 10 fiches de développement et 10 de validation ;
+un essai de gel prématuré échoue avec `CASE_NOT_READY` sans créer `corpus.json`.
+
+Aucune campagne de modèles n'est déclarée réussie à ce stade : les pages
+originales et critères humains doivent être complétés puis gelés. Cette absence
+de résultat est une gate volontaire, pas une donnée manquante à inventer.

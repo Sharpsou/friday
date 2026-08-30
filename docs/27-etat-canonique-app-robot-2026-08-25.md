@@ -24,15 +24,24 @@ adaptateurs Qwen et Tavily propres à son domaine. La reconstruction est régie
 par [32 — fondation du nouveau Chat](32-fondation-reconstruction-chat.md), qui
 remplace les addenda Chat plus bas comme instruction active.
 
-Le retrait est déployé sur l'origine A17. `pnpm verify` passe avec 27 tests
-Robot, 25 contrats, 15 domaine, 107 Hub, 100 PWA et 25 Playwright. Le health
-check répond `status=ok`, `database=ok`, `ollama=not-required`. La SQLite active
-reste en migration 40, intègre et sans violation de clé étrangère ; les quatre
+La fondation hors ligne `packages/chat-eval` est implantée sans route Hub ni
+dépendance PWA. Elle contient contrats stricts, sélection de passages, prompts
+versionnés, routage renforcé, client Ollama local borné, décision de publication
+par le code, métriques séparées et sorties A/B. Le dossier privé de corpus a été
+initialisé avec 10 fiches de développement et 10 de validation, encore marquées
+non exécutables jusqu'à ajout et gel des pages originales. Aucun modèle n'est
+donc choisi et le HTTP d'envoi reste `410`.
+
+Le retrait est déployé sur l'origine A17. Après ajout du banc isolé, `pnpm
+verify` passe avec 27 tests Robot, 32 `chat-eval`, 25 contrats, 15 domaine, 107
+Hub, 100 PWA et 25 Playwright. Le health check du runtime déployé répond
+`status=ok`, `database=ok`, `ollama=not-required`. La SQLite active reste en
+migration 40, intègre et sans violation de clé étrangère ; les quatre
 conversations et huit messages présents lors du contrôle ont été préservés.
 
 La navigation comporte Aujourd’hui, Agenda, Courses, Budget, Chat, Veille et
-Robot. Auth fermée et partage à deux sont implantés. Agenda, Courses, Budget,
-Chat et Veille restent privés par profil. Google Calendar n’est pas
+Robot. Auth fermée et partage à deux sont implantés. Agenda, Courses et Budget
+sont partagés ; Chat et Veille restent privés par profil. Google Calendar n’est pas
 implanté ; Tailscale et les données Budget réelles restent derrière leurs
 portes documentées. Le Chat n’a aucune mutation métier ni commande Robot.
 

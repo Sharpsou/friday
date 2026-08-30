@@ -1,0 +1,189 @@
+import { describe, expect, it } from 'vitest';
+
+import type { ChatEvalCase } from '../src/contracts.js';
+import type { GenerateRequest, GenerateResult } from '../src/ollama.js';
+import { blindLabel, EvaluationRunner } from '../src/runner.js';
+
+const evalCase: ChatEvalCase = {
+  id: 'synthetic-grounding',
+  split: 'development',
+  category: 'technical',
+  question: 'Quelle autonomie est mesurée ?',
+  priorTurns: [],
+  pages: [
+    {
+      source: {
+        id: 'S1',
+        title: 'Protocole synthétique',
+        url: 'https://example.com/protocol',
+        retrievedAt: '2026-08-30T00:00:00.000Z',
+      },
+      sections: [
+        {
+          heading: 'Résultat',
+          paragraphs: ['Autonomie mesurée : dix heures.'],
+        },
+      ],
+    },
+  ],
+  criteria: {
+    expectedAspects: ['autonomie mesurée'],
+    catastrophicFailures: [],
+  },
+  frozenAt: '2026-08-30T00:00:00.000Z',
+};
+
+describe('EvaluationRunner', () => {
+  it('publishes only after a separately structured audit', async () => {
+    const requests: GenerateRequest[] = [];
+    const responses = [
+      'L’autonomie mesurée est de dix heures [P1].',
+      JSON.stringify({
+        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
+        usefulness: 'answers',
+        missingAspects: [],
+        evidenceSufficiency: 'sufficient',
+      }),
+    ];
+    const ollama = {
+      generate: async (request: GenerateRequest): Promise<GenerateResult> => {
+        requests.push(request);
+        return { response: responses.shift()!, durationMs: 1 };
+      },
+    };
+    const runner = new EvaluationRunner({
+      ollama: ollama as never,
+    });
+    const result = await runner.runCase(
+      evalCase,
+      { id: 'pair', writerModel: 'writer', auditorModel: 'auditor' },
+      7,
+    );
+    expect(result.decision).toBe('pass');
+    expect(result.calls).toBe(2);
+    expect(result.sourceIds).toEqual(['S1']);
+    expect(requests[0]?.format).toBeUndefined();
+    expect(requests[1]?.format).toMatchObject({ type: 'object' });
+  });
+
+  it('rejects a URL or unknown citation emitted by the writer', async () => {
+    const ollama = {
+      generate: async (): Promise<GenerateResult> => ({
+        response: 'Voir https://evil.example [P99].',
+        durationMs: 1,
+      }),
+    };
+    const runner = new EvaluationRunner({ ollama: ollama as never });
+    await expect(
+      runner.runCase(
+        evalCase,
+        { id: 'pair', writerModel: 'writer', auditorModel: 'auditor' },
+        7,
+      ),
+    ).rejects.toThrow('MODEL_OUTPUT_URL_FORBIDDEN');
+  });
+
+  it('assigns complementary stable A/B labels', () => {
+    const pairs = ['pair-one', 'pair-two'];
+    expect(blindLabel('case', 17, pairs[0]!, pairs)).not.toBe(
+      blindLabel('case', 17, pairs[1]!, pairs),
+    );
+    expect(blindLabel('case', 17, pairs[0]!, pairs)).toBe(
+      blindLabel('case', 17, pairs[0]!, pairs),
+    );
+  });
+
+  it('performs at most one revision and one final audit', async () => {
+    const responses = [
+      'Autonomie annoncée : douze heures [P1].',
+      JSON.stringify({
+        units: [{ unitId: 'U1', verdict: 'contradicted', passageIds: ['P1'] }],
+        usefulness: 'partial',
+        missingAspects: [],
+        evidenceSufficiency: 'sufficient',
+      }),
+      'Autonomie mesurée : dix heures [P1].',
+      JSON.stringify({
+        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
+        usefulness: 'answers',
+        missingAspects: [],
+        evidenceSufficiency: 'sufficient',
+      }),
+    ];
+    const runner = new EvaluationRunner({
+      ollama: {
+        generate: async (): Promise<GenerateResult> => ({
+          response: responses.shift()!,
+          durationMs: 1,
+        }),
+      } as never,
+    });
+    const result = await runner.runCase(
+      evalCase,
+      { id: 'pair', writerModel: 'writer', auditorModel: 'auditor' },
+      17,
+    );
+    expect(result).toMatchObject({
+      decision: 'pass',
+      revisionUsed: true,
+      researchUsed: false,
+      calls: 4,
+    });
+  });
+
+  it('performs at most one targeted research before the final draft', async () => {
+    const responses = [
+      'La preuve initiale est insuffisante.',
+      JSON.stringify({
+        units: [{ unitId: 'U1', verdict: 'unsupported', passageIds: [] }],
+        usefulness: 'misses',
+        missingAspects: ['mesure indépendante'],
+        evidenceSufficiency: 'insufficient',
+      }),
+      'Une mesure indépendante confirme neuf heures [P2].',
+      JSON.stringify({
+        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P2'] }],
+        usefulness: 'answers',
+        missingAspects: [],
+        evidenceSufficiency: 'sufficient',
+      }),
+    ];
+    let searches = 0;
+    const runner = new EvaluationRunner({
+      ollama: {
+        generate: async (): Promise<GenerateResult> => ({
+          response: responses.shift()!,
+          durationMs: 1,
+        }),
+      } as never,
+      targetedResearch: async () => {
+        searches += 1;
+        return [
+          {
+            source: {
+              id: 'S2',
+              title: 'Mesure indépendante',
+              url: 'https://example.org/measure',
+              retrievedAt: '2026-08-30T00:00:00.000Z',
+            },
+            sections: [
+              { paragraphs: ['La mesure indépendante donne neuf heures.'] },
+            ],
+          },
+        ];
+      },
+    });
+    const result = await runner.runCase(
+      evalCase,
+      { id: 'pair', writerModel: 'writer', auditorModel: 'auditor' },
+      17,
+    );
+    expect(searches).toBe(1);
+    expect(result).toMatchObject({
+      decision: 'pass',
+      revisionUsed: false,
+      researchUsed: true,
+      calls: 4,
+    });
+  });
+});
