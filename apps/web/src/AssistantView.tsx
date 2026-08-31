@@ -90,9 +90,18 @@ function VerifiedChat({
   const [content, setContent] = useState('');
   const [run, setRun] = useState<ChatRun | null>(null);
   const [disabled, setDisabled] = useState(false);
+  const [conversationBusy, setConversationBusy] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<ChatConversation | null>(
+    null,
+  );
+  const [renameTitle, setRenameTitle] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<ChatConversation | null>(
+    null,
+  );
   const [webUsage, setWebUsage] = useState<ChatWebUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const previousCreateRequest = useRef(createRequest);
+  const actionMenuRef = useRef<HTMLDetailsElement>(null);
 
   const refreshMessages = useCallback(async (conversationId: string) => {
     const result = await getChatMessages(conversationId);
@@ -218,23 +227,54 @@ function VerifiedChat({
     }
   }
 
-  async function deleteSelected(): Promise<void> {
-    if (
-      !selected ||
-      !window.confirm(`Supprimer définitivement « ${selected.title} » ?`)
-    )
+  function requestRename(): void {
+    if (!selected) return;
+    actionMenuRef.current?.removeAttribute('open');
+    setRenameTarget(selected);
+    setRenameTitle(selected.title);
+  }
+
+  async function renameConversation(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    const title = renameTitle.trim();
+    if (!renameTarget || !title || title === renameTarget.title) {
+      setRenameTarget(null);
       return;
+    }
+    setConversationBusy(true);
     setError(null);
     try {
-      await deleteChatConversation(selected.id);
+      const updated = await updateChatConversation(renameTarget.id, { title });
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === updated.id ? updated : conversation,
+        ),
+      );
+      setRenameTarget(null);
+    } catch {
+      setError('Le titre de la conversation n’a pas pu être modifié.');
+    } finally {
+      setConversationBusy(false);
+    }
+  }
+
+  async function confirmDelete(): Promise<void> {
+    if (!deleteTarget) return;
+    setConversationBusy(true);
+    setError(null);
+    try {
+      await deleteChatConversation(deleteTarget.id);
       setMessages([]);
       setRun((current) =>
-        current?.conversationId === selected.id ? null : current,
+        current?.conversationId === deleteTarget.id ? null : current,
       );
       setSelectedId(null);
+      setDeleteTarget(null);
       await refreshConversations();
     } catch {
       setError('Suppression de la conversation impossible.');
+    } finally {
+      setConversationBusy(false);
     }
   }
 
@@ -248,8 +288,12 @@ function VerifiedChat({
       const conversationId = selectedId ?? (await createConversation());
       setContent('');
       const runId = await sendChatMessage(conversationId, question);
-      setRun(await getChatRun(runId));
-      await refreshMessages(conversationId);
+      const [nextRun] = await Promise.all([
+        getChatRun(runId),
+        refreshMessages(conversationId),
+        refreshConversations(),
+      ]);
+      setRun(nextRun);
     } catch (caught) {
       setError(
         caught instanceof Error && caught.message === 'CHAT_OFFLINE'
@@ -280,7 +324,7 @@ function VerifiedChat({
             aria-label={`${webUsage.remainingSearches.toString()} recherches Web approfondies restantes ce mois`}
             title="Quota Tavily commun. Une question peut lancer plusieurs recherches approfondies."
           >
-            Web · {webUsage.remainingSearches} recherches restantes
+            Web · {webUsage.remainingSearches} restantes
           </small>
         ) : null}
       </header>
@@ -325,17 +369,40 @@ function VerifiedChat({
               </button>
             ))}
           </div>
-          <button
-            aria-label="Supprimer la conversation"
-            className="secondary-button danger assistant-delete-conversation"
-            onClick={() => void deleteSelected()}
-            type="button"
+          <details
+            className="assistant-conversation-actions"
+            ref={actionMenuRef}
           >
-            Supprimer
-          </button>
+            <summary aria-label={`Actions pour ${selected.title}`}>•••</summary>
+            <div>
+              <button
+                disabled={conversationBusy}
+                onClick={requestRename}
+                type="button"
+              >
+                Renommer
+              </button>
+              <button
+                className="danger"
+                disabled={conversationBusy}
+                onClick={() => {
+                  actionMenuRef.current?.removeAttribute('open');
+                  setDeleteTarget(selected);
+                }}
+                type="button"
+              >
+                Supprimer
+              </button>
+            </div>
+          </details>
         </div>
       ) : null}
       <div className="assistant-messages" aria-live="polite">
+        {selected && messages.length === 0 ? (
+          <p className="assistant-empty assistant-chat-empty">
+            Commencez une conversation privée avec Friday.
+          </p>
+        ) : null}
         {messages.map((message) => (
           <article
             className={`assistant-message is-${message.role}`}
@@ -409,6 +476,104 @@ function VerifiedChat({
           Envoyer
         </button>
       </form>
+      {renameTarget ? (
+        <div
+          className="settings-backdrop"
+          onMouseDown={() => {
+            if (!conversationBusy) setRenameTarget(null);
+          }}
+        >
+          <section
+            aria-labelledby="chat-rename-title"
+            aria-modal="true"
+            className="settings-dialog assistant-conversation-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="settings-heading">
+              <div>
+                <span className="eyebrow">Conversation</span>
+                <h2 id="chat-rename-title">Renommer</h2>
+              </div>
+            </div>
+            <form onSubmit={(event) => void renameConversation(event)}>
+              <label htmlFor="chat-conversation-title">Titre</label>
+              <input
+                autoFocus
+                id="chat-conversation-title"
+                maxLength={120}
+                onChange={(event) => setRenameTitle(event.target.value)}
+                required
+                value={renameTitle}
+              />
+              <div className="settings-actions">
+                <button
+                  className="secondary-button"
+                  disabled={conversationBusy}
+                  onClick={() => setRenameTarget(null)}
+                  type="button"
+                >
+                  Annuler
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={!renameTitle.trim() || conversationBusy}
+                  type="submit"
+                >
+                  {conversationBusy ? 'Enregistrement…' : 'Enregistrer'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+      {deleteTarget ? (
+        <div
+          className="settings-backdrop"
+          onMouseDown={() => {
+            if (!conversationBusy) setDeleteTarget(null);
+          }}
+        >
+          <section
+            aria-labelledby="chat-delete-title"
+            aria-modal="true"
+            className="settings-dialog deletion-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="settings-heading">
+              <div>
+                <span className="eyebrow">Conversation</span>
+                <h2 id="chat-delete-title">Supprimer définitivement&nbsp;?</h2>
+              </div>
+            </div>
+            <p>
+              «&nbsp;{deleteTarget.title}&nbsp;» et tous ses messages seront
+              supprimés. Cette action est irréversible.
+            </p>
+            <div className="deletion-actions">
+              <button
+                className="secondary-button"
+                disabled={conversationBusy}
+                onClick={() => setDeleteTarget(null)}
+                type="button"
+              >
+                Annuler
+              </button>
+              <button
+                className="delete-series-button"
+                disabled={conversationBusy}
+                onClick={() => void confirmDelete()}
+                type="button"
+              >
+                {conversationBusy
+                  ? 'Suppression…'
+                  : 'Supprimer la conversation'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -426,6 +591,7 @@ export default function AssistantView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [busy, setBusy] = useState(false);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reloadConversations = useCallback(async () => {
@@ -504,16 +670,13 @@ export default function AssistantView({
   }
 
   async function deleteSelected(): Promise<void> {
-    if (
-      !selected ||
-      !window.confirm('Supprimer définitivement cette conversation ?')
-    )
-      return;
+    if (!selected) return;
     setBusy(true);
     setError(null);
     try {
       await deleteAssistantConversation(selected.id);
       setSelectedId(null);
+      setDeleteConfirmationOpen(false);
       await reloadConversations();
     } catch (caught) {
       setError(
@@ -579,7 +742,7 @@ export default function AssistantView({
                 <button
                   className="secondary-button danger"
                   disabled={busy}
-                  onClick={() => void deleteSelected()}
+                  onClick={() => setDeleteConfirmationOpen(true)}
                   type="button"
                 >
                   Supprimer
@@ -611,6 +774,53 @@ export default function AssistantView({
           </article>
         ) : null}
       </details>
+      {deleteConfirmationOpen && selected ? (
+        <div
+          className="settings-backdrop"
+          onMouseDown={() => {
+            if (!busy) setDeleteConfirmationOpen(false);
+          }}
+        >
+          <section
+            aria-labelledby="legacy-chat-delete-title"
+            aria-modal="true"
+            className="settings-dialog deletion-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="settings-heading">
+              <div>
+                <span className="eyebrow">Archive historique</span>
+                <h2 id="legacy-chat-delete-title">
+                  Supprimer définitivement&nbsp;?
+                </h2>
+              </div>
+            </div>
+            <p>
+              «&nbsp;{selected.title}&nbsp;» et tous ses messages historiques
+              seront supprimés. Cette action est irréversible.
+            </p>
+            <div className="deletion-actions">
+              <button
+                className="secondary-button"
+                disabled={busy}
+                onClick={() => setDeleteConfirmationOpen(false)}
+                type="button"
+              >
+                Annuler
+              </button>
+              <button
+                className="delete-series-button"
+                disabled={busy}
+                onClick={() => void deleteSelected()}
+                type="button"
+              >
+                {busy ? 'Suppression…' : 'Supprimer la conversation'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

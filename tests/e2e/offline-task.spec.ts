@@ -430,6 +430,14 @@ test('the gated Chat keeps its historical archive and disables offline sending',
     }),
   ).toHaveAttribute('href', 'https://example.com/archive-source');
   await expect(displayedSource).toContainText('example.com · Publié le');
+  await page.getByRole('button', { name: 'Supprimer', exact: true }).click();
+  const historicalDeleteDialog = page.getByRole('dialog', {
+    name: 'Supprimer définitivement ?',
+  });
+  await expect(historicalDeleteDialog).toContainText(
+    'Conversation historique sourcée',
+  );
+  await historicalDeleteDialog.getByRole('button', { name: 'Annuler' }).click();
   await expect(page.getByLabel('Votre message')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Envoyer' })).toHaveCount(0);
   await expect(page.locator('.fab')).toHaveCount(0);
@@ -446,12 +454,15 @@ test('the gated Chat keeps its historical archive and disables offline sending',
   await context.setOffline(false);
 });
 
-test('the active Chat creates, switches mode and deletes from the mobile UI', async ({
+test('the active Chat creates, switches mode, renames and deletes from the mobile UI', async ({
   page,
 }) => {
   const firstId = '81bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
   const secondId = '91bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const messageId = 'a1bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const runId = 'b1bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
   const now = '2026-08-31T12:00:00.000Z';
+  const messages = new Map<string, Array<Record<string, unknown>>>();
   let conversations = [
     {
       id: firstId,
@@ -486,14 +497,53 @@ test('the active Chat creates, switches mode and deletes from the mobile UI', as
           updatedAt: now,
         };
         conversations = [created, ...conversations];
+        messages.set(created.id, []);
         return route.fulfill({ status: 201, json: created });
       }
       return route.fulfill({ json: { conversations } });
     }
     const id = url.pathname.split('/')[4];
     const conversation = conversations.find((item) => item.id === id);
-    if (url.pathname.endsWith('/messages'))
-      return route.fulfill({ json: { conversation, messages: [] } });
+    if (url.pathname.endsWith('/messages')) {
+      if (request.method() === 'POST' && conversation) {
+        const { content } = request.postDataJSON() as { content: string };
+        conversation.title = content;
+        messages.set(conversation.id, [
+          {
+            id: messageId,
+            conversationId: conversation.id,
+            role: 'user',
+            content,
+            answerStatus: null,
+            route: null,
+            sources: [],
+            createdAt: now,
+          },
+        ]);
+        return route.fulfill({ status: 202, json: { runId } });
+      }
+      return route.fulfill({
+        json: {
+          conversation,
+          messages: messages.get(id ?? '') ?? [],
+        },
+      });
+    }
+    if (url.pathname === `/api/chat/runs/${runId}`)
+      return route.fulfill({
+        json: {
+          id: runId,
+          conversationId: secondId,
+          status: 'completed',
+          stage: 'completed',
+          route: 'local_unverified',
+          requestedMode: 'friday',
+          retrievalMode: 'none',
+          errorCode: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
     if (request.method() === 'PATCH' && conversation) {
       const update = request.postDataJSON() as { mode?: string };
       Object.assign(conversation, update);
@@ -508,7 +558,7 @@ test('the active Chat creates, switches mode and deletes from the mobile UI', as
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Chat', exact: true }).click();
-  await expect(page.getByText('Web · 450 recherches restantes')).toBeVisible();
+  await expect(page.getByText('Web · 450 restantes')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Friday' })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -520,9 +570,29 @@ test('the active Chat creates, switches mode and deletes from the mobile UI', as
   );
   await page.getByRole('button', { name: 'Nouvelle conversation' }).click();
   await expect(page.getByText('Nouvelle conversation')).toBeVisible();
-  page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Supprimer la conversation' }).click();
-  await expect(page.getByText('Nouvelle conversation')).toHaveCount(0);
+  await page.getByLabel('Votre message').fill('Quel est le rôle de Friday ?');
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Nouvelles conversations' })
+      .getByText('Quel est le rôle de Friday ?'),
+  ).toBeVisible();
+  await page.getByLabel('Actions pour Quel est le rôle de Friday ?').click();
+  await page.getByRole('button', { name: 'Renommer' }).click();
+  const renameDialog = page.getByRole('dialog', { name: 'Renommer' });
+  await renameDialog.getByLabel('Titre').fill('Conversation renommée');
+  await renameDialog.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByText('Conversation renommée')).toBeVisible();
+  await page.getByLabel('Actions pour Conversation renommée').click();
+  await page.getByRole('button', { name: 'Supprimer', exact: true }).click();
+  const deleteDialog = page.getByRole('dialog', {
+    name: 'Supprimer définitivement ?',
+  });
+  await expect(deleteDialog).toContainText('Conversation renommée');
+  await deleteDialog
+    .getByRole('button', { name: 'Supprimer la conversation' })
+    .click();
+  await expect(page.getByText('Conversation renommée')).toHaveCount(0);
 });
 
 test('the seven destinations fit at 360px and budget data can persist or be removed', async ({

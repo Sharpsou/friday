@@ -67,8 +67,9 @@ La sauvegarde cohérente pré-migration 42 est
 > 31 août, la PWA expose `Friday`, `Local` et `Recherche Web`. Friday conserve
 > le routage automatique ; les deux autres choix le forcent. Toute recherche
 > Web est approfondie, sans distinction léger/approfondi. Le bouton flottant
-> crée une conversation, la suppression est disponible et le quota Tavily est
-> de nouveau visible.
+> crée une conversation ; renommage et suppression sont regroupés dans son menu
+> d'actions, avec les dialogues visuels Friday. Le quota Tavily est de nouveau
+> visible et le titre dérivé du premier message est rafraîchi immédiatement.
 
 L'ancien moteur du Chat est retiré. Il n'existe plus de modes Local, Friday,
 Web léger ou Web approfondi, plus de sélecteur de modèle, plus de création de

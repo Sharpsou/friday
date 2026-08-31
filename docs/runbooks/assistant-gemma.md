@@ -61,9 +61,12 @@ des citations de passage mal formatées. Le runtime retire désormais
 déterministiquement toute URL produite par le modèle et normalise les groupes
 `(P1, P3)` avant la résolution contrôlée `P → S → URL`.
 
-La PWA crée une conversation depuis le bouton flottant `+`, permet sa
-suppression et affiche le quota en recherches approfondies restantes. Ce quota
-est global au compte Tavily ; une question peut consommer plusieurs recherches.
+La PWA crée une conversation depuis le bouton flottant `+`, affiche son titre
+dès l'envoi du premier message et propose `Renommer` et `Supprimer` dans le menu
+`•••` de la conversation sélectionnée. Renommage et suppression utilisent les
+dialogues Friday ; aucune confirmation native du navigateur n'est employée.
+Le quota en recherches approfondies restantes reste visible. Il est global au
+compte Tavily ; une question peut consommer plusieurs recherches.
 
 ## Banc privé v2
 
