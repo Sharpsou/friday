@@ -71,6 +71,7 @@ import {
   WatchSourceValidateRequestSchema,
   WatchUpdateRequestSchema,
 } from '@friday/contracts';
+import { OllamaClient } from '@friday/assistant-core';
 
 import {
   AssistantArchiveService,
@@ -78,6 +79,9 @@ import {
 } from './assistant/assistant-service.js';
 import { ClosedAuthError, ClosedAuthService } from './auth/auth-service.js';
 import { loadOrCreateAuthSecret } from './auth/auth-secret.js';
+import { chatPlugin } from './chat/chat-plugin.js';
+import { ChatService, type ChatEngine } from './chat/chat-service.js';
+import { VerifiedChatEngine } from './chat/verified-chat-engine.js';
 import { openDatabase } from './db/database.js';
 import {
   GroceryClassificationNotFoundError,
@@ -137,6 +141,8 @@ export interface BuildHubOptions {
   webRoot?: string;
   robotController?: RobotController;
   robotPlaceRecognition?: RobotPlaceRecognitionEngine;
+  chatEnabled?: boolean;
+  chatEngine?: ChatEngine;
 }
 
 const PullQuerySchema = z.object({
@@ -235,6 +241,17 @@ export async function buildHub(options: BuildHubOptions) {
     options.watchSearchClient ??
     new TavilySearchClient(process.env.FRIDAY_TAVILY_API_KEY);
   const assistant = new AssistantArchiveService(database);
+  const chat = new ChatService(
+    database,
+    options.chatEngine ??
+      new VerifiedChatEngine({
+        ollama: new OllamaClient({
+          ...(options.ollamaBaseUrl ? { baseUrl: options.ollamaBaseUrl } : {}),
+          timeoutMs: 240_000,
+          maxQueueSize: 4,
+        }),
+      }),
+  );
   const watch = new WatchService(database, watchEngine, undefined, watchSearch);
   const robot: RobotController =
     options.robotController ?? new DisabledRobotController();
@@ -281,6 +298,22 @@ export async function buildHub(options: BuildHubOptions) {
       trustedAuthOrigins.has(headers.origin.replace(/\/$/, ''))
     );
   };
+  await app.register(chatPlugin, {
+    prefix: '/api/chat',
+    enabled: options.chatEnabled ?? process.env.FRIDAY_CHAT_ENABLED === 'true',
+    service: chat,
+    profileId: async (headers) =>
+      (
+        await closedAuth.requireSession(
+          headers as Parameters<ClosedAuthService['requireSession']>[0],
+        )
+      ).member.profileId,
+    trustedMutation: (headers) =>
+      acceptsTrustedMutationOrigin(
+        headers as Parameters<typeof acceptsTrustedMutationOrigin>[0],
+      ),
+    handleAuthError: (error, reply) => sendClosedAuthError(error, reply),
+  });
   const robotCommandWindows = new Map<string, number[]>();
   const acceptsRobotCommandRate = (deviceId: string, limit: number) => {
     const now = Date.now();

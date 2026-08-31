@@ -7,7 +7,7 @@ Statut : **référence produit active**. Ce document remplace les choix Flutter/
 > **Chat — décision remplacée.** Les descriptions du moteur Chat, de ses
 > modèles, modes Web et propositions dans ce document sont historiques. Le
 > moteur a été retiré ; l’onglet est une archive privée en lecture seule. Sa
-> reconstruction est exclusivement régie par
+> reconstruction et son runtime sous gate sont exclusivement régis par
 > [32-fondation-reconstruction-chat.md](32-fondation-reconstruction-chat.md).
 
 ## Décision
@@ -41,7 +41,7 @@ Six destinations :
 2. **Agenda** : tâches, rendez-vous et vues liste/semaine/mois ;
 3. **Courses** : liste partagée et produits déjà achetés ;
 4. **Budget** : réalisé, prévisionnel, enveloppes, provisions et épargne partagés ;
-5. **Chat** : archive privée par profil en lecture seule pendant la reconstruction définie par le document 32 ;
+5. **Chat** : runtime unique privé sous feature gate, avec archive historique séparée, défini par le document 32 ;
 6. **Veille** : digest et thèmes du profil actif.
 
 Un bouton `+` permanent hors Assistant ouvre la saisie rapide.

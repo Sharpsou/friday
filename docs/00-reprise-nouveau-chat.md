@@ -5,16 +5,17 @@ Statut : **point d'entrée canonique court**
 
 ## Décision immédiate sur le Chat
 
-Le moteur Chat précédent a été retiré après les campagnes de banc : les modes,
-la création, l'envoi, l'orchestration Web et les appels LLM ne sont plus actifs.
-L'onglet conserve seulement l'archive privée existante. Ne pas reprendre
-l'ancien pipeline ni ses anciens runbooks détaillés.
+Le moteur Chat précédent reste retiré. Son remplaçant v2 est implanté derrière
+`FRIDAY_CHAT_ENABLED=false` : moteur partagé, sélection éphémère BM25 + Qwen
+Embedding, plugin `/api/chat`, SQLite 41 et cache Dexie 8. Tant que le corpus v2
+n'a pas franchi sa gate, l'onglet signale l'activation en attente et conserve
+l'archive privée existante. Ne pas reprendre l'ancien pipeline.
 
 Pour reconstruire le Chat, lire intégralement
 [32 — Fondation de la reconstruction du Chat](32-fondation-reconstruction-chat.md).
-Ce document synthétise les essais, la cause des échecs, la conclusion sur les
-modèles et la cible d'un harnais léger. Le premier prochain lot est un banc hors
-ligne sur dossiers figés, avant toute nouvelle route d'envoi.
+Ce document synthétise les essais, l'architecture implantée et la gate. Le
+prochain lot est de compléter puis geler le corpus privé v2 et de comparer
+lexical/hybride avant activation.
 
 ## Ordre de lecture
 
@@ -40,12 +41,13 @@ ligne sur dossiers figés, avant toute nouvelle route d'envoi.
 ## État condensé
 
 La PWA comporte Aujourd'hui, Agenda, Courses, Budget, Chat, Veille et Robot.
-Maison reste offline-first avec SQLite canonique, Dexie chiffré et outbox. La
-base est en migration 40 et Dexie en version 7.
+Maison reste offline-first avec SQLite canonique, Dexie chiffré et outbox. Le
+runtime déployé utilise SQLite 41 et le candidat PWA cible Dexie 8 ; le Chat
+reste désactivé par sa gate.
 
 - Agenda, Courses et Budget sont partagés ; Chat et Veille sont privés ;
-- Chat est une archive en lecture seule ; ses migrations historiques sont
-  conservées pour les données et la compatibilité ;
+- le nouveau Chat reste désactivé par gate ; l'archive et ses migrations
+  historiques sont conservées séparément ;
 - Veille possède son propre client Tavily et son propre moteur Qwen ; elle ne
   dépend plus de l'ancien moteur Chat ;
 - le Chat n'a aucune mutation métier ou commande Robot ;

@@ -1779,6 +1779,117 @@ export const HealthResponseSchema = z
   })
   .strict();
 
+export const ChatAnswerStatusSchema = z.enum([
+  'unverified',
+  'verified',
+  'partial',
+  'abstained',
+  'audit_error',
+]);
+export const ChatRetrievalModeSchema = z.enum([
+  'none',
+  'hybrid',
+  'lexical_fallback',
+]);
+export const ChatRouteSchema = z.enum(['local_unverified', 'web_verified']);
+export const ChatRunStatusSchema = z.enum([
+  'queued',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+]);
+export const ChatRunStageSchema = z.enum([
+  'queued',
+  'routing',
+  'research',
+  'writing',
+  'auditing',
+  'finalizing',
+  'completed',
+]);
+export const ChatSourceSchema = z
+  .object({
+    id: z.string().regex(/^S[1-9]\d*$/u),
+    title: z.string().trim().min(1).max(500),
+    url: z
+      .string()
+      .url()
+      .max(2_048)
+      .refine((url) => url.startsWith('https://'), 'HTTPS URL required'),
+    domain: z.string().trim().min(1).max(253),
+    publishedAt: z.string().datetime().nullable(),
+    retrievedAt: z.string().datetime(),
+  })
+  .strict();
+export const ChatConversationSchema = z
+  .object({
+    id: UuidSchema,
+    title: z.string().trim().min(1).max(120),
+    archivedAt: z.string().datetime().nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+export const ChatMessageSchema = z
+  .object({
+    id: UuidSchema,
+    conversationId: UuidSchema,
+    role: z.enum(['user', 'assistant']),
+    content: z.string().max(100_000),
+    answerStatus: ChatAnswerStatusSchema.nullable(),
+    route: ChatRouteSchema.nullable(),
+    sources: z.array(ChatSourceSchema).max(8),
+    createdAt: z.string().datetime(),
+  })
+  .strict();
+export const ChatRunSchema = z
+  .object({
+    id: UuidSchema,
+    conversationId: UuidSchema,
+    status: ChatRunStatusSchema,
+    stage: ChatRunStageSchema,
+    route: ChatRouteSchema.nullable(),
+    retrievalMode: ChatRetrievalModeSchema,
+    errorCode: z
+      .string()
+      .regex(/^[A-Z0-9_]+$/u)
+      .nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+export const ChatCreateConversationRequestSchema = z
+  .object({ title: z.string().trim().min(1).max(120).optional() })
+  .strict();
+export const ChatUpdateConversationRequestSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120).optional(),
+    archived: z.boolean().optional(),
+  })
+  .strict();
+export const ChatSendMessageRequestSchema = z
+  .object({
+    clientRequestId: UuidSchema,
+    content: z.string().trim().min(1).max(8_000),
+  })
+  .strict();
+export const ChatConversationsResponseSchema = z
+  .object({ conversations: z.array(ChatConversationSchema) })
+  .strict();
+export const ChatMessagesResponseSchema = z
+  .object({
+    conversation: ChatConversationSchema,
+    messages: z.array(ChatMessageSchema),
+  })
+  .strict();
+export const ChatEnqueueResponseSchema = z
+  .object({ runId: UuidSchema })
+  .strict();
+export const ChatDeleteResponseSchema = z
+  .object({ deleted: z.literal(true) })
+  .strict();
+
 export type TaskRecord = z.infer<typeof TaskRecordSchema>;
 export type TaskRecurrence = z.infer<typeof TaskRecurrenceSchema>;
 export type TaskRecurrenceRule = z.infer<typeof TaskRecurrenceRuleSchema>;
@@ -1878,6 +1989,18 @@ export type PushResponse = z.infer<typeof PushResponseSchema>;
 export type Change = z.infer<typeof ChangeSchema>;
 export type PullResponse = z.infer<typeof PullResponseSchema>;
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
+export type ChatAnswerStatus = z.infer<typeof ChatAnswerStatusSchema>;
+export type ChatRetrievalMode = z.infer<typeof ChatRetrievalModeSchema>;
+export type ChatRoute = z.infer<typeof ChatRouteSchema>;
+export type ChatRunStatus = z.infer<typeof ChatRunStatusSchema>;
+export type ChatRunStage = z.infer<typeof ChatRunStageSchema>;
+export type ChatSource = z.infer<typeof ChatSourceSchema>;
+export type ChatConversation = z.infer<typeof ChatConversationSchema>;
+export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+export type ChatRun = z.infer<typeof ChatRunSchema>;
+export type ChatSendMessageRequest = z.infer<
+  typeof ChatSendMessageRequestSchema
+>;
 export type AuthBootstrapRequest = z.infer<typeof AuthBootstrapRequestSchema>;
 export type AuthLoginRequest = z.infer<typeof AuthLoginRequestSchema>;
 export type AuthPairRequest = z.infer<typeof AuthPairRequestSchema>;

@@ -10,12 +10,11 @@ hub Fastify sur Windows, SQLite canonique sous `D:\FridayData`, Dexie chiffré
 et outbox sur les appareils, contrats Zod partagés et runtime Python séparé sur
 le Raspberry Pi.
 
-Le moteur Chat est retiré en vue d'une reconstruction. Les modes Local, Friday,
-Web léger et Web approfondi, le choix de modèle, la création, l'envoi, les
-runs, la recherche et l'orchestration LLM ne sont plus exposés. L'onglet Chat
-est une archive privée : lecture des conversations et sources historiques,
-archivage, restauration et suppression. Une ancienne PWA qui tente
-d'envoyer reçoit HTTP 410 et ne déclenche aucun modèle.
+Le moteur Chat précédent est retiré. Le runtime v2 est implanté mais fermé par
+`FRIDAY_CHAT_ENABLED=false` jusqu'à sa gate : expérience unique, réponse locale
+signalée ou Web vérifié, sélection BM25 + embeddings éphémères et audit séparé.
+L'archive privée historique reste une section distincte ; son ancienne route
+d'envoi répond toujours HTTP 410.
 
 Les migrations Assistant jusqu'à 40 et les données existantes restent en place
 pour préserver l'historique et la compatibilité SQLite ; elles sont désormais
@@ -24,21 +23,24 @@ adaptateurs Qwen et Tavily propres à son domaine. La reconstruction est régie
 par [32 — fondation du nouveau Chat](32-fondation-reconstruction-chat.md), qui
 remplace les addenda Chat plus bas comme instruction active.
 
-La fondation hors ligne `packages/chat-eval` est implantée sans route Hub ni
-dépendance PWA. Elle contient contrats stricts, sélection de passages, prompts
-versionnés, routage renforcé, client Ollama local borné, décision de publication
-par le code, métriques séparées et sorties A/B. Le dossier privé de corpus a été
+Le moteur partagé `packages/assistant-core` est utilisé par le Hub et par
+`packages/chat-eval`; le Hub n'importe pas le banc. SQLite 41 ajoute quatre
+tables `chat_*` sans réutiliser `assistant_*`; Dexie 8 ajoute deux caches
+chiffrés sans outbox d'envoi. Le dossier privé v1 a été
 gelé avec 10 fiches de développement, 10 de validation et 35 pages originales
 contrôlées par empreinte. La campagne `campaign-v2` a produit les 120 résultats
-attendus et 60 paires A/B sur trois graines. La revue humaine aveugle reste
-ouverte : aucun modèle n'est donc choisi et le HTTP d'envoi reste `410`.
+attendus et 60 paires A/B sur trois graines. Ces résultats v1 ne franchissent
+pas la nouvelle gate. Le brouillon v2, avec références de paragraphes, se trouve
+sous `D:\FridayData\evaluations\chat-foundation-v2`.
 
-Le retrait est déployé sur l'origine A17. Après ajout du banc isolé, `pnpm
-verify` passe avec 27 tests Robot, 37 `chat-eval`, 25 contrats, 15 domaine, 107
-Hub, 100 PWA et 25 Playwright. Le health check du runtime déployé répond
-`status=ok`, `database=ok`, `ollama=not-required`. La SQLite active reste en
-migration 40, intègre et sans violation de clé étrangère ; les quatre
-conversations et huit messages présents lors du contrôle ont été préservés.
+Le candidat v2 désactivé est déployé sur l'origine A17. `pnpm verify` passe avec
+27 tests Robot, 4 `assistant-core`, 37 `chat-eval`, 25 contrats, 15 domaine, 113
+Hub, 105 PWA et 25 Playwright. Le health check répond `status=ok`,
+`database=ok`, `ollama=not-required`. La SQLite active est en migration 41,
+`integrity_check=ok`, sans violation de clé étrangère, et les quatre tables
+`chat_*` sont présentes. `/api/chat/*` répond `503 chat_disabled`. La sauvegarde
+pré-migration 40 intègre est
+`D:\FridayData\backups\friday-pre-chat-v2-migration41-20260831-094854.sqlite`.
 
 La navigation comporte Aujourd’hui, Agenda, Courses, Budget, Chat, Veille et
 Robot. Auth fermée et partage à deux sont implantés. Agenda, Courses et Budget
@@ -46,7 +48,7 @@ sont partagés ; Chat et Veille restent privés par profil. Google Calendar n’
 implanté ; Tailscale et les données Budget réelles restent derrière leurs
 portes documentées. Le Chat n’a aucune mutation métier ni commande Robot.
 
-SQLite est en migration **40** et Dexie en version **7** :
+SQLite est en migration **41** et le candidat PWA cible Dexie **8** :
 
 - 1–19 : Maison, auth, sync, Budget, Chat, recherche et Veille ;
 - 20–25 : ancien prototype Robot, conservé uniquement dans l’historique de
@@ -73,6 +75,8 @@ SQLite est en migration **40** et Dexie en version **7** :
   texte de claim ni citation brute.
 - 40 : rapport `grounded-answer-v3`, journal privé des audits de réponse et
   étapes bornées rédaction/audit/révision du mode Web approfondi.
+- 41 : nouvelles conversations, messages, runs et sources du Chat v2, sans
+  page brute, passage, prompt, embedding ni raisonnement persisté.
 
 Les migrations 20–25 n’ont pas été réécrites. Les anciennes données Robot ne
 sont pas importées dans le nouveau modèle. Le retour arrière passe par la

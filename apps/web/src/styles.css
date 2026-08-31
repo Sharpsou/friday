@@ -1823,6 +1823,65 @@ textarea:focus-visible {
   font-size: 0.82rem;
 }
 
+.assistant-live,
+.assistant-legacy-archive {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 17px;
+  padding: 12px;
+  background: rgb(var(--surface-rgb) / 72%);
+}
+
+.assistant-live-header,
+.assistant-run-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.assistant-live-header h2 {
+  margin: 0;
+}
+
+.assistant-legacy-archive > summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.assistant-answer-status {
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 7px;
+}
+
+.assistant-answer-status.is-verified {
+  border-color: rgb(var(--accent-rgb) / 45%);
+  color: var(--mint);
+}
+
+.assistant-run-progress {
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgb(var(--accent-rgb) / 8%);
+}
+
+.assistant-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.assistant-composer textarea {
+  width: 100%;
+  min-height: 74px;
+  resize: vertical;
+}
+
 .assistant-conversation-list {
   display: grid;
   grid-auto-flow: column;

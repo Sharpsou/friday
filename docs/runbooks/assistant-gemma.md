@@ -1,89 +1,78 @@
-# Runbook Chat — état de reconstruction
+# Runbook Chat — runtime vérifié sous gate
 
 Date : 31 août 2026
-Statut : archive historique active, campagne hors ligne prête à relire
+Statut : runtime déployé désactivé, archive historique active, gate v2 ouverte
 
-Le Chat n'envoie plus de message et n'appelle plus Ollama, Tavily ou Exa. Les
-anciens modes et le sélecteur de modèle ont été supprimés. La PWA permet encore
-de consulter, archiver, restaurer ou supprimer les conversations du
-profil connecté.
+Le nouveau Chat expose une expérience unique. Le code choisit entre réponse
+locale portant le badge « Non vérifié par des sources » et réponse Web auditée.
+Le runtime ne possède aucun outil Maison, Budget ou Robot.
 
-Le document qui fait autorité pour la reprise est
-[32 — fondation de la reconstruction du Chat](../32-fondation-reconstruction-chat.md).
-Les anciennes recettes du harnais `grounded-claims` / `grounded-answer` sont
-historiques et ne doivent pas guider une nouvelle implémentation.
+## Configuration
 
-## Contrôles d'exploitation
-
-1. ouvrir Chat et vérifier l'encart « Chat en reconstruction » ;
-2. vérifier qu'aucun bouton de création, champ de saisie, mode ou modèle n'est
-   proposé ;
-3. ouvrir une conversation historique et vérifier messages et sources ;
-4. vérifier qu'un autre profil ne voit pas cette conversation ;
-5. contrôler `/api/health` et l'intégrité SQLite comme pour le reste du Hub.
-
-L'ancienne route d'envoi répond volontairement HTTP 410 aux PWA encore en
-cache. La route de création n'existe plus. Les tables historiques ne sont pas
-supprimées : elles contiennent les conversations existantes et assurent la
-compatibilité des migrations.
-
-## Configuration restante
-
-Aucune variable `FRIDAY_ASSISTANT_*` n'est utilisée. La Veille possède désormais
-son moteur Qwen et son client Tavily propres, configurés par
-`FRIDAY_WATCH_MODEL`, `FRIDAY_WATCH_TIMEOUT_MS` et la clé Tavily déjà exploitée
-par ce domaine. Cette isolation ne préjuge pas du futur Chat.
-
-## Banc hors ligne
-
-Le workspace `packages/chat-eval` ne doit jamais être importé par `apps/hub` ou
-`apps/web`. Il n'expose aucune route et écrit seulement sous
-`D:\FridayData\evaluations\chat-foundation-v1`.
-
-Initialiser une seule fois l'arborescence privée et inventorier les anciens
-manifests en lecture seule :
-
-```powershell
-pnpm --filter @friday/chat-eval corpus:init
+```text
+FRIDAY_CHAT_ENABLED=false
+FRIDAY_TAVILY_API_KEY=<secret hors Git>
 ```
 
-Pour reconstruire un nouveau corpus, préparer `corpus-spec.json` dans ce
-dossier privé puis télécharger, contrôler et geler les pages en une fois :
+Modèles locaux :
+
+- rédacteur `gemma4:e4b-it-qat` ;
+- auditeur et routeur ambigu `qwen3.5:9b-q4_K_M` ;
+- sélection sémantique éphémère `qwen3-embedding:0.6b`.
+
+L'absence de Tavily ou de preuves pour une demande Web échoue explicitement ;
+elle ne produit jamais une réponse locale silencieuse. L'échec de l'embedding
+seul conserve le traitement en `lexical_fallback`.
+
+## API et stockage
+
+Le plugin `/api/chat` expose conversations, messages et runs. L'envoi retourne
+202 avec un `runId`, puis la PWA suit `queued`, `routing`, `research`, `writing`,
+`auditing`, `finalizing`. DELETE sur un run demande son annulation.
+
+SQLite 41 utilise seulement les tables `chat_*`. Les tables `assistant_*`
+restent l'archive historique accessible par `/api/assistant`; son ancienne
+route d'envoi continue à répondre 410. Dexie 8 ajoute `chatConversations` et
+`chatMessages`, chiffrés, sans nouvelle outbox. Aucun contenu Web brut, passage,
+prompt, embedding ou raisonnement n'est persisté.
+
+Lorsque `FRIDAY_CHAT_ENABLED` n'est pas exactement `true`, toute route
+`/api/chat/*` répond 503 `{ "error": "chat_disabled" }`. La PWA affiche alors
+que l'activation attend la gate et laisse l'archive consultable.
+
+## Banc privé v2
+
+Le Hub importe `packages/assistant-core`, jamais `packages/chat-eval`. Le corpus
+v1 est immuable ; les nouvelles campagnes utilisent :
 
 ```powershell
-pnpm --filter @friday/chat-eval corpus:build
+$root = 'D:\FridayData\evaluations\chat-foundation-v2'
+pnpm --filter @friday/chat-eval corpus:init -- --root=$root
+pnpm --filter @friday/chat-eval corpus:build -- --root=$root
+pnpm --filter @friday/chat-eval corpus:freeze -- --root=$root
+pnpm --filter @friday/chat-eval evaluate -- --root=$root --retrieval=lexical --run=v2-lexical
+pnpm --filter @friday/chat-eval evaluate -- --root=$root --retrieval=hybrid --run=v2-hybrid
+pnpm --filter @friday/chat-eval review:ai -- --root=$root --run=v2-hybrid
 ```
 
-Le fichier `corpus.json` et chaque instantané sont créés avec l'option
-exclusive : un second gel échoue au lieu d'écraser la validation. Le corpus v1
-actuel contient 20 cas et 35 instantanés dont les empreintes ont été contrôlées.
+Chaque aspect attendu doit référencer ses paragraphes par source, section et
+index. Ces critères ne sont jamais transmis aux modèles. Le rapport mesure
+rappel des paragraphes, dimensions couvertes, candidats, repli lexical,
+citations, soutien, résultat fonctionnel et p95.
 
-La campagne de référence est reprenable et exécute deux tentatives en parallèle :
+Le corpus hostile doit couvrir injection directe et indirecte, URL/citation
+inventée, HTML hostile, exfiltration et JSON invalide. MiniCheck est autorisé
+uniquement dans le banc comme contrôle indépendant, jamais dans le runtime.
 
-```powershell
-pnpm --filter @friday/chat-eval evaluate -- --run=campaign-v2 --concurrency=2
-pnpm --filter @friday/chat-eval review:build -- --run=campaign-v2
-```
+## Gate d'activation
 
-Chaque commande compare les deux couples Gemma/Qwen sur trois graines. Les
-réponses complètes et la clé restent dans `results`; `reviews` reçoit les
-sorties A/B sans nom de modèle. Aucun prompt, page brute, secret ou chaîne de
-raisonnement n'est journalisé.
+Ne pas activer avant : zéro contradiction importante ou catastrophe, soutien
+≥90 %, aspects ≥80 %, précision citations ≥90 %, complétude ≥80 %, rappel des
+preuves ≥85 %, abstentions avec preuves <5 %, cohérence des deux ordres de revue
+IA ≥90 %, hostile entièrement vert et p95 ≤240 s. L'hybride doit en outre gagner
+≥5 points de rappel sans dépasser +25 % de p95 face au lexical.
 
-Une URL/HTML/citation inventée, un timeout ou une sortie trop grande produit un
-code sûr et arrête la tentative concernée. Une unité d'audit omise est marquée
-`unsupported`; un audit JSON invalide déclenche un audit conservateur sans fait
-soutenu. Il n'existe pas de réparation JSON ni de boucle supplémentaire. Le
-run `campaign-v2` compte 120 résultats et 60 paires. Tant que la revue humaine
-n'est pas terminée, le HTTP d'envoi reste `410`.
-
-Contrôler le banc seul avec :
-
-```powershell
-pnpm --filter @friday/chat-eval typecheck
-pnpm --filter @friday/chat-eval test
-```
-
-La gate de livraison reste `pnpm verify`. Les tests hostiles couvrent injection
-directe/indirecte, exfiltration, fausse citation, URL inventée, HTML hostile et
-JSON invalide.
+Après réussite : sauvegarde SQLite cohérente, `pnpm verify`, recette Windows,
+healthcheck, `PRAGMA integrity_check`, scénario navigateur réel A17, puis
+seulement `FRIDAY_CHAT_ENABLED=true`. Une revue IA n'est pas une validation
+humaine et ne doit pas être nommée ainsi.

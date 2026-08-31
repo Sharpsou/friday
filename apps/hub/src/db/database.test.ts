@@ -99,7 +99,7 @@ describe('hub database migrations', () => {
       { name: 'grounding_verifier_used', dflt_value: '0' },
       { name: 'grounding_version', dflt_value: null },
     ]);
-    expect(latest.version).toBe(40);
+    expect(latest.version).toBe(41);
     expect(processingTable).toEqual({ name: 'assistant_processing_attempts' });
     expect(answerAuditTable).toEqual({ name: 'assistant_answer_audits' });
   });
@@ -207,6 +207,7 @@ describe('hub database migrations', () => {
       { version: 38 },
       { version: 39 },
       { version: 40 },
+      { version: 41 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -236,7 +237,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 40 });
+    expect(migrations.at(-1)).toEqual({ version: 41 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -272,7 +273,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 40 });
+    expect(migrations.at(-1)).toEqual({ version: 41 });
   });
 
   it('adds the five budget stores and the idempotent seed marker', () => {
@@ -726,7 +727,7 @@ describe('hub database migrations', () => {
       'robot_visual_ports',
       'robot_visual_transitions',
     ]);
-    expect(migration).toEqual({ version: 40 });
+    expect(migration).toEqual({ version: 41 });
   });
 
   it('extends the panorama pulse range without losing the global trim', () => {
@@ -797,7 +798,7 @@ describe('hub database migrations', () => {
       evidence_group_representative_source_id: null,
       evidence_origin_key: null,
     });
-    expect(migration).toEqual({ version: 40 });
+    expect(migration).toEqual({ version: 41 });
   });
 
   it('preserves processing diagnostics and accepts the Web editorial stage', () => {
@@ -832,5 +833,30 @@ describe('hub database migrations', () => {
       { run_id: 'historical-run', stage: 'web_extract', duration_ms: 12 },
       { run_id: 'editorial-run', stage: 'web_editorial', duration_ms: 8 },
     ]);
+  });
+
+  it('adds isolated Chat v2 tables without reusing the Assistant archive', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database);
+    const chatTables = database
+      .prepare(
+        `SELECT name FROM sqlite_master
+          WHERE type = 'table' AND name LIKE 'chat_%' ORDER BY name`,
+      )
+      .all();
+    const assistantTable = database
+      .prepare(
+        `SELECT name FROM sqlite_master
+          WHERE type = 'table' AND name = 'assistant_conversations'`,
+      )
+      .get();
+    database.close();
+    expect(chatTables).toEqual([
+      { name: 'chat_conversations' },
+      { name: 'chat_messages' },
+      { name: 'chat_runs' },
+      { name: 'chat_sources' },
+    ]);
+    expect(assistantTable).toEqual({ name: 'assistant_conversations' });
   });
 });

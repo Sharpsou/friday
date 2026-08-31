@@ -9,7 +9,9 @@
 > moteur, ses routes, modèles, recherches et files ne constituent plus une
 > cible d’implémentation. Le moteur est retiré et le HTTP d’envoi reste `410` ;
 > [32-fondation-reconstruction-chat.md](32-fondation-reconstruction-chat.md)
-> est l’unique fondation active de sa reconstruction.
+> est l’unique fondation active de sa reconstruction. Le runtime v2 implanté
+> reste désactivé jusqu'à la gate du corpus privé v2 ; les sections d'exécution
+> de l'ancien moteur plus bas demeurent historiques.
 
 Date : 8 août 2026
 

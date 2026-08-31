@@ -69,6 +69,22 @@ export interface AssistantMessageRow {
   profileId: string;
 }
 
+export interface ChatConversationRow {
+  archivedAt: string | null;
+  encrypted: EncryptedEnvelope;
+  id: string;
+  profileId: string;
+  updatedAt: string;
+}
+
+export interface ChatMessageRow {
+  conversationId: string;
+  createdAt: string;
+  encrypted: EncryptedEnvelope;
+  id: string;
+  profileId: string;
+}
+
 export interface WatchSnapshotRow {
   encrypted: EncryptedEnvelope;
   profileId: string;
@@ -89,6 +105,8 @@ export interface WatchOutboxRow {
 class FridayDatabase extends Dexie {
   assistantConversations!: EntityTable<AssistantConversationRow, 'id'>;
   assistantMessages!: EntityTable<AssistantMessageRow, 'id'>;
+  chatConversations!: EntityTable<ChatConversationRow, 'id'>;
+  chatMessages!: EntityTable<ChatMessageRow, 'id'>;
   budgetEntries!: EntityTable<BudgetRow, 'id'>;
   budgetEnvelopes!: EntityTable<BudgetRow, 'id'>;
   budgetPlannedExpenses!: EntityTable<BudgetRow, 'id'>;
@@ -180,6 +198,28 @@ class FridayDatabase extends Dexie {
       assistantMessages:
         '&id, [profileId+conversationId], conversationId, createdAt',
       assistantOutbox: '&clientRequestId, profileId, conversationId, createdAt',
+      budgetEntries: '&id, revision, updatedAt, syncState',
+      budgetEnvelopes: '&id, revision, updatedAt, syncState',
+      budgetPlannedExpenses: '&id, revision, updatedAt, syncState',
+      budgetRecurringTemplates: '&id, revision, updatedAt, syncState',
+      budgetSavingsMonths: '&id, revision, updatedAt, syncState',
+      groceryClassifications: '&itemId, revision, updatedAt',
+      groceryItems: '&id, revision, updatedAt, syncState',
+      keys: '&id',
+      outbox: '&operationId, entityId, createdAt, state',
+      settings: '&key',
+      tasks: '&id, revision, updatedAt, syncState',
+      watchOutbox: '&operationId, profileId, kind, watchId, createdAt',
+      watchSnapshots: '&profileId, updatedAt',
+    });
+    this.version(8).stores({
+      assistantConversations: '&id, profileId, archivedAt, updatedAt',
+      assistantMessages:
+        '&id, [profileId+conversationId], conversationId, createdAt',
+      assistantOutbox: '&clientRequestId, profileId, conversationId, createdAt',
+      chatConversations: '&id, profileId, archivedAt, updatedAt',
+      chatMessages:
+        '&id, [profileId+conversationId], conversationId, createdAt',
       budgetEntries: '&id, revision, updatedAt, syncState',
       budgetEnvelopes: '&id, revision, updatedAt, syncState',
       budgetPlannedExpenses: '&id, revision, updatedAt, syncState',

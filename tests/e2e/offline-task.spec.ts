@@ -359,7 +359,7 @@ test('the private Watch digest is readable offline and keeps article feedback', 
   await context.setOffline(false);
 });
 
-test('the private Chat exposes only its historical archive', async ({
+test('the gated Chat keeps its historical archive and disables offline sending', async ({
   context,
   page,
 }) => {
@@ -405,10 +405,17 @@ test('the private Chat exposes only its historical archive', async ({
   );
   await page.goto('/');
   await page.getByRole('button', { name: 'Chat', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Chat' })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Archive du Chat', exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('Personnel', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Chat' })).toHaveCount(0);
-  await expect(page.getByText('Chat en reconstruction')).toBeVisible();
+  await expect(
+    page.getByText('Nouveau Chat prêt, activation en attente'),
+  ).toBeVisible();
+  await page
+    .getByText('Archive historique en lecture seule', { exact: true })
+    .click();
   const citation = page.getByRole('link', { name: 'S1', exact: true });
   await expect(citation).toHaveAttribute(
     'href',
@@ -423,16 +430,19 @@ test('the private Chat exposes only its historical archive', async ({
     }),
   ).toHaveAttribute('href', 'https://example.com/archive-source');
   await expect(displayedSource).toContainText('example.com · Publié le');
-  await expect(page.getByPlaceholder('Écrivez à Friday…')).toHaveCount(0);
+  await expect(page.getByLabel('Votre message')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Envoyer' })).toHaveCount(0);
   await expect(page.locator('.fab')).toHaveCount(0);
 
   await context.setOffline(true);
   await page.reload();
   await page.getByRole('button', { name: 'Chat', exact: true }).click();
-  await expect(page.getByText('Chat en reconstruction')).toBeVisible();
+  await page
+    .getByText('Archive historique en lecture seule', { exact: true })
+    .click();
   await expect(page.locator(`#assistant-source-${messageId}-S1`)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Envoyer' })).toHaveCount(0);
+  const offlineSend = page.getByRole('button', { name: 'Envoyer' });
+  if ((await offlineSend.count()) > 0) await expect(offlineSend).toBeDisabled();
   await context.setOffline(false);
 });
 

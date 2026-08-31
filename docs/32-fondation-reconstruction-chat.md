@@ -1,7 +1,54 @@
 # Fondation de la reconstruction du Chat Friday
 
 Date : 31 août 2026
-Statut : **corpus gelé et campagne exécutée ; revue humaine A/B ouverte**
+Statut : **runtime v2 implanté derrière gate ; corpus v2 privé à compléter**
+
+> **Mise à jour active — sélection éphémère de preuves.** Les sections qui
+> décrivent le seul banc lexical v1 et une future réintégration sont désormais
+> historiques. Le code actif est partagé par `packages/assistant-core`, le banc
+> et le plugin Fastify `/api/chat`. Il sélectionne temporairement les passages
+> par BM25 + `qwen3-embedding:0.6b`, avec fusion RRF et repli BM25. Il ne crée ni
+> index vectoriel, ni corpus de connaissances persistant, ni framework
+> agentique. Le runtime reste fermé par `FRIDAY_CHAT_ENABLED=false` jusqu'à la
+> réussite du corpus v2 ; l'archive `/api/assistant` et son HTTP 410 restent
+> inchangés.
+
+## 0. État de l'implémentation v2
+
+- `packages/assistant-core` porte contrats, fenêtres continues, BM25,
+  embeddings éphémères par lots, RRF, prompts, routage, audit et décision de
+  publication ; `chat-eval` en dépend et le Hub n'importe jamais le banc ;
+- SQLite 41 ajoute exclusivement `chat_conversations`, `chat_messages`,
+  `chat_runs` et `chat_sources`. Aucun prompt, passage, page, embedding ou
+  raisonnement n'est persisté ;
+- le plugin Fastify Chat fournit création, historique, envoi idempotent HTTP
+  202, suivi, annulation, reprise de file et confidentialité par profil ; un
+  seul run est exécuté globalement et un profil est borné à un actif plus trois
+  en attente ;
+- la PWA Dexie 8 met en cache le nouvel historique dans deux stores chiffrés
+  dédiés, sans outbox d'envoi, et conserve l'archive historique séparée ;
+- le rédacteur est `gemma4:e4b-it-qat`, l'auditeur
+  `qwen3.5:9b-q4_K_M` et l'embedding `qwen3-embedding:0.6b`. L'audit invalide
+  est répété une fois à température zéro, puis devient `audit_error` ;
+- les statuts persistés sont `unverified`, `verified`, `partial`, `abstained`
+  et `audit_error`. Le code retire les unités rejetées et résout les citations
+  `P → S → URL` ;
+- le dossier v1 reste intact. Le brouillon privé v2 est sous
+  `D:\FridayData\evaluations\chat-foundation-v2` et exige une référence de
+  paragraphe pour chaque aspect avant gel ;
+- l'embedding hybride n'est activable que s'il gagne au moins cinq points de
+  rappel sans augmenter le p95 de plus de 25 %. Sans cette preuve, BM25 sera la
+  configuration active.
+
+La revue IA renforcée remplace le geste de revue utilisateur, mais n'est jamais
+présentée comme une validation humaine. Les résultats v1 plus bas expliquent
+la décision d'architecture ; ils ne franchissent pas la gate v2.
+
+Le candidat désactivé a passé `pnpm verify` puis la recette Windows. L'origine
+A17 répond `health=ok`; SQLite est en migration 41 avec intégrité correcte et
+aucune violation de clé étrangère. La route Chat confirme `503 chat_disabled`.
+La sauvegarde pré-migration 40 est
+`D:\FridayData\backups\friday-pre-chat-v2-migration41-20260831-094854.sqlite`.
 
 ## 1. Décision prise
 
