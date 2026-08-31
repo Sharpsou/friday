@@ -41,11 +41,24 @@ export interface VerifiedChatEngineOptions {
   seed?: number;
 }
 
+export function normalizeGeneratedMarkdown(markdown: string): string {
+  return markdown
+    .replace(/\[([^\]]+)\]\(https?:\/\/[^\s)]+\)/giu, '$1')
+    .replace(/https?:\/\/[^\s<>()\]]+/giu, '')
+    .replace(/\((P[1-9]\d*(?:\s*,\s*P[1-9]\d*)+)\)/gu, (_all, ids: string) =>
+      ids
+        .split(/\s*,\s*/u)
+        .map((id) => `[${id}]`)
+        .join(' '),
+    )
+    .trim();
+}
+
 function validateMarkdown(
   markdown: string,
   passages: EvidencePassage[],
 ): string {
-  const answer = markdown.trim();
+  const answer = normalizeGeneratedMarkdown(markdown);
   if (!answer || answer.length > 100_000)
     throw new Error('MODEL_ANSWER_SIZE_INVALID');
   if (/https?:\/\//iu.test(answer))

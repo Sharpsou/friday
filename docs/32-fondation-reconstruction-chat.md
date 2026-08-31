@@ -1,7 +1,8 @@
 # Fondation de la reconstruction du Chat Friday
 
 Date : 31 août 2026
-Statut : **runtime v2 implanté derrière gate ; corpus v2 privé à compléter**
+Statut : **runtime v2 activé par décision utilisateur ; gate qualitative v2 à
+compléter**
 
 > **Mise à jour active — sélection éphémère de preuves.** Les sections qui
 > décrivent le seul banc lexical v1 et une future réintégration sont désormais
@@ -9,9 +10,10 @@ Statut : **runtime v2 implanté derrière gate ; corpus v2 privé à compléter*
 > et le plugin Fastify `/api/chat`. Il sélectionne temporairement les passages
 > par BM25 + `qwen3-embedding:0.6b`, avec fusion RRF et repli BM25. Il ne crée ni
 > index vectoriel, ni corpus de connaissances persistant, ni framework
-> agentique. Le runtime reste fermé par `FRIDAY_CHAT_ENABLED=false` jusqu'à la
-> réussite du corpus v2 ; l'archive `/api/assistant` et son HTTP 410 restent
-> inchangés.
+> agentique. Le runtime a été ouvert le 31 août 2026 à la demande explicite
+> de l'utilisateur, avant la réussite du corpus v2 ; cette activation ne vaut
+> pas franchissement de la gate. L'archive `/api/assistant` et son HTTP 410
+> restent inchangés.
 
 ## 0. État de l'implémentation v2
 
@@ -44,9 +46,14 @@ La revue IA renforcée remplace le geste de revue utilisateur, mais n'est jamais
 présentée comme une validation humaine. Les résultats v1 plus bas expliquent
 la décision d'architecture ; ils ne franchissent pas la gate v2.
 
-Le candidat désactivé a passé `pnpm verify` puis la recette Windows. L'origine
-A17 répond `health=ok`; SQLite est en migration 41 avec intégrité correcte et
-aucune violation de clé étrangère. La route Chat confirme `503 chat_disabled`.
+Le candidat a passé `pnpm verify` puis la recette Windows. L'origine A17 répond
+`health=ok`; SQLite est en migration 41 avec intégrité correcte et aucune
+violation de clé étrangère. `FRIDAY_CHAT_ENABLED=true` est persisté pour le
+compte Windows. Le smoke test réel du 31 août couvre cinq parcours ; le Web a
+publié une réponse partielle en 142 s, sans inventer le fait manquant, mais le
+rappel de preuve et le format initial des citations restent à améliorer. Les
+URL de brouillon sont supprimées déterministiquement et les groupes `(P…)` sont
+normalisés avant résolution par le code.
 La sauvegarde pré-migration 40 est
 `D:\FridayData\backups\friday-pre-chat-v2-migration41-20260831-094854.sqlite`.
 

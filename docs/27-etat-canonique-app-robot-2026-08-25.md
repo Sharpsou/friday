@@ -10,9 +10,10 @@ hub Fastify sur Windows, SQLite canonique sous `D:\FridayData`, Dexie chiffré
 et outbox sur les appareils, contrats Zod partagés et runtime Python séparé sur
 le Raspberry Pi.
 
-Le moteur Chat précédent est retiré. Le runtime v2 est implanté mais fermé par
-`FRIDAY_CHAT_ENABLED=false` jusqu'à sa gate : expérience unique, réponse locale
-signalée ou Web vérifié, sélection BM25 + embeddings éphémères et audit séparé.
+Le moteur Chat précédent est retiré. Le runtime v2 est activé sur A17 par
+décision explicite de l'utilisateur avec `FRIDAY_CHAT_ENABLED=true` :
+expérience unique, réponse locale signalée ou Web vérifié, sélection BM25 +
+embeddings éphémères et audit séparé. La gate qualitative v2 reste ouverte.
 L'archive privée historique reste une section distincte ; son ancienne route
 d'envoi répond toujours HTTP 410.
 
@@ -33,12 +34,16 @@ attendus et 60 paires A/B sur trois graines. Ces résultats v1 ne franchissent
 pas la nouvelle gate. Le brouillon v2, avec références de paragraphes, se trouve
 sous `D:\FridayData\evaluations\chat-foundation-v2`.
 
-Le candidat v2 désactivé est déployé sur l'origine A17. `pnpm verify` passe avec
-27 tests Robot, 4 `assistant-core`, 37 `chat-eval`, 25 contrats, 15 domaine, 113
-Hub, 105 PWA et 25 Playwright. Le health check répond `status=ok`,
+Le candidat v2 activé est déployé sur l'origine A17. Le smoke test Chrome du
+31 août couvre cinq parcours : trois réponses locales abouties, une demande Web
+partielle en 142 s et une annulation confirmée. La demande Web a refusé
+d'inventer la version Python absente des preuves, mais a révélé un rappel de
+passage insuffisant et un format de citations à normaliser. Les URL issues du
+brouillon sont maintenant retirées par le code et les groupes `(P…)` sont
+normalisés avant exposition des seules sources validées. Le health check répond `status=ok`,
 `database=ok`, `ollama=not-required`. La SQLite active est en migration 41,
 `integrity_check=ok`, sans violation de clé étrangère, et les quatre tables
-`chat_*` sont présentes. `/api/chat/*` répond `503 chat_disabled`. La sauvegarde
+`chat_*` sont présentes. La sauvegarde
 pré-migration 40 intègre est
 `D:\FridayData\backups\friday-pre-chat-v2-migration41-20260831-094854.sqlite`.
 

@@ -1,7 +1,8 @@
 # Runbook Chat — runtime vérifié sous gate
 
 Date : 31 août 2026
-Statut : runtime déployé désactivé, archive historique active, gate v2 ouverte
+Statut : runtime activé sur A17 par décision utilisateur, archive historique
+active, gate qualitative v2 encore ouverte
 
 Le nouveau Chat expose une expérience unique. Le code choisit entre réponse
 locale portant le badge « Non vérifié par des sources » et réponse Web auditée.
@@ -10,7 +11,7 @@ Le runtime ne possède aucun outil Maison, Budget ou Robot.
 ## Configuration
 
 ```text
-FRIDAY_CHAT_ENABLED=false
+FRIDAY_CHAT_ENABLED=true
 FRIDAY_TAVILY_API_KEY=<secret hors Git>
 ```
 
@@ -39,6 +40,21 @@ prompt, embedding ou raisonnement n'est persisté.
 Lorsque `FRIDAY_CHAT_ENABLED` n'est pas exactement `true`, toute route
 `/api/chat/*` répond 503 `{ "error": "chat_disabled" }`. La PWA affiche alors
 que l'activation attend la gate et laisse l'archive consultable.
+
+Le 31 août 2026, l'utilisateur a demandé l'activation avant la fin de la gate
+v2. La variable utilisateur Windows est persistée à `true`. Cette décision
+autorise l'usage courant mais ne transforme pas le smoke test en validation de
+qualité. Pour refermer immédiatement le Chat, remettre la variable à `false`
+et relancer le runbook Windows.
+
+Le smoke test Chrome réel a couvert cinq parcours : présentation locale,
+explication stable, demande Web actuelle, reformulation et annulation pendant
+la recherche. Les trois parcours locaux/interaction ont abouti ; l'annulation
+a produit un run `cancelled`. La demande Web a abouti en 142 s à une réponse
+partielle honnête, mais a révélé un rappel insuffisant du passage attendu et
+des citations de passage mal formatées. Le runtime retire désormais
+déterministiquement toute URL produite par le modèle et normalise les groupes
+`(P1, P3)` avant la résolution contrôlée `P → S → URL`.
 
 ## Banc privé v2
 
@@ -72,7 +88,6 @@ preuves ≥85 %, abstentions avec preuves <5 %, cohérence des deux ordres de re
 IA ≥90 %, hostile entièrement vert et p95 ≤240 s. L'hybride doit en outre gagner
 ≥5 points de rappel sans dépasser +25 % de p95 face au lexical.
 
-Après réussite : sauvegarde SQLite cohérente, `pnpm verify`, recette Windows,
-healthcheck, `PRAGMA integrity_check`, scénario navigateur réel A17, puis
-seulement `FRIDAY_CHAT_ENABLED=true`. Une revue IA n'est pas une validation
+La gate reste l'objectif de stabilisation même si l'utilisateur a explicitement
+ouvert le runtime avant sa réussite. Une revue IA n'est pas une validation
 humaine et ne doit pas être nommée ainsi.
