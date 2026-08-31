@@ -464,6 +464,7 @@ test('the active Chat creates, switches mode, renames and deletes from the mobil
   const now = '2026-08-31T12:00:00.000Z';
   const messages = new Map<string, Array<Record<string, unknown>>>();
   const createdModes: string[] = [];
+  let runReads = 0;
   let conversations = [
     {
       id: firstId,
@@ -534,14 +535,16 @@ test('the active Chat creates, switches mode, renames and deletes from the mobil
         },
       });
     }
-    if (url.pathname === `/api/chat/runs/${runId}`)
+    if (url.pathname === `/api/chat/runs/${runId}`) {
+      runReads += 1;
+      const completed = runReads >= 3;
       return route.fulfill({
         json: {
           id: runId,
           conversationId: secondId,
-          status: 'completed',
-          stage: 'completed',
-          route: 'local_unverified',
+          status: completed ? 'completed' : 'running',
+          stage: completed ? 'completed' : 'research',
+          route: completed ? 'local_unverified' : null,
           requestedMode: 'friday',
           retrievalMode: 'none',
           errorCode: null,
@@ -549,6 +552,7 @@ test('the active Chat creates, switches mode, renames and deletes from the mobil
           updatedAt: now,
         },
       });
+    }
     if (request.method() === 'PATCH' && conversation) {
       const update = request.postDataJSON() as { mode?: string };
       Object.assign(conversation, update);
@@ -577,6 +581,11 @@ test('the active Chat creates, switches mode, renames and deletes from the mobil
   await expect(page.getByText('Nouvelle conversation')).toBeVisible();
   await page.getByLabel('Votre message').fill('Quel est le rôle de Friday ?');
   await page.getByRole('button', { name: 'Envoyer' }).click();
+  await expect(page.getByText('Friday travaille')).toBeVisible();
+  await expect(page.getByText('Recherche', { exact: true })).toBeVisible();
+  await expect(page.getByText('Friday travaille')).toHaveCount(0, {
+    timeout: 5_000,
+  });
   await expect(
     page
       .getByRole('navigation', { name: 'Nouvelles conversations' })

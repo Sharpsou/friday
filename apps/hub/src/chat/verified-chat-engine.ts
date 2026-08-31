@@ -4,6 +4,7 @@ import {
   OllamaClient,
   PROMPT_VERSIONS,
   auditorPrompt,
+  auditorRetryPrompt,
   citedPassageIds,
   decideEvaluation,
   localPrompt,
@@ -114,6 +115,14 @@ function parseAudit(
     units,
     passages,
   );
+}
+
+function safeAuditFailureCode(error: unknown): string {
+  if (error instanceof Error && /^AUDIT_[A-Z_]+$/u.test(error.message))
+    return error.message;
+  if (error instanceof Error && error.name === 'ZodError')
+    return 'AUDIT_SCHEMA_INVALID';
+  return 'AUDIT_VALIDATION_FAILED';
 }
 
 function resolveAnswer(
@@ -390,15 +399,20 @@ export class VerifiedChatEngine implements ChatEngine {
   ): Promise<{ units: AuditUnit[]; audit: AnswerAudit; auditError: boolean }> {
     input.updateStage('auditing');
     const units = splitAuditUnits(answer);
-    const prompt = auditorPrompt({
+    const promptInput = {
       question: input.content,
       units,
       passages: dossier.passages,
-    });
+    };
+    const prompt = auditorPrompt(promptInput);
+    let failureCode = 'AUDIT_VALIDATION_FAILED';
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const raw = await generate({
         model: this.auditorModel,
-        prompt,
+        prompt:
+          attempt === 0
+            ? prompt
+            : auditorRetryPrompt({ ...promptInput, failureCode }),
         seed: this.seed,
         format: AnswerAuditJsonSchema,
         maxTokens: 2_500,
@@ -411,7 +425,8 @@ export class VerifiedChatEngine implements ChatEngine {
           audit: parseAudit(raw, units, dossier.passages),
           auditError: false,
         };
-      } catch {
+      } catch (error) {
+        failureCode = safeAuditFailureCode(error);
         /* one bounded retry */
       }
     }

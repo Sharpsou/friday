@@ -90,6 +90,7 @@ function VerifiedChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [content, setContent] = useState('');
   const [run, setRun] = useState<ChatRun | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [conversationBusy, setConversationBusy] = useState(false);
   const [renameTarget, setRenameTarget] = useState<ChatConversation | null>(
@@ -218,6 +219,10 @@ function VerifiedChat({
 
   const selected = conversations.find(({ id }) => id === selectedId) ?? null;
   const selectedMode = selected?.mode ?? draftMode;
+  const runActive = Boolean(
+    run && (run.status === 'queued' || run.status === 'running'),
+  );
+  const isWorking = submitting || runActive;
   const visibleConversations = conversations.filter(
     ({ archivedAt }) => !archivedAt,
   );
@@ -297,26 +302,37 @@ function VerifiedChat({
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
     const question = content.trim();
-    if (!question || run?.status === 'running' || run?.status === 'queued')
-      return;
+    if (!question || isWorking) return;
     setError(null);
+    setSubmitting(true);
     try {
       const conversationId =
         selectedId ?? (await createConversation(draftMode));
-      setContent('');
       const runId = await sendChatMessage(conversationId, question);
+      setContent('');
       const [nextRun] = await Promise.all([
         getChatRun(runId),
         refreshMessages(conversationId),
         refreshConversations(),
       ]);
       setRun(nextRun);
+      if (nextRun.status === 'completed') {
+        await Promise.all([
+          refreshMessages(conversationId),
+          refreshConversations(),
+          refreshWebUsage(),
+        ]);
+      } else if (nextRun.status === 'failed') {
+        setError('La réponse n’a pas pu être produite.');
+      }
     } catch (caught) {
       setError(
         caught instanceof Error && caught.message === 'CHAT_OFFLINE'
           ? 'L’envoi nécessite une connexion au Hub. L’historique reste consultable.'
           : 'Envoi impossible.',
       );
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -375,7 +391,7 @@ function VerifiedChat({
           {CHAT_MODES.map(({ mode, label }) => (
             <button
               aria-pressed={selectedMode === mode}
-              disabled={run?.status === 'running' || run?.status === 'queued'}
+              disabled={isWorking}
               key={mode}
               onClick={() => void selectMode(mode)}
               type="button"
@@ -444,20 +460,36 @@ function VerifiedChat({
           </article>
         ))}
       </div>
-      {run && ['queued', 'running'].includes(run.status) ? (
-        <div className="assistant-run-progress" role="status">
-          <span>{STAGE_LABELS[run.stage]}</span>
-          <button
-            className="secondary-button danger"
-            onClick={() =>
-              void cancelChatRun(run.id).then(() =>
-                setRun({ ...run, status: 'cancelled' }),
-              )
-            }
-            type="button"
-          >
-            Annuler
-          </button>
+      {isWorking ? (
+        <div
+          className="assistant-run-progress"
+          aria-live="assertive"
+          role="status"
+        >
+          <span className="assistant-working-label">
+            <i aria-hidden="true" />
+            <strong>Friday travaille</strong>
+            <small>
+              {submitting
+                ? 'Préparation'
+                : run
+                  ? STAGE_LABELS[run.stage]
+                  : 'En attente'}
+            </small>
+          </span>
+          {run && runActive ? (
+            <button
+              className="secondary-button danger"
+              onClick={() =>
+                void cancelChatRun(run.id).then(() =>
+                  setRun({ ...run, status: 'cancelled' }),
+                )
+              }
+              type="button"
+            >
+              Annuler
+            </button>
+          ) : null}
         </div>
       ) : null}
       <form
@@ -466,11 +498,7 @@ function VerifiedChat({
       >
         <textarea
           aria-label="Votre message"
-          disabled={
-            !navigator.onLine ||
-            run?.status === 'running' ||
-            run?.status === 'queued'
-          }
+          disabled={!navigator.onLine || isWorking}
           maxLength={8000}
           onChange={(event) => setContent(event.target.value)}
           placeholder={
@@ -483,12 +511,7 @@ function VerifiedChat({
         />
         <button
           className="primary-button"
-          disabled={
-            !content.trim() ||
-            !navigator.onLine ||
-            run?.status === 'running' ||
-            run?.status === 'queued'
-          }
+          disabled={!content.trim() || !navigator.onLine || isWorking}
           type="submit"
         >
           Envoyer

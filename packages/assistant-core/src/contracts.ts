@@ -226,4 +226,28 @@ export function validateAuditReferences(
   };
 }
 
-export const AnswerAuditJsonSchema = z.toJSONSchema(AnswerAuditSchema);
+const AnswerAuditOutputSchema = z.strictObject({
+  units: z
+    .array(
+      z.strictObject({
+        unitId: UnitIdSchema,
+        verdict: z.enum([
+          'supported',
+          'unsupported',
+          'contradicted',
+          'not_factual',
+        ]),
+        passageIds: z.array(PassageIdSchema).max(12),
+      }),
+    )
+    .max(100),
+  usefulness: z.enum(['answers', 'partial', 'misses']),
+  missingAspects: z.array(z.string().trim().min(1).max(300)).max(20),
+  evidenceSufficiency: z.enum(['sufficient', 'insufficient']),
+});
+
+// The runtime output contract deliberately omits per-unit prose. Repeated
+// reasons made otherwise valid audits exceed the bounded Ollama response on
+// answers containing many short units. AnswerAuditSchema still accepts an
+// optional reason when importing human-authored or historical fixtures.
+export const AnswerAuditJsonSchema = z.toJSONSchema(AnswerAuditOutputSchema);

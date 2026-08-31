@@ -1,10 +1,37 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AnswerAuditJsonSchema,
+  auditorPrompt,
+  auditorRetryPrompt,
   selectEvidencePassagesHybrid,
   splitAuditUnits,
   type FrozenPage,
 } from '../src/index.js';
+
+describe('bounded audit output', () => {
+  const units = [
+    { id: 'U1' as const, text: 'Fait [P1].', citedPassageIds: ['P1' as const] },
+  ];
+  const passages = [
+    { id: 'P1' as const, sourceId: 'S1' as const, text: 'Preuve du fait.' },
+  ];
+
+  it('keeps the structured response compact and makes the retry corrective', () => {
+    expect(JSON.stringify(AnswerAuditJsonSchema)).not.toContain('reason');
+    const first = auditorPrompt({ question: 'Question ?', units, passages });
+    const retry = auditorRetryPrompt({
+      question: 'Question ?',
+      units,
+      passages,
+      failureCode: 'AUDIT_UNKNOWN_PASSAGE',
+    });
+    expect(retry).not.toBe(first);
+    expect(retry).toContain('AUDIT_UNKNOWN_PASSAGE');
+    expect(retry).toContain('UNIT_IDS_AUTORISES=["U1"]');
+    expect(retry).toContain('PASSAGE_IDS_AUTORISES=["P1"]');
+  });
+});
 
 const pages: FrozenPage[] = [
   {

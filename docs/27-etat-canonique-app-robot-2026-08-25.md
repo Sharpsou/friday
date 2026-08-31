@@ -16,7 +16,11 @@ décision explicite de l'utilisateur avec `FRIDAY_CHAT_ENABLED=true` : mode
 embeddings éphémères et audit séparé. La gate qualitative v2 reste ouverte.
 Le bouton flottant crée les conversations ; leur menu permet renommage et
 suppression avec confirmation Friday, et le titre du premier message apparaît
-sans attendre la fin de l'inférence.
+sans attendre la fin de l'inférence. Les modes et le bouton restent utilisables
+quand la dernière conversation est supprimée. Pendant un run, la PWA affiche
+immédiatement « Friday travaille » et l'étape courante. L'audit Qwen utilise
+une sortie compacte sans justification répétitive et une unique correction de
+forme contextualisée ; un audit encore invalide continue d'échouer fermé.
 L'archive privée historique reste une section distincte ; son ancienne route
 d'envoi répond toujours HTTP 410.
 

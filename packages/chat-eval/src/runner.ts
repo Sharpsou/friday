@@ -34,6 +34,7 @@ import {
 import {
   PROMPT_VERSIONS,
   auditorPrompt,
+  auditorRetryPrompt,
   revisionPrompt,
   writerPrompt,
 } from './prompts.js';
@@ -132,6 +133,14 @@ function parseAudit(
   return validateAuditReferences(audit, units, passages);
 }
 
+function safeAuditFailureCode(error: unknown): string {
+  if (error instanceof Error && /^AUDIT_[A-Z_]+$/u.test(error.message))
+    return error.message;
+  if (error instanceof Error && error.name === 'ZodError')
+    return 'AUDIT_SCHEMA_INVALID';
+  return 'AUDIT_VALIDATION_FAILED';
+}
+
 function mergePages(original: FrozenPage[], added: FrozenPage[]): FrozenPage[] {
   const seenIds = new Set(original.map(({ source }) => source.id));
   const seenUrls = new Set(original.map(({ source }) => source.url));
@@ -222,22 +231,27 @@ export class EvaluationRunner {
       evidence: EvidenceDossier,
     ): Promise<{ units: AuditUnit[]; audit: AnswerAudit }> => {
       const units = splitAuditUnits(answer);
-      const prompt = auditorPrompt({
+      const promptInput = {
         question: evalCase.question,
         units,
         passages: evidence.passages,
-      });
+      };
+      const prompt = auditorPrompt(promptInput);
+      let failureCode = 'AUDIT_VALIDATION_FAILED';
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const raw = await generate(
           pair.auditorModel,
-          prompt,
+          attempt === 0
+            ? prompt
+            : auditorRetryPrompt({ ...promptInput, failureCode }),
           AnswerAuditJsonSchema,
           2_500,
           0,
         );
         try {
           return { units, audit: parseAudit(raw, units, evidence.passages) };
-        } catch {
+        } catch (error) {
+          failureCode = safeAuditFailureCode(error);
           auditFallbacks += 1;
         }
       }

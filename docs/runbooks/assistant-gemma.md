@@ -67,6 +67,19 @@ dès l'envoi du premier message et propose `Renommer` et `Supprimer` dans le men
 dialogues Friday ; aucune confirmation native du navigateur n'est employée.
 Le quota en recherches approfondies restantes reste visible. Il est global au
 compte Tavily ; une question peut consommer plusieurs recherches.
+Tavily remet les crédits mensuels à zéro le premier jour du mois. Le compteur
+Friday affiche des recherches approfondies, pas des crédits : avec le plan à
+1 000 crédits, une recherche avancée à 2 crédits et une réserve de sécurité de
+50 crédits, il remonte au maximum à 475.
+
+Après un run réel de 104 s ayant trouvé 12 passages mais échoué deux fois sur
+la forme JSON de l'audit, la sortie structurée de l'auditeur a été compactée :
+elle n'inclut plus de justification répétitive par unité. La seconde tentative
+reçoit désormais le code d'échec et les identifiants U/P autorisés au lieu de
+répéter le même prompt avec la même graine. Un contrôle Ollama synthétique de
+30 unités a produit 30 verdicts valides sous la limite. La PWA affiche
+immédiatement « Friday travaille » puis l'étape Recherche, Rédaction ou
+Vérification, y compris avant l'obtention du premier statut de run.
 
 ## Banc privé v2
 
