@@ -13,6 +13,18 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# The launcher can be invoked by a long-lived terminal whose environment has
+# not observed a recently persisted Chat activation. Re-read this explicit,
+# non-secret feature gate from the Windows user environment before starting
+# the Hub so recipe restarts keep the requested activation.
+if (-not $env:FRIDAY_CHAT_ENABLED) {
+  $persistedChatEnabled =
+    [Environment]::GetEnvironmentVariable('FRIDAY_CHAT_ENABLED', 'User')
+  if ($persistedChatEnabled) {
+    $env:FRIDAY_CHAT_ENABLED = $persistedChatEnabled
+  }
+}
+
 function Show-FridayMessage {
   param(
     [Parameter(Mandatory = $true)][string]$Message,
