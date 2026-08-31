@@ -21,6 +21,8 @@ export interface EvidenceDossier {
     lexicalCandidates: number;
     semanticCandidates: number;
     selectedParagraphKeys: string[];
+    queryPassageIds: EvidencePassage['id'][][];
+    queries: string[];
   };
 }
 export interface EmbeddingProvider {
@@ -292,6 +294,12 @@ function buildDossier(
     };
   });
   const sourceIds = new Set(passages.map(({ sourceId }) => sourceId));
+  const passageIdByCandidate = new Map(
+    selected.map((candidateIndex, passageIndex) => [
+      candidateIndex,
+      `P${(passageIndex + 1).toString()}` as EvidencePassage['id'],
+    ]),
+  );
   return {
     sources: candidates
       .map(({ source }) => source)
@@ -318,6 +326,17 @@ function buildDossier(
           }),
         ),
       ],
+      queryPassageIds: queries.map((_, queryIndex) => [
+        ...new Set(
+          [
+            ...(lexicalRankings[queryIndex] ?? []),
+            ...(semanticRankings[queryIndex] ?? []),
+          ]
+            .map((candidateIndex) => passageIdByCandidate.get(candidateIndex))
+            .filter((id): id is EvidencePassage['id'] => id !== undefined),
+        ),
+      ]),
+      queries,
     },
   };
 }
@@ -329,7 +348,7 @@ export function normalizeRetrievalQueries(
   const values = [question, ...additional]
     .map(normalized)
     .filter((value) => value.length >= 2 && value.length <= 300);
-  return [...new Set(values)].slice(0, 3);
+  return [...new Set(values)].slice(0, 6);
 }
 
 async function embedInBatches(

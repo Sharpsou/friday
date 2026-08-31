@@ -1865,6 +1865,17 @@ const MIGRATION_042 = `
      );
 `;
 
+const MIGRATION_043 = `
+  ALTER TABLE chat_runs ADD COLUMN axis_count INTEGER NOT NULL DEFAULT 0
+    CHECK (axis_count BETWEEN 0 AND 5);
+  ALTER TABLE chat_runs ADD COLUMN required_axis_count INTEGER NOT NULL DEFAULT 0
+    CHECK (required_axis_count BETWEEN 0 AND 5);
+  ALTER TABLE chat_runs ADD COLUMN covered_axis_count INTEGER NOT NULL DEFAULT 0
+    CHECK (covered_axis_count BETWEEN 0 AND 5);
+  ALTER TABLE chat_runs ADD COLUMN rejected_unit_count INTEGER NOT NULL DEFAULT 0
+    CHECK (rejected_unit_count BETWEEN 0 AND 100);
+`;
+
 const MIGRATIONS = [
   { sql: MIGRATION_001, version: 1 },
   { sql: MIGRATION_002, version: 2 },
@@ -1908,6 +1919,7 @@ const MIGRATIONS = [
   { sql: MIGRATION_040, version: 40 },
   { sql: MIGRATION_041, version: 41 },
   { sql: MIGRATION_042, version: 42 },
+  { sql: MIGRATION_043, version: 43 },
 ] as const;
 
 export function migrateDatabase(

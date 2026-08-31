@@ -115,6 +115,42 @@ describe('ChatService', () => {
     service.stop();
   });
 
+  it('persists only bounded axis counters and a safe fallback code', async () => {
+    const { service } = fixture({
+      answer: async () => ({
+        markdown: 'Extraits non conclusifs.',
+        status: 'abstained',
+        route: 'web_verified',
+        retrievalMode: 'hybrid',
+        sources: [],
+        modelCalls: 4,
+        passageCount: 6,
+        axisCount: 3,
+        requiredAxisCount: 2,
+        coveredAxisCount: 1,
+        rejectedUnitCount: 4,
+        fallbackCode: 'AUDIT_REJECTED_ALL',
+      }),
+    });
+    const conversation = service.createConversation('profile-a');
+    const runId = service.enqueue(
+      'profile-a',
+      conversation.id,
+      'd94743f5-0a53-4e16-ae50-f370ed96cacb',
+      'Question Web',
+    );
+    service.start();
+    expect(await waitCompleted(service, 'profile-a', runId)).toMatchObject({
+      status: 'completed',
+      errorCode: 'AUDIT_REJECTED_ALL',
+      axisCount: 3,
+      requiredAxisCount: 2,
+      coveredAxisCount: 1,
+      rejectedUnitCount: 4,
+    });
+    service.stop();
+  });
+
   it('recovers interrupted runs once without duplicating the user message', async () => {
     const { database, service } = fixture();
     const conversation = service.createConversation('profile-a');

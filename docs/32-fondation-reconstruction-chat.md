@@ -461,6 +461,54 @@ de modèle, rend les réponses comme texte inerte et exporte les jugements au
 format JSON. Le HTTP d'envoi reste `410` jusqu'à cette revue et à la décision
 explicite du prochain checkpoint.
 
-La gate fraîche `pnpm verify` du 31 août 2026 passe : formatage, lint, types, 27
-tests Robot, 37 `chat-eval`, 25 contrats, 15 domaine, 107 Hub, 100 PWA, builds
-de production et 25 scénarios Playwright mobiles.
+La gate fraîche `pnpm verify` du 31 août 2026 passe pour le pipeline candidat :
+formatage, lint, types, 27 tests Robot, 38 `chat-eval`, 25 contrats, 15 domaine,
+124 Hub, 105 PWA, builds de production et 26 scénarios Playwright mobiles.
+
+## 13. Pipeline candidat par axes — 31 août 2026
+
+Le moteur partagé et le banc possèdent désormais un chemin candidat activable
+par `FRIDAY_CHAT_AXES_ENABLED`. Il remplace les conversions intermédiaires par
+un plan sans faits de un à cinq axes, puis conserve les passages originaux
+jusqu'à la rédaction. Les recherches restent bornées et les embeddings restent
+éphémères.
+
+La sélection affecte ses meilleurs passages à chaque axe. Les pages de tag,
+catégorie, archive et recherche sont déclassées ; pour une demande récente,
+une source non datée reste seulement contextuelle. La date est extraite des
+métadonnées de la page originale lorsque Tavily ne la fournit pas.
+
+L'audit exige que chaque unité et chaque axe soient rendus exactement une fois.
+`supported` et `covered` exigent une preuve connue reliée à une unité soutenue.
+Une omission déclenche l'unique correction JSON au lieu de devenir
+silencieusement `unsupported`. Les phrases et listes sont découpées plus
+finement afin qu'une proposition douteuse ne supprime pas une proposition
+voisine correcte.
+
+Les citations écrites par Gemma ne sont plus publiées. Après l'audit, le code
+retire tous les identifiants `P`, conserve uniquement les unités soutenues ou
+non factuelles, ajoute les passages approuvés par Qwen, puis résout
+`P → S → URL`. Tout résidu, URL de modèle ou identifiant inconnu bloque le
+statut `verified`.
+
+Si l'audit structuré échoue deux fois ou rejette tout, le brouillon est masqué.
+Friday affiche seulement des extraits bornés des passages originaux, cités
+comme tels, avec un message indiquant les axes encore douteux. Un échec de
+recherche Web produit une abstention explicite, jamais un repli local.
+
+SQLite 43 ajoute uniquement des compteurs numériques bornés dans `chat_runs` :
+axes prévus, obligatoires et couverts, unités rejetées et code de repli. Aucun
+axe, page, passage, prompt, embedding ou raisonnement n'est persisté. Le banc
+active ce pipeline par défaut avec `--pipeline=axes`; le runtime reste derrière
+le flag jusqu'à réussite de la gate et des cinq essais réels.
+
+Cette section remplace l'ancien comportement de campagne où une unité omise
+était automatiquement classée `unsupported`. Les chiffres de `campaign-v2`
+restent historiques et ne mesurent pas ce nouveau pipeline.
+
+Le candidat a été déployé le 1er septembre 2026 avec SQLite 43 : healthcheck
+`ok`, `integrity_check=ok` et zéro violation de clé étrangère. Le Chat reste
+actif via `FRIDAY_CHAT_ENABLED=true`, tandis que
+`FRIDAY_CHAT_AXES_ENABLED` est absent et vaut donc `false`. La sauvegarde
+cohérente pré-migration est
+`D:\FridayData\backups\friday-pre-chat-axes-migration43-20260831-235916.sqlite`.

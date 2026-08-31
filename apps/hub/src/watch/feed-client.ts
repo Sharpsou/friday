@@ -34,6 +34,11 @@ export interface ValidatedFeed {
   title: string;
 }
 
+export interface ArticleDocument {
+  text: string;
+  publishedAt: string | null;
+}
+
 interface FetchTextResult {
   contentType: string;
   etag: string | null;
@@ -147,22 +152,34 @@ export class SecureFeedClient {
   }
 
   async fetchArticleText(url: string, signal: AbortSignal): Promise<string> {
+    return (await this.fetchArticleDocument(url, signal)).text;
+  }
+
+  async fetchArticleDocument(
+    url: string,
+    signal: AbortSignal,
+  ): Promise<ArticleDocument> {
     if (!(await this.robotsAllows(url, signal)))
       throw new Error('La lecture de cette page est refusée par robots.txt.');
     const response = await this.fetchText(url, signal, MAX_PAGE_BYTES, {});
-    if (!response.contentType.includes('text/html')) return response.text;
+    if (!response.contentType.includes('text/html'))
+      return { text: response.text, publishedAt: null };
     const dom = new JSDOM(response.text, {
       runScripts: undefined,
       url: response.url,
       virtualConsole: quietVirtualConsole(),
     });
+    const publishedAt = articlePublishedAt(dom.window.document);
     const article = new Readability(dom.window.document, {
       maxElemsToParse: 50_000,
     }).parse();
-    return structuredArticleText(
-      article?.content ?? dom.window.document.body.innerHTML,
-      response.url,
-    );
+    return {
+      text: structuredArticleText(
+        article?.content ?? dom.window.document.body.innerHTML,
+        response.url,
+      ),
+      publishedAt,
+    };
   }
 
   private async robotsAllows(
@@ -517,6 +534,50 @@ function normalizeDate(input: string): string | null {
   if (!input) return null;
   const date = new Date(input);
   return Number.isNaN(date.valueOf()) ? null : date.toISOString();
+}
+
+function articlePublishedAt(document: Document): string | null {
+  const selectors = [
+    'meta[property="article:published_time"]',
+    'meta[name="date"]',
+    'meta[name="datePublished"]',
+    'meta[itemprop="datePublished"]',
+  ];
+  for (const selector of selectors) {
+    const value = document.querySelector(selector)?.getAttribute('content');
+    const normalized = normalizeDate(value ?? '');
+    if (normalized) return normalized;
+  }
+  const time = document
+    .querySelector('time[datetime]')
+    ?.getAttribute('datetime');
+  const normalizedTime = normalizeDate(time ?? '');
+  if (normalizedTime) return normalizedTime;
+  for (const script of [
+    ...document.querySelectorAll('script[type="application/ld+json"]'),
+  ].slice(0, 20)) {
+    try {
+      const queue: unknown[] = [JSON.parse(script.textContent ?? '')];
+      for (let inspected = 0; queue.length && inspected < 200; inspected += 1) {
+        const value = queue.shift();
+        if (Array.isArray(value)) {
+          queue.push(...value.slice(0, 50));
+          continue;
+        }
+        if (!value || typeof value !== 'object') continue;
+        const record = value as Record<string, unknown>;
+        const date =
+          typeof record.datePublished === 'string'
+            ? normalizeDate(record.datePublished)
+            : null;
+        if (date) return date;
+        queue.push(...Object.values(record).slice(0, 50));
+      }
+    } catch {
+      // Malformed external metadata is ignored, never repaired or executed.
+    }
+  }
+  return null;
 }
 
 function normalizeText(input: string): string {

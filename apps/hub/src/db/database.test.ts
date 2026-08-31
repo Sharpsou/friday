@@ -99,7 +99,7 @@ describe('hub database migrations', () => {
       { name: 'grounding_verifier_used', dflt_value: '0' },
       { name: 'grounding_version', dflt_value: null },
     ]);
-    expect(latest.version).toBe(42);
+    expect(latest.version).toBe(43);
     expect(processingTable).toEqual({ name: 'assistant_processing_attempts' });
     expect(answerAuditTable).toEqual({ name: 'assistant_answer_audits' });
   });
@@ -209,6 +209,7 @@ describe('hub database migrations', () => {
       { version: 40 },
       { version: 41 },
       { version: 42 },
+      { version: 43 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -238,7 +239,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 42 });
+    expect(migrations.at(-1)).toEqual({ version: 43 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -274,7 +275,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 42 });
+    expect(migrations.at(-1)).toEqual({ version: 43 });
   });
 
   it('adds the five budget stores and the idempotent seed marker', () => {
@@ -728,7 +729,7 @@ describe('hub database migrations', () => {
       'robot_visual_ports',
       'robot_visual_transitions',
     ]);
-    expect(migration).toEqual({ version: 42 });
+    expect(migration).toEqual({ version: 43 });
   });
 
   it('extends the panorama pulse range without losing the global trim', () => {
@@ -799,7 +800,7 @@ describe('hub database migrations', () => {
       evidence_group_representative_source_id: null,
       evidence_origin_key: null,
     });
-    expect(migration).toEqual({ version: 42 });
+    expect(migration).toEqual({ version: 43 });
   });
 
   it('preserves processing diagnostics and accepts the Web editorial stage', () => {
@@ -886,6 +887,24 @@ describe('hub database migrations', () => {
       title: 'Pourquoi le ciel est-il bleu ?',
       mode: 'friday',
     });
+    database.close();
+  });
+
+  it('adds bounded numeric Chat axis diagnostics without storing axis text', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 42);
+    migrateDatabase(database);
+    const columns = database
+      .prepare(
+        "SELECT name, dflt_value FROM pragma_table_info('chat_runs') WHERE name LIKE '%axis_count' OR name = 'rejected_unit_count' ORDER BY cid",
+      )
+      .all();
+    expect(columns).toEqual([
+      { name: 'axis_count', dflt_value: '0' },
+      { name: 'required_axis_count', dflt_value: '0' },
+      { name: 'covered_axis_count', dflt_value: '0' },
+      { name: 'rejected_unit_count', dflt_value: '0' },
+    ]);
     database.close();
   });
 });

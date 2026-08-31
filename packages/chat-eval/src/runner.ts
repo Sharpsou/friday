@@ -3,7 +3,9 @@ import { createHash } from 'node:crypto';
 import {
   decideEvaluation,
   citedPassageIds,
+  compileAuditedAnswer,
   functionalOutcome,
+  splitAuditSegments,
   splitAuditUnits,
   suppressUnsupportedUnits,
   type EvaluationDecision,
@@ -12,10 +14,17 @@ import {
 import {
   AnswerAuditJsonSchema,
   AnswerAuditSchema,
+  AnswerPlanJsonSchema,
   FrozenPageSchema,
+  assignEvidenceToAxes,
+  fallbackAnswerPlan,
+  mergeRedundantAxes,
+  parseAnswerPlan,
   validateAuditReferences,
   type AnswerAudit,
+  type AnswerPlan,
   type AuditUnit,
+  type AxisEvidence,
   type ChatEvalCase,
   type EvidencePassage,
   type EvidenceSource,
@@ -33,6 +42,7 @@ import {
 } from './passages.js';
 import {
   PROMPT_VERSIONS,
+  answerPlanPrompt,
   auditorPrompt,
   auditorRetryPrompt,
   revisionPrompt,
@@ -73,6 +83,7 @@ export interface EvaluationRunnerOptions {
   passageLimits?: PassageSelectionLimits;
   maxModelCalls?: number;
   embeddings?: EmbeddingProvider;
+  axesEnabled?: boolean;
 }
 
 export interface EvaluationResult {
@@ -94,6 +105,9 @@ export interface EvaluationResult {
   referenceParagraphRecall: number | null;
   retrievalDimensionCoverage: number | null;
   elapsedMs: number;
+  plannedAxisCount: number;
+  requiredAxisCount: number;
+  coveredAxisCount: number;
   promptVersions: typeof PROMPT_VERSIONS;
 }
 
@@ -122,6 +136,7 @@ function parseAudit(
   raw: string,
   units: AuditUnit[],
   passages: EvidencePassage[],
+  axes: AnswerPlan['axes'] = [],
 ): AnswerAudit {
   let json: unknown;
   try {
@@ -130,7 +145,7 @@ function parseAudit(
     throw new Error('AUDIT_INVALID_JSON');
   }
   const audit = AnswerAuditSchema.parse(json);
-  return validateAuditReferences(audit, units, passages);
+  return validateAuditReferences(audit, units, passages, axes);
 }
 
 function safeAuditFailureCode(error: unknown): string {
@@ -178,15 +193,9 @@ export class EvaluationRunner {
     let revisionUsed = false;
     let auditFallbacks = 0;
     let auditError = false;
-    let dossier = await selectEvidencePassagesHybrid({
-      question: evalCase.question,
-      pages: evalCase.pages,
-      limits: this.limits,
-      ...(this.options.embeddings
-        ? { embeddings: this.options.embeddings }
-        : {}),
-      signal,
-    });
+    let dossier: EvidenceDossier;
+    let plan = fallbackAnswerPlan(evalCase.question);
+    let assignments: AxisEvidence[] = [];
 
     const generate = async (
       model: string,
@@ -210,6 +219,35 @@ export class EvaluationRunner {
       return result.response;
     };
 
+    if (this.options.axesEnabled) {
+      plan = parseAnswerPlan(
+        await generate(
+          pair.auditorModel,
+          answerPlanPrompt(evalCase.question),
+          AnswerPlanJsonSchema,
+          1_000,
+          0,
+        ),
+        evalCase.question,
+      );
+    }
+    dossier = await selectEvidencePassagesHybrid({
+      question: evalCase.question,
+      ...(this.options.axesEnabled
+        ? { queries: plan.axes.map(({ question }) => question) }
+        : {}),
+      pages: evalCase.pages,
+      limits: this.limits,
+      ...(this.options.embeddings
+        ? { embeddings: this.options.embeddings }
+        : {}),
+      signal,
+    });
+    if (this.options.axesEnabled) {
+      assignments = mergeRedundantAxes(assignEvidenceToAxes(plan, dossier));
+      plan = { ...plan, axes: assignments.map(({ axis }) => axis) };
+    }
+
     const write = async (evidence: EvidenceDossier): Promise<string> =>
       validateModelMarkdown(
         await generate(
@@ -218,6 +256,9 @@ export class EvaluationRunner {
             question: evalCase.question,
             priorTurns: evalCase.priorTurns,
             passages: evidence.passages,
+            ...(this.options.axesEnabled
+              ? { plan, axisPassages: assignments }
+              : {}),
           }),
           undefined,
           1_500,
@@ -235,6 +276,7 @@ export class EvaluationRunner {
         question: evalCase.question,
         units,
         passages: evidence.passages,
+        axes: this.options.axesEnabled ? plan.axes : [],
       };
       const prompt = auditorPrompt(promptInput);
       let failureCode = 'AUDIT_VALIDATION_FAILED';
@@ -249,7 +291,15 @@ export class EvaluationRunner {
           0,
         );
         try {
-          return { units, audit: parseAudit(raw, units, evidence.passages) };
+          return {
+            units,
+            audit: parseAudit(
+              raw,
+              units,
+              evidence.passages,
+              this.options.axesEnabled ? plan.axes : [],
+            ),
+          };
         } catch (error) {
           failureCode = safeAuditFailureCode(error);
           auditFallbacks += 1;
@@ -265,6 +315,13 @@ export class EvaluationRunner {
             passageIds: [],
             reason: 'Audit structuré invalide après une répétition bornée.',
           })),
+          axes: this.options.axesEnabled
+            ? plan.axes.map(({ id }) => ({
+                axisId: id,
+                coverage: 'missing' as const,
+                passageIds: [],
+              }))
+            : [],
           usefulness: 'misses',
           missingAspects: ['Vérification indisponible'],
           evidenceSufficiency: 'insufficient',
@@ -280,6 +337,13 @@ export class EvaluationRunner {
           revisionUsed,
           researchUsed,
           finalAudit: false,
+          ...(this.options.axesEnabled
+            ? {
+                requiredAxisIds: plan.axes
+                  .filter(({ importance }) => importance === 'required')
+                  .map(({ id }) => id),
+              }
+            : {}),
         });
 
     if (!auditError && decision === 'research') {
@@ -297,7 +361,9 @@ export class EvaluationRunner {
           );
         dossier = await selectEvidencePassagesHybrid({
           question: evalCase.question,
-          queries: audited.audit.missingAspects,
+          queries: this.options.axesEnabled
+            ? plan.axes.map(({ question }) => question)
+            : audited.audit.missingAspects,
           pages: mergePages(evalCase.pages, extraPages),
           limits: this.limits,
           ...(this.options.embeddings
@@ -305,6 +371,8 @@ export class EvaluationRunner {
             : {}),
           signal,
         });
+        if (this.options.axesEnabled)
+          assignments = mergeRedundantAxes(assignEvidenceToAxes(plan, dossier));
         answer = await write(dossier);
         audited = await auditAnswer(answer, dossier);
         decision = auditError
@@ -313,6 +381,13 @@ export class EvaluationRunner {
               revisionUsed,
               researchUsed,
               finalAudit: true,
+              ...(this.options.axesEnabled
+                ? {
+                    requiredAxisIds: plan.axes
+                      .filter(({ importance }) => importance === 'required')
+                      .map(({ id }) => id),
+                  }
+                : {}),
             });
       } else {
         decision = 'partial';
@@ -327,6 +402,7 @@ export class EvaluationRunner {
             answer,
             audit: audited.audit,
             passages: dossier.passages,
+            ...(this.options.axesEnabled ? { axes: plan.axes } : {}),
           }),
           undefined,
           1_500,
@@ -341,10 +417,26 @@ export class EvaluationRunner {
             revisionUsed,
             researchUsed,
             finalAudit: true,
+            ...(this.options.axesEnabled
+              ? {
+                  requiredAxisIds: plan.axes
+                    .filter(({ importance }) => importance === 'required')
+                    .map(({ id }) => id),
+                }
+              : {}),
           });
     }
 
-    if (decision === 'partial') {
+    if (this.options.axesEnabled) {
+      const compiled = compileAuditedAnswer(
+        splitAuditSegments(answer),
+        audited.audit,
+        decision === 'partial',
+      );
+      answer =
+        compiled.markdown ||
+        'Je ne peux pas fournir de réponse factuelle fiable avec les preuves disponibles.';
+    } else if (decision === 'partial') {
       answer = suppressUnsupportedUnits(audited.units, audited.audit);
     }
     const citedIds = citedPassageIds(answer);
@@ -396,6 +488,20 @@ export class EvaluationRunner {
               ),
             ).length / referenceEvidence.length,
       elapsedMs: Math.round(performance.now() - startedAt),
+      plannedAxisCount: this.options.axesEnabled ? plan.axes.length : 0,
+      requiredAxisCount: this.options.axesEnabled
+        ? plan.axes.filter(({ importance }) => importance === 'required').length
+        : 0,
+      coveredAxisCount: this.options.axesEnabled
+        ? audited.audit.axes.filter(
+            ({ axisId, coverage }) =>
+              coverage === 'covered' &&
+              plan.axes.some(
+                ({ id, importance }) =>
+                  id === axisId && importance === 'required',
+              ),
+          ).length
+        : 0,
       promptVersions: PROMPT_VERSIONS,
     };
   }

@@ -24,6 +24,14 @@ forme contextualisée ; un audit encore invalide continue d'échouer fermé.
 L'archive privée historique reste une section distincte ; son ancienne route
 d'envoi répond toujours HTTP 410.
 
+Un pipeline candidat par un à cinq axes est implanté derrière
+`FRIDAY_CHAT_AXES_ENABLED=false`. Il refuse les omissions d'unités ou d'axes,
+compile les citations depuis les passages approuvés par l'auditeur et masque
+le brouillon lorsqu'aucune unité factuelle ne survit. Dans ce cas exceptionnel,
+seuls des extraits de sources bornés et explicitement douteux sont affichés.
+La vérification complète candidate passe avec 27 tests Robot, 38 tests du banc,
+25 contrats, 15 domaine, 124 Hub, 105 PWA et 26 scénarios Playwright.
+
 Les migrations Assistant jusqu'à 40 et les données existantes restent en place
 pour préserver l'historique et la compatibilité SQLite ; elles sont désormais
 historiques et ne définissent pas le futur harnais. La Veille utilise des
@@ -48,13 +56,15 @@ d'inventer la version Python absente des preuves, mais a révélé un rappel de
 passage insuffisant et un format de citations à normaliser. Les URL issues du
 brouillon sont maintenant retirées par le code et les groupes `(P…)` sont
 normalisés avant exposition des seules sources validées. Le health check répond `status=ok`,
-`database=ok`, `ollama=not-required`. La SQLite active est en migration 42,
+`database=ok`, `ollama=not-required`. La base A17 est en migration 43 avec
 `integrity_check=ok`, sans violation de clé étrangère, et les quatre tables
 `chat_*` sont présentes. La sauvegarde
 pré-migration 40 intègre est
 `D:\FridayData\backups\friday-pre-chat-v2-migration41-20260831-094854.sqlite`.
 La sauvegarde cohérente pré-migration 42 est
 `D:\FridayData\backups\friday-pre-chat-migration42-20260831-134242.sqlite`.
+La sauvegarde cohérente pré-migration 43 est
+`D:\FridayData\backups\friday-pre-chat-axes-migration43-20260831-235916.sqlite`.
 
 La navigation comporte Aujourd’hui, Agenda, Courses, Budget, Chat, Veille et
 Robot. Auth fermée et partage à deux sont implantés. Agenda, Courses et Budget
@@ -62,7 +72,7 @@ sont partagés ; Chat et Veille restent privés par profil. Google Calendar n’
 implanté ; Tailscale et les données Budget réelles restent derrière leurs
 portes documentées. Le Chat n’a aucune mutation métier ni commande Robot.
 
-SQLite est en migration **42** et le candidat PWA cible Dexie **8** :
+SQLite candidate est en migration **43** et le candidat PWA cible Dexie **8** :
 
 - 1–19 : Maison, auth, sync, Budget, Chat, recherche et Veille ;
 - 20–25 : ancien prototype Robot, conservé uniquement dans l’historique de
@@ -93,6 +103,8 @@ SQLite est en migration **42** et le candidat PWA cible Dexie **8** :
   page brute, passage, prompt, embedding ni raisonnement persisté.
 - 42 : modes `Friday|Local|Recherche Web`, mode figé par run et rattrapage
   déterministe des titres depuis le premier message.
+- 43 : compteurs bornés du pipeline par axes, sans texte d'axe, passage, prompt
+  ou embedding persisté.
 
 Les migrations 20–25 n’ont pas été réécrites. Les anciennes données Robot ne
 sont pas importées dans le nouveau modèle. Le retour arrière passe par la

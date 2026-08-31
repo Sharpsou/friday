@@ -11,6 +11,7 @@ describe('separate grounding metrics', () => {
         { id: 'U2', text: 'Deux [P2].', citedPassageIds: ['P2'] },
       ],
       {
+        axes: [],
         units: [
           { unitId: 'U1', verdict: 'supported', passageIds: ['P1'] },
           { unitId: 'U2', verdict: 'contradicted', passageIds: ['P1'] },

@@ -1858,6 +1858,10 @@ export const ChatRunSchema = z
       .string()
       .regex(/^[A-Z0-9_]+$/u)
       .nullable(),
+    axisCount: z.number().int().min(0).max(5),
+    requiredAxisCount: z.number().int().min(0).max(5),
+    coveredAxisCount: z.number().int().min(0).max(5),
+    rejectedUnitCount: z.number().int().min(0).max(100),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })

@@ -1,4 +1,5 @@
 export * from './audit.js';
+export * from './axes.js';
 export * from './contracts.js';
 export * from './ollama.js';
 export * from './passages.js';

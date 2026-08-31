@@ -89,8 +89,12 @@ async function evaluate(): Promise<void> {
   const retrieval = argument('retrieval') ?? 'hybrid';
   if (!['hybrid', 'lexical'].includes(retrieval))
     throw new Error('RETRIEVAL_MUST_BE_HYBRID_OR_LEXICAL');
+  const pipeline = argument('pipeline') ?? 'axes';
+  if (!['legacy', 'axes'].includes(pipeline))
+    throw new Error('PIPELINE_MUST_BE_LEGACY_OR_AXES');
   const runner = new EvaluationRunner({
     ollama: client,
+    axesEnabled: pipeline === 'axes',
     ...(retrieval === 'hybrid'
       ? {
           embeddings: {
@@ -118,7 +122,7 @@ async function evaluate(): Promise<void> {
   const persist = async (): Promise<void> => {
     await writeFile(
       resultPath,
-      `${JSON.stringify({ corpusVersion: corpus.version, split, retrieval, seeds, results }, null, 2)}\n`,
+      `${JSON.stringify({ corpusVersion: corpus.version, split, retrieval, pipeline, seeds, results }, null, 2)}\n`,
       'utf8',
     );
   };

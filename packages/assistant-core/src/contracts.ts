@@ -4,6 +4,7 @@ const UtcInstantSchema = z.iso.datetime({ offset: true });
 const SourceIdSchema = z.string().regex(/^S[1-9]\d*$/u);
 const PassageIdSchema = z.string().regex(/^P[1-9]\d*$/u);
 const UnitIdSchema = z.string().regex(/^U[1-9]\d*$/u);
+const AxisIdSchema = z.string().regex(/^A[1-5]$/u);
 
 function uniqueBy<T>(values: T[], key: (value: T) => string): boolean {
   return new Set(values.map(key)).size === values.length;
@@ -38,6 +39,41 @@ export const AuditUnitSchema = z
     path: ['citedPassageIds'],
   });
 
+export const AnswerAxisSchema = z.strictObject({
+  id: AxisIdSchema,
+  label: z.string().trim().min(2).max(80),
+  question: z
+    .string()
+    .trim()
+    .min(3)
+    .max(300)
+    .refine((value) => !/https?:\/\//iu.test(value), 'URL forbidden'),
+  importance: z.enum(['required', 'useful']),
+  query: z
+    .string()
+    .trim()
+    .min(2)
+    .max(300)
+    .refine((value) => !/https?:\/\//iu.test(value), 'URL forbidden'),
+});
+
+export const AnswerPlanSchema = z
+  .strictObject({
+    intent: z.enum([
+      'explain',
+      'compare',
+      'recent',
+      'recommend',
+      'procedure',
+      'other',
+    ]),
+    axes: z.array(AnswerAxisSchema).min(1).max(5),
+  })
+  .refine((plan) => uniqueBy(plan.axes, ({ id }) => id), {
+    message: 'Duplicate answer axis identifier',
+    path: ['axes'],
+  });
+
 export const AnswerAuditSchema = z
   .strictObject({
     units: z
@@ -55,6 +91,16 @@ export const AnswerAuditSchema = z
         }),
       )
       .max(100),
+    axes: z
+      .array(
+        z.strictObject({
+          axisId: AxisIdSchema,
+          coverage: z.enum(['covered', 'partial', 'missing']),
+          passageIds: z.array(PassageIdSchema).max(12),
+        }),
+      )
+      .max(5)
+      .default([]),
     usefulness: z.enum(['answers', 'partial', 'misses']),
     missingAspects: z.array(z.string().trim().min(1).max(300)).max(20),
     evidenceSufficiency: z.enum(['sufficient', 'insufficient']),
@@ -62,6 +108,10 @@ export const AnswerAuditSchema = z
   .refine((audit) => uniqueBy(audit.units, ({ unitId }) => unitId), {
     message: 'Duplicate audited unit identifier',
     path: ['units'],
+  })
+  .refine((audit) => uniqueBy(audit.axes, ({ axisId }) => axisId), {
+    message: 'Duplicate audited axis identifier',
+    path: ['axes'],
   })
   .refine((audit) => uniqueBy(audit.missingAspects, String), {
     message: 'Duplicate missing aspect',
@@ -72,6 +122,13 @@ export const AnswerAuditSchema = z
     {
       message: 'Duplicate supporting passage identifier',
       path: ['units'],
+    },
+  )
+  .refine(
+    (audit) => audit.axes.every((axis) => uniqueBy(axis.passageIds, String)),
+    {
+      message: 'Duplicate axis passage identifier',
+      path: ['axes'],
     },
   );
 
@@ -194,6 +251,8 @@ export const CorpusSchema = z
 export type EvidenceSource = z.infer<typeof EvidenceSourceSchema>;
 export type EvidencePassage = z.infer<typeof EvidencePassageSchema>;
 export type AuditUnit = z.infer<typeof AuditUnitSchema>;
+export type AnswerAxis = z.infer<typeof AnswerAxisSchema>;
+export type AnswerPlan = z.infer<typeof AnswerPlanSchema>;
 export type AnswerAudit = z.infer<typeof AnswerAuditSchema>;
 export type FrozenPage = z.infer<typeof FrozenPageSchema>;
 export type ChatEvalCase = z.infer<typeof ChatEvalCaseSchema>;
@@ -203,6 +262,7 @@ export function validateAuditReferences(
   audit: AnswerAudit,
   units: AuditUnit[],
   passages: EvidencePassage[],
+  axes: AnswerAxis[] = [],
 ): AnswerAudit {
   const unitIds = new Set(units.map(({ id }) => id));
   const passageIds = new Set(passages.map(({ id }) => id));
@@ -210,19 +270,44 @@ export function validateAuditReferences(
     if (!unitIds.has(unit.unitId)) throw new Error('AUDIT_UNKNOWN_UNIT');
     if (unit.passageIds.some((id) => !passageIds.has(id)))
       throw new Error('AUDIT_UNKNOWN_PASSAGE');
+    if (unit.verdict === 'supported' && unit.passageIds.length === 0)
+      throw new Error('AUDIT_SUPPORTED_WITHOUT_PASSAGE');
+    if (unit.verdict === 'contradicted' && unit.passageIds.length === 0)
+      throw new Error('AUDIT_CONTRADICTION_WITHOUT_PASSAGE');
+    if (unit.verdict === 'not_factual' && unit.passageIds.length !== 0)
+      throw new Error('AUDIT_NON_FACTUAL_WITH_PASSAGE');
   }
+  if (audit.units.length !== units.length)
+    throw new Error('AUDIT_INCOMPLETE_UNITS');
   const byId = new Map(audit.units.map((unit) => [unit.unitId, unit]));
+  if (units.some(({ id }) => !byId.has(id)))
+    throw new Error('AUDIT_INCOMPLETE_UNITS');
+  const axisIds = new Set(axes.map(({ id }) => id));
+  if (axes.length && audit.axes.length !== axes.length)
+    throw new Error('AUDIT_INCOMPLETE_AXES');
+  for (const axis of audit.axes) {
+    if (!axisIds.has(axis.axisId)) throw new Error('AUDIT_UNKNOWN_AXIS');
+    if (axis.passageIds.some((id) => !passageIds.has(id)))
+      throw new Error('AUDIT_UNKNOWN_PASSAGE');
+    if (axis.coverage === 'covered' && axis.passageIds.length === 0)
+      throw new Error('AUDIT_COVERED_AXIS_WITHOUT_PASSAGE');
+    if (
+      axis.coverage === 'covered' &&
+      !axis.passageIds.some((id) =>
+        audit.units.some(
+          (unit) =>
+            unit.verdict === 'supported' && unit.passageIds.includes(id),
+        ),
+      )
+    )
+      throw new Error('AUDIT_COVERED_AXIS_WITHOUT_SUPPORTED_UNIT');
+  }
   return {
     ...audit,
-    units: units.map(
-      ({ id }) =>
-        byId.get(id) ?? {
-          unitId: id,
-          verdict: 'unsupported' as const,
-          passageIds: [],
-          reason: 'Unité omise par l’auditeur.',
-        },
-    ),
+    units: units.map(({ id }) => byId.get(id)!),
+    axes: axes.length
+      ? axes.map(({ id }) => audit.axes.find(({ axisId }) => axisId === id)!)
+      : audit.axes,
   };
 }
 
@@ -241,6 +326,15 @@ const AnswerAuditOutputSchema = z.strictObject({
       }),
     )
     .max(100),
+  axes: z
+    .array(
+      z.strictObject({
+        axisId: AxisIdSchema,
+        coverage: z.enum(['covered', 'partial', 'missing']),
+        passageIds: z.array(PassageIdSchema).max(12),
+      }),
+    )
+    .max(5),
   usefulness: z.enum(['answers', 'partial', 'misses']),
   missingAspects: z.array(z.string().trim().min(1).max(300)).max(20),
   evidenceSufficiency: z.enum(['sufficient', 'insufficient']),
@@ -251,3 +345,4 @@ const AnswerAuditOutputSchema = z.strictObject({
 // answers containing many short units. AnswerAuditSchema still accepts an
 // optional reason when importing human-authored or historical fixtures.
 export const AnswerAuditJsonSchema = z.toJSONSchema(AnswerAuditOutputSchema);
+export const AnswerPlanJsonSchema = z.toJSONSchema(AnswerPlanSchema);

@@ -142,6 +142,7 @@ export interface BuildHubOptions {
   robotController?: RobotController;
   robotPlaceRecognition?: RobotPlaceRecognitionEngine;
   chatEnabled?: boolean;
+  chatAxesEnabled?: boolean;
   chatEngine?: ChatEngine;
 }
 
@@ -245,6 +246,9 @@ export async function buildHub(options: BuildHubOptions) {
     database,
     options.chatEngine ??
       new VerifiedChatEngine({
+        axesEnabled:
+          options.chatAxesEnabled ??
+          process.env.FRIDAY_CHAT_AXES_ENABLED === 'true',
         ollama: new OllamaClient({
           ...(options.ollamaBaseUrl ? { baseUrl: options.ollamaBaseUrl } : {}),
           timeoutMs: 240_000,

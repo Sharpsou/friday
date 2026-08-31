@@ -8,6 +8,7 @@ import {
 import { validateAuditReferences, type AnswerAudit } from '../src/contracts.js';
 
 const audit: AnswerAudit = {
+  axes: [],
   units: [
     { unitId: 'U1', verdict: 'supported', passageIds: ['P1'] },
     { unitId: 'U2', verdict: 'unsupported', passageIds: [] },
@@ -57,22 +58,20 @@ describe('audit decisions', () => {
     ).toBe('research');
   });
 
-  it('marks an omitted audit unit unsupported instead of trusting it', () => {
+  it('rejects an omitted audit unit so the bounded corrective retry can run', () => {
     const units = splitAuditUnits('Fait soutenu [P1]. Second fait [P1].');
-    const normalized = validateAuditReferences(
-      {
-        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
-        usefulness: 'answers',
-        missingAspects: [],
-        evidenceSufficiency: 'sufficient',
-      },
-      units,
-      [{ id: 'P1', sourceId: 'S1', text: 'Deux faits vérifiables.' }],
-    );
-    expect(normalized.units[1]).toMatchObject({
-      unitId: 'U2',
-      verdict: 'unsupported',
-      passageIds: [],
-    });
+    expect(() =>
+      validateAuditReferences(
+        {
+          axes: [],
+          units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
+          usefulness: 'answers',
+          missingAspects: [],
+          evidenceSufficiency: 'sufficient',
+        },
+        units,
+        [{ id: 'P1', sourceId: 'S1', text: 'Deux faits vérifiables.' }],
+      ),
+    ).toThrow('AUDIT_INCOMPLETE_UNITS');
   });
 });

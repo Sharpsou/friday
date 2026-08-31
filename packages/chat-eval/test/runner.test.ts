@@ -34,6 +34,53 @@ const evalCase: ChatEvalCase = {
 };
 
 describe('EvaluationRunner', () => {
+  it('plans and audits bounded axes without exposing evaluation criteria', async () => {
+    const responses = [
+      JSON.stringify({
+        intent: 'explain',
+        axes: [
+          {
+            id: 'A1',
+            label: 'Mesure',
+            question: 'Quelle autonomie a été mesurée ?',
+            importance: 'required',
+            query: 'autonomie mesurée protocole',
+          },
+        ],
+      }),
+      'L’autonomie mesurée est de dix heures [P1].',
+      JSON.stringify({
+        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
+        axes: [{ axisId: 'A1', coverage: 'covered', passageIds: ['P1'] }],
+        usefulness: 'answers',
+        missingAspects: [],
+        evidenceSufficiency: 'sufficient',
+      }),
+    ];
+    const runner = new EvaluationRunner({
+      axesEnabled: true,
+      ollama: {
+        generate: async (): Promise<GenerateResult> => ({
+          response: responses.shift()!,
+          durationMs: 1,
+        }),
+      } as never,
+    });
+    const result = await runner.runCase(
+      evalCase,
+      { id: 'pair', writerModel: 'writer', auditorModel: 'auditor' },
+      7,
+    );
+    expect(result).toMatchObject({
+      decision: 'pass',
+      calls: 3,
+      plannedAxisCount: 1,
+      requiredAxisCount: 1,
+      coveredAxisCount: 1,
+    });
+    expect(result.answer).toContain('[P1]');
+  });
+
   it('publishes only after a separately structured audit', async () => {
     const requests: GenerateRequest[] = [];
     const responses = [

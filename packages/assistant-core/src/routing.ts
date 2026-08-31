@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { OllamaClient } from './ollama.js';
-import { routerPrompt } from './prompts.js';
+import { AnswerPlanSchema, type AnswerPlan } from './contracts.js';
+import { routeAnswerPlanPrompt, routerPrompt } from './prompts.js';
 
 export const RouteClassifierOutputSchema = z.strictObject({
   route: z.enum(['local', 'web']),
@@ -20,6 +21,14 @@ export type RouteClassifierOutput = z.infer<typeof RouteClassifierOutputSchema>;
 export const RouteClassifierJsonSchema = z.toJSONSchema(
   RouteClassifierOutputSchema,
 );
+
+export const RoutePlanOutputSchema = z.strictObject({
+  route: z.enum(['local', 'web']),
+  reason: RouteClassifierOutputSchema.shape.reason,
+  plan: AnswerPlanSchema.nullable(),
+});
+export const RoutePlanJsonSchema = z.toJSONSchema(RoutePlanOutputSchema);
+export type RoutePlanOutput = z.infer<typeof RoutePlanOutputSchema>;
 export interface RouteDecision extends RouteClassifierOutput {
   decidedBy: 'code' | 'classifier';
   verificationLabel: 'sources requises' | 'non vérifié par des sources';
@@ -105,4 +114,50 @@ export async function routeQuestion(
     throw new Error('ROUTER_INVALID_JSON');
   }
   return acceptClassifierRoute(parsed);
+}
+
+export async function routeAndPlanQuestion(
+  question: string,
+  options: {
+    ollama: OllamaClient;
+    model: string;
+    seed: number;
+    signal?: AbortSignal;
+  },
+): Promise<{ decision: RouteDecision; plan: AnswerPlan | null }> {
+  const result = await options.ollama.generate({
+    model: options.model,
+    prompt: routeAnswerPlanPrompt(question, RoutePlanJsonSchema),
+    seed: options.seed,
+    format: RoutePlanJsonSchema,
+    maxTokens: 1_000,
+    temperature: 0,
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  let value: unknown;
+  try {
+    value = JSON.parse(result.response);
+  } catch {
+    throw new Error('ROUTER_PLAN_INVALID_JSON');
+  }
+  const parsed = RoutePlanOutputSchema.parse(value);
+  if (parsed.route === 'local' && parsed.plan !== null)
+    throw new Error('LOCAL_ROUTE_MUST_NOT_HAVE_PLAN');
+  if (parsed.route === 'web' && parsed.plan === null)
+    throw new Error('WEB_ROUTE_REQUIRES_PLAN');
+  return {
+    decision: {
+      route: parsed.route,
+      reason: parsed.reason,
+      queries: parsed.plan
+        ? parsed.plan.axes.map(({ query }) => query).slice(0, 3)
+        : [],
+      decidedBy: 'classifier',
+      verificationLabel:
+        parsed.route === 'web'
+          ? 'sources requises'
+          : 'non vérifié par des sources',
+    },
+    plan: parsed.plan,
+  };
 }

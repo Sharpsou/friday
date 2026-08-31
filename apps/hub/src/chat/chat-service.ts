@@ -35,6 +35,11 @@ export interface ChatEngineResult {
   sources: ChatSource[];
   modelCalls: number;
   passageCount: number;
+  axisCount?: number;
+  requiredAxisCount?: number;
+  coveredAxisCount?: number;
+  rejectedUnitCount?: number;
+  fallbackCode?: string | null;
 }
 
 export interface ChatEngine {
@@ -72,6 +77,10 @@ interface RunRow {
   requested_mode: ChatMode;
   retrieval_mode: ChatRetrievalMode;
   error_code: string | null;
+  axis_count: number;
+  required_axis_count: number;
+  covered_axis_count: number;
+  rejected_unit_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -320,7 +329,8 @@ export class ChatService {
     const row = this.database
       .prepare(
         `SELECT id, conversation_id, status, stage, route, requested_mode, retrieval_mode,
-                error_code, created_at, updated_at
+                error_code, axis_count, required_axis_count, covered_axis_count,
+                rejected_unit_count, created_at, updated_at
            FROM chat_runs WHERE id = ? AND profile_id = ?`,
       )
       .get(id, profileId) as RunRow | undefined;
@@ -334,6 +344,10 @@ export class ChatService {
       requestedMode: row.requested_mode,
       retrievalMode: row.retrieval_mode,
       errorCode: row.error_code,
+      axisCount: row.axis_count,
+      requiredAxisCount: row.required_axis_count,
+      coveredAxisCount: row.covered_axis_count,
+      rejectedUnitCount: row.rejected_unit_count,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
@@ -509,17 +523,24 @@ export class ChatService {
         this.database
           .prepare(
             `UPDATE chat_runs SET status = 'completed', stage = 'completed',
-               assistant_message_id = ?, route = ?, retrieval_mode = ?, error_code = NULL,
-               model_calls = ?, source_count = ?, passage_count = ?, duration_ms = ?, updated_at = ?
+               assistant_message_id = ?, route = ?, retrieval_mode = ?, error_code = ?,
+               model_calls = ?, source_count = ?, passage_count = ?, axis_count = ?,
+               required_axis_count = ?, covered_axis_count = ?, rejected_unit_count = ?,
+               duration_ms = ?, updated_at = ?
              WHERE id = ?`,
           )
           .run(
             messageId,
             result.route,
             result.retrievalMode,
+            result.fallbackCode ?? null,
             result.modelCalls,
             result.sources.length,
             result.passageCount,
+            result.axisCount ?? 0,
+            result.requiredAxisCount ?? 0,
+            result.coveredAxisCount ?? 0,
+            result.rejectedUnitCount ?? 0,
             Math.round(performance.now() - startedAt),
             completedAt,
             run.id,

@@ -25,6 +25,14 @@ if (-not $env:FRIDAY_CHAT_ENABLED) {
   }
 }
 
+if (-not $env:FRIDAY_CHAT_AXES_ENABLED) {
+  $persistedChatAxesEnabled =
+    [Environment]::GetEnvironmentVariable('FRIDAY_CHAT_AXES_ENABLED', 'User')
+  if ($persistedChatAxesEnabled) {
+    $env:FRIDAY_CHAT_AXES_ENABLED = $persistedChatAxesEnabled
+  }
+}
+
 function Show-FridayMessage {
   param(
     [Parameter(Mandatory = $true)][string]$Message,

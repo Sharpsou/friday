@@ -14,6 +14,7 @@ Le runtime ne possède aucun outil Maison, Budget ou Robot.
 
 ```text
 FRIDAY_CHAT_ENABLED=true
+FRIDAY_CHAT_AXES_ENABLED=false
 FRIDAY_TAVILY_API_KEY=<secret hors Git>
 ```
 
@@ -23,8 +24,9 @@ Modèles locaux :
 - auditeur et routeur ambigu `qwen3.5:9b-q4_K_M` ;
 - sélection sémantique éphémère `qwen3-embedding:0.6b`.
 
-L'absence de Tavily ou de preuves pour une demande Web échoue explicitement ;
-elle ne produit jamais une réponse locale silencieuse. L'échec de l'embedding
+Lorsque le pipeline par axes est activé, l'absence de Tavily ou de pages
+originales exploitables produit une abstention explicite ; elle ne produit
+jamais une réponse locale silencieuse. L'échec de l'embedding
 seul conserve le traitement en `lexical_fallback`.
 
 ## API et stockage
@@ -34,13 +36,18 @@ via `GET /web-usage`. L'envoi retourne
 202 avec un `runId`, puis la PWA suit `queued`, `routing`, `research`, `writing`,
 `auditing`, `finalizing`. DELETE sur un run demande son annulation.
 
-SQLite 42 utilise seulement les tables `chat_*`. La migration 42 ajoute le mode
+SQLite 43 utilise seulement les tables `chat_*`. La migration 42 ajoute le mode
 de conversation et le mode figé de chaque run ; elle attribue aux conversations
 créées avant ce lot un titre dérivé de leur premier message. Les tables `assistant_*`
 restent l'archive historique accessible par `/api/assistant`; son ancienne
 route d'envoi continue à répondre 410. Dexie 8 ajoute `chatConversations` et
 `chatMessages`, chiffrés, sans nouvelle outbox. Aucun contenu Web brut, passage,
 prompt, embedding ou raisonnement n'est persisté.
+
+La migration 43 ajoute seulement quatre compteurs bornés aux runs : axes
+prévus, obligatoires et couverts, unités rejetées, ainsi qu'un code sûr de
+repli dans le champ existant. Aucun libellé
+d'axe ni contenu de preuve n'est persisté.
 
 Lorsque `FRIDAY_CHAT_ENABLED` n'est pas exactement `true`, toute route
 `/api/chat/*` répond 503 `{ "error": "chat_disabled" }`. La PWA affiche alors
@@ -116,3 +123,23 @@ IA ≥90 %, hostile entièrement vert et p95 ≤240 s. L'hybride doit en outre g
 La gate reste l'objectif de stabilisation même si l'utilisateur a explicitement
 ouvert le runtime avant sa réussite. Une revue IA n'est pas une validation
 humaine et ne doit pas être nommée ainsi.
+
+## Pipeline par axes
+
+`FRIDAY_CHAT_AXES_ENABLED=true` active le pipeline candidat. Qwen produit un
+plan sans faits de un à cinq axes, puis la sélection hybride affecte les
+passages bruts à ces axes. Gemma rédige avec ces passages ; Qwen audite chaque
+unité et la couverture des axes. Le code retire toutes les citations du
+rédacteur et reconstruit uniquement celles approuvées par l'auditeur.
+
+Une unité omise, un axe omis, `supported` sans passage ou `covered` sans unité
+soutenue rendent l'audit invalide et déclenchent son unique correction de
+forme. Ils ne sont plus convertis silencieusement en rejet. Après deux audits
+invalides, ou si un audit valide rejette tout, le brouillon reste masqué : la
+PWA affiche des extraits bornés des pages originales avec leurs sources et le
+doute de l'audit. Ces extraits ne portent jamais le statut `verified`.
+
+Le banc utilise ce chemin avec `--pipeline=axes` par défaut. Pour établir une
+base comparative seulement, `--pipeline=legacy` conserve l'ancien exécuteur.
+Le flag runtime reste à `false` jusqu'à réussite de la campagne et des cinq
+smokes réels prévus.

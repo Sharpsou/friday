@@ -7,15 +7,15 @@ Statut : **point d'entrée canonique court**
 
 Le moteur Chat précédent reste retiré. Son remplaçant v2 est activé avec
 `FRIDAY_CHAT_ENABLED=true` : moteur partagé, sélection éphémère BM25 + Qwen
-Embedding, plugin `/api/chat`, SQLite 42 et cache Dexie 8. La gate qualitative
+Embedding, plugin `/api/chat`, SQLite 43 et cache Dexie 8. La gate qualitative
 reste ouverte malgré cette activation explicite. La PWA expose Friday
 (automatique), Local et Recherche Web approfondie, sans ancien pipeline.
 
 Pour reconstruire le Chat, lire intégralement
 [32 — Fondation de la reconstruction du Chat](32-fondation-reconstruction-chat.md).
 Ce document synthétise les essais, l'architecture implantée et la gate. Le
-prochain lot qualitatif reste de compléter puis geler le corpus privé v2 et de
-comparer lexical/hybride.
+prochain lot qualitatif est d'évaluer le pipeline candidat par un à cinq axes,
+puis de comparer lexical/hybride avant son activation runtime.
 
 ## Ordre de lecture
 
@@ -42,7 +42,7 @@ comparer lexical/hybride.
 
 La PWA comporte Aujourd'hui, Agenda, Courses, Budget, Chat, Veille et Robot.
 Maison reste offline-first avec SQLite canonique, Dexie chiffré et outbox. Le
-lot courant migre SQLite vers 42 et le candidat PWA cible Dexie 8 ; le Chat est
+lot candidat migre SQLite vers 43 et la PWA cible Dexie 8 ; le Chat est
 activé, sans que cela ferme sa gate qualitative.
 
 - Agenda, Courses et Budget sont partagés ; Chat et Veille sont privés ;
