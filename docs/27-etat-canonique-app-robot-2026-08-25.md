@@ -14,6 +14,10 @@ Le moteur Chat précédent est retiré. Le runtime v2 est activé sur A17 par
 décision explicite de l'utilisateur avec `FRIDAY_CHAT_ENABLED=true` : mode
 `Friday` automatique, `Local` non vérifié ou `Recherche Web` vérifiée, sélection BM25 +
 embeddings éphémères et audit séparé. La gate qualitative v2 reste ouverte.
+Les relances courtes sont désormais résolues en question autonome à partir de
+trois échanges récents au maximum avant le routage. La même question résolue
+est utilisée par la recherche et l'audit ; les réponses antérieures restent du
+contexte non fiable et ne deviennent jamais des preuves.
 Le bouton flottant crée les conversations ; leur menu permet renommage et
 suppression avec confirmation Friday, et le titre du premier message apparaît
 sans attendre la fin de l'inférence. Les modes et le bouton restent utilisables

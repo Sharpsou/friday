@@ -2,6 +2,7 @@ import {
   AnswerAuditJsonSchema,
   AnswerAuditSchema,
   AnswerPlanJsonSchema,
+  ContextResolutionJsonSchema,
   OllamaClient,
   PROMPT_VERSIONS,
   RoutePlanJsonSchema,
@@ -10,12 +11,17 @@ import {
   assignEvidenceToAxes,
   auditorPrompt,
   auditorRetryPrompt,
+  boundedConversationTurns,
   citedPassageIds,
   compileAuditedAnswer,
+  contextualQuestionPrompt,
   decideEvaluation,
   fallbackAnswerPlan,
+  fallbackContextualQuestion,
   localPrompt,
   mergeRedundantAxes,
+  needsConversationResolution,
+  parseContextResolution,
   parseAnswerPlan,
   requiredAxesCovered,
   resolvePassageSources,
@@ -235,6 +241,7 @@ export class VerifiedChatEngine implements ChatEngine {
       return (await this.ollama.generate(request)).response;
     };
     input.updateStage('routing');
+    input = await this.contextualizeInput(input, generate);
     const deterministic =
       routeForcedByMode(input.mode, input.content) ??
       (await routeQuestion(input.content, {
@@ -394,6 +401,7 @@ export class VerifiedChatEngine implements ChatEngine {
       return (await this.ollama.generate(request)).response;
     };
     input.updateStage('routing');
+    input = await this.contextualizeInput(input, generate);
     const routed = await this.routeAndPlan(input, generate);
     if (routed.route === 'local') {
       input.updateStage('writing');
@@ -679,6 +687,45 @@ export class VerifiedChatEngine implements ChatEngine {
       )
         throw error;
       return { route: 'web', plan: fallbackAnswerPlan(input.content) };
+    }
+  }
+
+  private async contextualizeInput(
+    input: ChatEngineInput,
+    generate: (
+      request: Parameters<OllamaClient['generate']>[0],
+    ) => Promise<string>,
+  ): Promise<ChatEngineInput> {
+    if (!needsConversationResolution(input.content, input.priorTurns))
+      return input;
+    try {
+      const raw = await generate({
+        model: this.auditorModel,
+        prompt: contextualQuestionPrompt(
+          input.content,
+          boundedConversationTurns(input.priorTurns),
+        ),
+        seed: this.seed,
+        format: ContextResolutionJsonSchema,
+        maxTokens: 384,
+        temperature: 0,
+        signal: input.signal,
+      });
+      return {
+        ...input,
+        content: parseContextResolution(raw, input.content),
+      };
+    } catch (error) {
+      if (input.signal.aborted) throw error;
+      if (
+        error instanceof Error &&
+        error.message === 'MODEL_CALL_LIMIT_REACHED'
+      )
+        throw error;
+      return {
+        ...input,
+        content: fallbackContextualQuestion(input.content, input.priorTurns),
+      };
     }
   }
 

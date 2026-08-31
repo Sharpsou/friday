@@ -29,6 +29,10 @@ compléter**
   202, suivi, annulation, reprise de file et confidentialité par profil ; un
   seul run est exécuté globalement et un profil est borné à un actif plus trois
   en attente ;
+- une relance dépendante du contexte est reformulée en question autonome avant
+  le routage, sur au plus trois échanges précédents et 8 000 caractères. La
+  sortie JSON stricte ne peut ajouter d'URL ; une sortie invalide utilise un
+  repli déterministe composé uniquement des demandes utilisateur récentes ;
 - la PWA Dexie 8 met en cache le nouvel historique dans deux stores chiffrés
   dédiés, sans outbox d'envoi, et conserve l'archive historique séparée ;
 - le rédacteur est `gemma4:e4b-it-qat`, l'auditeur

@@ -47,6 +47,37 @@ async function waitCompleted(
 }
 
 describe('ChatService', () => {
+  it('provides up to three prior exchanges to resolve follow-ups', async () => {
+    let receivedTurns = 0;
+    const { service } = fixture({
+      answer: async ({ priorTurns }) => {
+        receivedTurns = priorTurns.length;
+        return {
+          markdown: 'Réponse.',
+          status: 'unverified',
+          route: 'local_unverified',
+          retrievalMode: 'none',
+          sources: [],
+          modelCalls: 1,
+          passageCount: 0,
+        };
+      },
+    });
+    const conversation = service.createConversation('profile-a');
+    service.start();
+    for (let index = 0; index < 4; index += 1) {
+      const runId = service.enqueue(
+        'profile-a',
+        conversation.id,
+        `8c191f93-e9d5-4b59-a345-0b8a1905e00${index.toString()}`,
+        `Question ${index.toString()}`,
+      );
+      await waitCompleted(service, 'profile-a', runId);
+    }
+    expect(receivedTurns).toBe(6);
+    service.stop();
+  });
+
   it('snapshots the selected mode and derives the title from the first message', async () => {
     let receivedMode: string | undefined;
     const { service } = fixture({

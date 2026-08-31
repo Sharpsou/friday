@@ -451,7 +451,7 @@ export class ChatService {
           .prepare(
             `SELECT role, content FROM chat_messages
               WHERE profile_id = ? AND conversation_id = ? AND id <> ?
-              ORDER BY ordinal DESC LIMIT 2`,
+              ORDER BY ordinal DESC LIMIT 6`,
           )
           .all(
             run.profile_id,
