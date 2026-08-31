@@ -4,11 +4,15 @@ import {
   ChatEnqueueResponseSchema,
   ChatMessagesResponseSchema,
   ChatRunSchema,
+  ChatDeleteResponseSchema,
+  ChatWebUsageSchema,
   type ChatConversation,
+  type ChatMode,
 } from '@friday/contracts';
 
 import {
   cacheChatState,
+  deleteCachedChatConversation,
   listCachedChatConversations,
   listCachedChatMessages,
 } from '../db/chat-repository.js';
@@ -44,17 +48,49 @@ export async function listChatConversations(): Promise<ChatConversation[]> {
   }
 }
 
-export async function createChatConversation(): Promise<ChatConversation> {
+export async function createChatConversation(
+  mode: ChatMode = 'friday',
+): Promise<ChatConversation> {
   const result = await parse(
     await fetch('/api/chat/conversations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify({ mode }),
     }),
     ChatConversationSchema,
   );
   await cacheChatState([result]);
   return result;
+}
+
+export async function updateChatConversation(
+  id: string,
+  update: { mode?: ChatMode; title?: string },
+): Promise<ChatConversation> {
+  const result = await parse(
+    await fetch(`/api/chat/conversations/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(update),
+    }),
+    ChatConversationSchema,
+  );
+  await cacheChatState([result]);
+  return result;
+}
+
+export async function deleteChatConversation(id: string): Promise<void> {
+  await parse(
+    await fetch(`/api/chat/conversations/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+    ChatDeleteResponseSchema,
+  );
+  await deleteCachedChatConversation(id);
+}
+
+export async function getChatWebUsage() {
+  return parse(await fetch('/api/chat/web-usage'), ChatWebUsageSchema);
 }
 
 export async function getChatMessages(conversationId: string) {

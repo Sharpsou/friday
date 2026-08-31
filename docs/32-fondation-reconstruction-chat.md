@@ -23,6 +23,8 @@ compléter**
 - SQLite 41 ajoute exclusivement `chat_conversations`, `chat_messages`,
   `chat_runs` et `chat_sources`. Aucun prompt, passage, page, embedding ou
   raisonnement n'est persisté ;
+- SQLite 42 ajoute les modes `friday|local|web`, fige le mode demandé dans le
+  run et rattrape les titres génériques depuis le premier message ;
 - le plugin Fastify Chat fournit création, historique, envoi idempotent HTTP
   202, suivi, annulation, reprise de file et confidentialité par profil ; un
   seul run est exécuté globalement et un profil est borné à un actif plus trois
@@ -47,7 +49,7 @@ présentée comme une validation humaine. Les résultats v1 plus bas expliquent
 la décision d'architecture ; ils ne franchissent pas la gate v2.
 
 Le candidat a passé `pnpm verify` puis la recette Windows. L'origine A17 répond
-`health=ok`; SQLite est en migration 41 avec intégrité correcte et aucune
+`health=ok`; SQLite est en migration 42 avec intégrité correcte et aucune
 violation de clé étrangère. `FRIDAY_CHAT_ENABLED=true` est persisté pour le
 compte Windows. Le smoke test réel du 31 août couvre cinq parcours ; le Web a
 publié une réponse partielle en 142 s, sans inventer le fait manquant, mais le
@@ -56,8 +58,17 @@ URL de brouillon sont supprimées déterministiquement et les groupes `(P…)` s
 normalisés avant résolution par le code.
 La sauvegarde pré-migration 40 est
 `D:\FridayData\backups\friday-pre-chat-v2-migration41-20260831-094854.sqlite`.
+La sauvegarde cohérente pré-migration 42 est
+`D:\FridayData\backups\friday-pre-chat-migration42-20260831-134242.sqlite`.
 
 ## 1. Décision prise
+
+> **Section historique pour l'interface.** Depuis la décision utilisateur du
+> 31 août, la PWA expose `Friday`, `Local` et `Recherche Web`. Friday conserve
+> le routage automatique ; les deux autres choix le forcent. Toute recherche
+> Web est approfondie, sans distinction léger/approfondi. Le bouton flottant
+> crée une conversation, la suppression est disponible et le quota Tavily est
+> de nouveau visible.
 
 L'ancien moteur du Chat est retiré. Il n'existe plus de modes Local, Friday,
 Web léger ou Web approfondi, plus de sélecteur de modèle, plus de création de

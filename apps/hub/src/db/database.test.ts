@@ -99,7 +99,7 @@ describe('hub database migrations', () => {
       { name: 'grounding_verifier_used', dflt_value: '0' },
       { name: 'grounding_version', dflt_value: null },
     ]);
-    expect(latest.version).toBe(41);
+    expect(latest.version).toBe(42);
     expect(processingTable).toEqual({ name: 'assistant_processing_attempts' });
     expect(answerAuditTable).toEqual({ name: 'assistant_answer_audits' });
   });
@@ -208,6 +208,7 @@ describe('hub database migrations', () => {
       { version: 39 },
       { version: 40 },
       { version: 41 },
+      { version: 42 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -237,7 +238,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 41 });
+    expect(migrations.at(-1)).toEqual({ version: 42 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -273,7 +274,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 41 });
+    expect(migrations.at(-1)).toEqual({ version: 42 });
   });
 
   it('adds the five budget stores and the idempotent seed marker', () => {
@@ -727,7 +728,7 @@ describe('hub database migrations', () => {
       'robot_visual_ports',
       'robot_visual_transitions',
     ]);
-    expect(migration).toEqual({ version: 41 });
+    expect(migration).toEqual({ version: 42 });
   });
 
   it('extends the panorama pulse range without losing the global trim', () => {
@@ -798,7 +799,7 @@ describe('hub database migrations', () => {
       evidence_group_representative_source_id: null,
       evidence_origin_key: null,
     });
-    expect(migration).toEqual({ version: 41 });
+    expect(migration).toEqual({ version: 42 });
   });
 
   it('preserves processing diagnostics and accepts the Web editorial stage', () => {
@@ -858,5 +859,33 @@ describe('hub database migrations', () => {
       { name: 'chat_sources' },
     ]);
     expect(assistantTable).toEqual({ name: 'assistant_conversations' });
+  });
+
+  it('adds Chat modes and titles existing conversations from their first message', () => {
+    const database = new Database(':memory:');
+    migrateDatabase(database, 41);
+    database
+      .prepare(
+        `INSERT INTO chat_conversations(id, profile_id, title, created_at, updated_at)
+         VALUES ('conversation', 'profile', 'Nouvelle conversation', ?, ?)`,
+      )
+      .run('2026-08-31T10:00:00.000Z', '2026-08-31T10:00:00.000Z');
+    database
+      .prepare(
+        `INSERT INTO chat_messages(
+           id, conversation_id, profile_id, role, content, ordinal, created_at
+         ) VALUES ('message', 'conversation', 'profile', 'user', ?, 1, ?)`,
+      )
+      .run('Pourquoi le ciel est-il bleu ?', '2026-08-31T10:00:00.000Z');
+    migrateDatabase(database);
+    expect(
+      database
+        .prepare('SELECT title, mode FROM chat_conversations WHERE id = ?')
+        .get('conversation'),
+    ).toEqual({
+      title: 'Pourquoi le ciel est-il bleu ?',
+      mode: 'friday',
+    });
+    database.close();
   });
 });

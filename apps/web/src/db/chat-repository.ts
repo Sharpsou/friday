@@ -99,3 +99,20 @@ export async function listCachedChatMessages(
     ),
   );
 }
+
+export async function deleteCachedChatConversation(id: string): Promise<void> {
+  const { profileId } = await getDeviceContext();
+  await fridayDb.transaction(
+    'rw',
+    fridayDb.chatConversations,
+    fridayDb.chatMessages,
+    async () => {
+      const messages = await fridayDb.chatMessages
+        .where('[profileId+conversationId]')
+        .equals([profileId, id])
+        .primaryKeys();
+      await fridayDb.chatMessages.bulkDelete(messages);
+      await fridayDb.chatConversations.delete(id);
+    },
+  );
+}

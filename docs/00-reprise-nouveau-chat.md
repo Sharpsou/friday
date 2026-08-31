@@ -1,21 +1,21 @@
 # Friday — reprise rapide
 
-Date : 30 août 2026
+Date : 31 août 2026
 Statut : **point d'entrée canonique court**
 
 ## Décision immédiate sur le Chat
 
-Le moteur Chat précédent reste retiré. Son remplaçant v2 est implanté derrière
-`FRIDAY_CHAT_ENABLED=false` : moteur partagé, sélection éphémère BM25 + Qwen
-Embedding, plugin `/api/chat`, SQLite 41 et cache Dexie 8. Tant que le corpus v2
-n'a pas franchi sa gate, l'onglet signale l'activation en attente et conserve
-l'archive privée existante. Ne pas reprendre l'ancien pipeline.
+Le moteur Chat précédent reste retiré. Son remplaçant v2 est activé avec
+`FRIDAY_CHAT_ENABLED=true` : moteur partagé, sélection éphémère BM25 + Qwen
+Embedding, plugin `/api/chat`, SQLite 42 et cache Dexie 8. La gate qualitative
+reste ouverte malgré cette activation explicite. La PWA expose Friday
+(automatique), Local et Recherche Web approfondie, sans ancien pipeline.
 
 Pour reconstruire le Chat, lire intégralement
 [32 — Fondation de la reconstruction du Chat](32-fondation-reconstruction-chat.md).
 Ce document synthétise les essais, l'architecture implantée et la gate. Le
-prochain lot est de compléter puis geler le corpus privé v2 et de comparer
-lexical/hybride avant activation.
+prochain lot qualitatif reste de compléter puis geler le corpus privé v2 et de
+comparer lexical/hybride.
 
 ## Ordre de lecture
 
@@ -42,12 +42,12 @@ lexical/hybride avant activation.
 
 La PWA comporte Aujourd'hui, Agenda, Courses, Budget, Chat, Veille et Robot.
 Maison reste offline-first avec SQLite canonique, Dexie chiffré et outbox. Le
-runtime déployé utilise SQLite 41 et le candidat PWA cible Dexie 8 ; le Chat
-reste désactivé par sa gate.
+lot courant migre SQLite vers 42 et le candidat PWA cible Dexie 8 ; le Chat est
+activé, sans que cela ferme sa gate qualitative.
 
 - Agenda, Courses et Budget sont partagés ; Chat et Veille sont privés ;
-- le nouveau Chat reste désactivé par gate ; l'archive et ses migrations
-  historiques sont conservées séparément ;
+- le nouveau Chat est activé sur décision utilisateur, mais sa gate qualitative
+  reste ouverte ; l'archive est conservée séparément ;
 - Veille possède son propre client Tavily et son propre moteur Qwen ; elle ne
   dépend plus de l'ancien moteur Chat ;
 - le Chat n'a aucune mutation métier ou commande Robot ;

@@ -20,8 +20,9 @@ import {
   type EvidenceDossier,
   type EvidencePassage,
   type FrozenPage,
+  type RouteDecision,
 } from '@friday/assistant-core';
-import type { ChatSource } from '@friday/contracts';
+import type { ChatMode, ChatSource } from '@friday/contracts';
 
 import { SecureFeedClient } from '../watch/feed-client.js';
 import { TavilySearchClient } from '../watch/tavily-search.js';
@@ -52,6 +53,28 @@ export function normalizeGeneratedMarkdown(markdown: string): string {
         .join(' '),
     )
     .trim();
+}
+
+export function routeForcedByMode(
+  mode: ChatMode,
+  question: string,
+): RouteDecision | null {
+  if (mode === 'friday') return null;
+  if (mode === 'local')
+    return {
+      route: 'local',
+      reason: 'writing_or_conversation',
+      queries: [],
+      decidedBy: 'code',
+      verificationLabel: 'non vérifié par des sources',
+    };
+  return {
+    route: 'web',
+    reason: 'explicit_web',
+    queries: [question],
+    decidedBy: 'code',
+    verificationLabel: 'sources requises',
+  };
 }
 
 function validateMarkdown(
@@ -149,6 +172,10 @@ export class VerifiedChatEngine implements ChatEngine {
     this.seed = options.seed ?? 17;
   }
 
+  webUsage(signal: AbortSignal) {
+    return this.search.usage(signal);
+  }
+
   async answer(input: ChatEngineInput): Promise<ChatEngineResult> {
     let calls = 0;
     const generate = async (
@@ -159,12 +186,14 @@ export class VerifiedChatEngine implements ChatEngine {
       return (await this.ollama.generate(request)).response;
     };
     input.updateStage('routing');
-    const deterministic = await routeQuestion(input.content, {
-      ollama: this.ollama,
-      model: this.auditorModel,
-      seed: this.seed,
-      signal: input.signal,
-    });
+    const deterministic =
+      routeForcedByMode(input.mode, input.content) ??
+      (await routeQuestion(input.content, {
+        ollama: this.ollama,
+        model: this.auditorModel,
+        seed: this.seed,
+        signal: input.signal,
+      }));
     if (deterministic.decidedBy === 'classifier') calls += 1;
     if (deterministic.route === 'local') {
       input.updateStage('writing');

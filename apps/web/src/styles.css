@@ -1846,6 +1846,52 @@ textarea:focus-visible {
   margin: 0;
 }
 
+.assistant-remaining-searches {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 0.69rem;
+  white-space: nowrap;
+}
+
+.assistant-chat-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.assistant-mode {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+  background: rgb(var(--page-rgb) / 52%);
+}
+
+.assistant-mode button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 9px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.assistant-mode button[aria-pressed='true'] {
+  color: var(--accent-contrast);
+  background: var(--mint);
+}
+
+.assistant-delete-conversation {
+  min-height: 48px;
+}
+
 .assistant-legacy-archive > summary {
   cursor: pointer;
   font-weight: 800;
@@ -1882,6 +1928,13 @@ textarea:focus-visible {
   resize: vertical;
 }
 
+.assistant-composer .primary-button {
+  min-height: 44px;
+  border-radius: 11px;
+  padding: 0 15px;
+  font-weight: 850;
+}
+
 .assistant-conversation-list {
   display: grid;
   grid-auto-flow: column;
@@ -1899,13 +1952,14 @@ textarea:focus-visible {
   border-radius: 11px;
   padding: 9px;
   color: var(--text);
-  background: transparent;
+  background: rgb(var(--page-rgb) / 38%);
   text-align: left;
 }
 
 .assistant-conversation-list button.is-active {
   border-color: var(--accent);
-  background: rgb(var(--accent-rgb) / 10%);
+  background: rgb(var(--accent-rgb) / 12%);
+  box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 18%);
 }
 
 .assistant-conversation-list :is(strong, small) {
@@ -4572,6 +4626,14 @@ textarea:focus-visible {
 
   .assistant-conversation-list {
     grid-auto-columns: minmax(145px, 56%);
+  }
+
+  .assistant-chat-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-delete-conversation {
+    min-height: 40px;
   }
 
   .budget-projection {

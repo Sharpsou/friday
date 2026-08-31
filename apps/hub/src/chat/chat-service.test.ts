@@ -47,6 +47,44 @@ async function waitCompleted(
 }
 
 describe('ChatService', () => {
+  it('snapshots the selected mode and derives the title from the first message', async () => {
+    let receivedMode: string | undefined;
+    const { service } = fixture({
+      answer: async ({ mode }) => {
+        receivedMode = mode;
+        return {
+          markdown: 'Réponse locale.',
+          status: 'unverified',
+          route: 'local_unverified',
+          retrievalMode: 'none',
+          sources: [],
+          modelCalls: 1,
+          passageCount: 0,
+        };
+      },
+    });
+    const conversation = service.createConversation(
+      'profile-a',
+      undefined,
+      'local',
+    );
+    const runId = service.enqueue(
+      'profile-a',
+      conversation.id,
+      '2872410c-96a4-48eb-8ae8-2e2a1ff35bc5',
+      'Explique le fonctionnement de Friday',
+    );
+    expect(service.getRun('profile-a', runId).requestedMode).toBe('local');
+    expect(service.listConversations('profile-a')[0]).toMatchObject({
+      mode: 'local',
+      title: 'Explique le fonctionnement de Friday',
+    });
+    service.start();
+    await waitCompleted(service, 'profile-a', runId);
+    expect(receivedMode).toBe('local');
+    service.stop();
+  });
+
   it('keeps conversations private and enqueues idempotently', async () => {
     const { service } = fixture();
     const conversation = service.createConversation('profile-a');

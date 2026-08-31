@@ -198,6 +198,8 @@ export function App() {
   const [budgetState, setBudgetState] = useState(EMPTY_BUDGET_STATE);
   const [budgetQuickAddOpen, setBudgetQuickAddOpen] = useState(false);
   const [watchCreatorOpen, setWatchCreatorOpen] = useState(false);
+  const [chatCreateRequest, setChatCreateRequest] = useState(0);
+  const [chatAvailable, setChatAvailable] = useState(false);
   const [inferenceStatus, setInferenceStatus] =
     useState<InferenceStatus | null>(null);
   const [classificationPreviewOpen, setClassificationPreviewOpen] =
@@ -1726,7 +1728,10 @@ export function App() {
               </section>
             }
           >
-            <AssistantView />
+            <AssistantView
+              createRequest={chatCreateRequest}
+              onAvailabilityChange={setChatAvailable}
+            />
           </Suspense>
         ) : null}
 
@@ -2249,21 +2254,28 @@ export function App() {
         </div>
       ) : null}
 
-      {destination !== 'robot' && destination !== 'assistant' ? (
+      {destination !== 'robot' &&
+      (destination !== 'assistant' || chatAvailable) ? (
         <button
           className="fab"
           type="button"
           onClick={
             destination === 'groceries'
               ? openGroceryQuickAdd
-              : destination === 'budget'
-                ? () => setBudgetQuickAddOpen(true)
-                : destination === 'watch'
-                  ? () => setWatchCreatorOpen(true)
-                  : openQuickAdd
+              : destination === 'assistant'
+                ? () => setChatCreateRequest((current) => current + 1)
+                : destination === 'budget'
+                  ? () => setBudgetQuickAddOpen(true)
+                  : destination === 'watch'
+                    ? () => setWatchCreatorOpen(true)
+                    : openQuickAdd
           }
           aria-label={
-            destination === 'watch' ? 'Créer une veille' : 'Ajouter rapidement'
+            destination === 'watch'
+              ? 'Créer une veille'
+              : destination === 'assistant'
+                ? 'Nouvelle conversation'
+                : 'Ajouter rapidement'
           }
         >
           +

@@ -11,8 +11,8 @@ et outbox sur les appareils, contrats Zod partagés et runtime Python séparé s
 le Raspberry Pi.
 
 Le moteur Chat précédent est retiré. Le runtime v2 est activé sur A17 par
-décision explicite de l'utilisateur avec `FRIDAY_CHAT_ENABLED=true` :
-expérience unique, réponse locale signalée ou Web vérifié, sélection BM25 +
+décision explicite de l'utilisateur avec `FRIDAY_CHAT_ENABLED=true` : mode
+`Friday` automatique, `Local` non vérifié ou `Recherche Web` vérifiée, sélection BM25 +
 embeddings éphémères et audit séparé. La gate qualitative v2 reste ouverte.
 L'archive privée historique reste une section distincte ; son ancienne route
 d'envoi répond toujours HTTP 410.
@@ -41,11 +41,13 @@ d'inventer la version Python absente des preuves, mais a révélé un rappel de
 passage insuffisant et un format de citations à normaliser. Les URL issues du
 brouillon sont maintenant retirées par le code et les groupes `(P…)` sont
 normalisés avant exposition des seules sources validées. Le health check répond `status=ok`,
-`database=ok`, `ollama=not-required`. La SQLite active est en migration 41,
+`database=ok`, `ollama=not-required`. La SQLite active est en migration 42,
 `integrity_check=ok`, sans violation de clé étrangère, et les quatre tables
 `chat_*` sont présentes. La sauvegarde
 pré-migration 40 intègre est
 `D:\FridayData\backups\friday-pre-chat-v2-migration41-20260831-094854.sqlite`.
+La sauvegarde cohérente pré-migration 42 est
+`D:\FridayData\backups\friday-pre-chat-migration42-20260831-134242.sqlite`.
 
 La navigation comporte Aujourd’hui, Agenda, Courses, Budget, Chat, Veille et
 Robot. Auth fermée et partage à deux sont implantés. Agenda, Courses et Budget
@@ -53,7 +55,7 @@ sont partagés ; Chat et Veille restent privés par profil. Google Calendar n’
 implanté ; Tailscale et les données Budget réelles restent derrière leurs
 portes documentées. Le Chat n’a aucune mutation métier ni commande Robot.
 
-SQLite est en migration **41** et le candidat PWA cible Dexie **8** :
+SQLite est en migration **42** et le candidat PWA cible Dexie **8** :
 
 - 1–19 : Maison, auth, sync, Budget, Chat, recherche et Veille ;
 - 20–25 : ancien prototype Robot, conservé uniquement dans l’historique de
@@ -82,6 +84,8 @@ SQLite est en migration **41** et le candidat PWA cible Dexie **8** :
   étapes bornées rédaction/audit/révision du mode Web approfondi.
 - 41 : nouvelles conversations, messages, runs et sources du Chat v2, sans
   page brute, passage, prompt, embedding ni raisonnement persisté.
+- 42 : modes `Friday|Local|Recherche Web`, mode figé par run et rattrapage
+  déterministe des titres depuis le premier message.
 
 Les migrations 20–25 n’ont pas été réécrites. Les anciennes données Robot ne
 sont pas importées dans le nouveau modèle. Le retour arrière passe par la

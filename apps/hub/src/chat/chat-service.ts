@@ -6,18 +6,22 @@ import {
   ChatConversationSchema,
   ChatMessageSchema,
   ChatRunSchema,
+  ChatWebUsageSchema,
   type ChatAnswerStatus,
   type ChatConversation,
   type ChatMessage,
+  type ChatMode,
   type ChatRetrievalMode,
   type ChatRoute,
   type ChatRun,
   type ChatRunStage,
   type ChatSource,
+  type ChatWebUsage,
 } from '@friday/contracts';
 
 export interface ChatEngineInput {
   content: string;
+  mode: ChatMode;
   priorTurns: Array<{ role: 'user' | 'assistant'; content: string }>;
   signal: AbortSignal;
   updateStage(stage: ChatRunStage): void;
@@ -35,11 +39,15 @@ export interface ChatEngineResult {
 
 export interface ChatEngine {
   answer(input: ChatEngineInput): Promise<ChatEngineResult>;
+  webUsage?(
+    signal: AbortSignal,
+  ): Promise<{ creditsUsed: number; limit: number }>;
 }
 
 interface ConversationRow {
   id: string;
   title: string;
+  mode: ChatMode;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -61,6 +69,7 @@ interface RunRow {
   status: ChatRun['status'];
   stage: ChatRunStage;
   route: ChatRoute | null;
+  requested_mode: ChatMode;
   retrieval_mode: ChatRetrievalMode;
   error_code: string | null;
   created_at: string;
@@ -73,10 +82,23 @@ interface PendingRunRow {
   conversation_id: string;
   user_message_id: string;
   content: string;
+  requested_mode: ChatMode;
 }
 
 export class ChatNotFoundError extends Error {}
 export class ChatQueueFullError extends Error {}
+
+const CHAT_WEB_HARD_LIMIT = 950;
+
+export function titleFromFirstMessage(content: string): string {
+  const normalized = content
+    .replace(/[#*_`()><]|\[|\]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (!normalized) return 'Nouvelle conversation';
+  if (normalized.length <= 80) return normalized;
+  return `${normalized.slice(0, 79).trimEnd()}…`;
+}
 
 function safeErrorCode(error: unknown): string {
   if (error instanceof DOMException && error.name === 'AbortError')
@@ -118,15 +140,16 @@ export class ChatService {
   createConversation(
     profileId: string,
     title = 'Nouvelle conversation',
+    mode: ChatMode = 'friday',
   ): ChatConversation {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.database
       .prepare(
-        `INSERT INTO chat_conversations(id, profile_id, title, archived_at, created_at, updated_at)
-         VALUES (?, ?, ?, NULL, ?, ?)`,
+        `INSERT INTO chat_conversations(id, profile_id, title, mode, archived_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, ?, ?)`,
       )
-      .run(id, profileId, title, now, now);
+      .run(id, profileId, title, mode, now, now);
     return this.requireConversation(profileId, id);
   }
 
@@ -134,7 +157,7 @@ export class ChatService {
     return (
       this.database
         .prepare(
-          `SELECT id, title, archived_at, created_at, updated_at
+          `SELECT id, title, mode, archived_at, created_at, updated_at
              FROM chat_conversations WHERE profile_id = ?
              ORDER BY archived_at IS NOT NULL, updated_at DESC`,
         )
@@ -145,17 +168,18 @@ export class ChatService {
   updateConversation(
     profileId: string,
     id: string,
-    update: { title?: string; archived?: boolean },
+    update: { title?: string; mode?: ChatMode; archived?: boolean },
   ): ChatConversation {
     const current = this.requireConversation(profileId, id);
     const now = new Date().toISOString();
     this.database
       .prepare(
-        `UPDATE chat_conversations SET title = ?, archived_at = ?, updated_at = ?
+        `UPDATE chat_conversations SET title = ?, mode = ?, archived_at = ?, updated_at = ?
           WHERE id = ? AND profile_id = ?`,
       )
       .run(
         update.title ?? current.title,
+        update.mode ?? current.mode,
         update.archived === undefined
           ? current.archivedAt
           : update.archived
@@ -228,7 +252,7 @@ export class ChatService {
     clientRequestId: string,
     content: string,
   ): string {
-    this.requireConversation(profileId, conversationId);
+    const conversation = this.requireConversation(profileId, conversationId);
     const existing = this.database
       .prepare(
         'SELECT id FROM chat_runs WHERE profile_id = ? AND client_request_id = ?',
@@ -265,8 +289,8 @@ export class ChatService {
         .prepare(
           `INSERT INTO chat_runs(
              id, profile_id, conversation_id, client_request_id, user_message_id,
-             status, stage, retrieval_mode, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, 'queued', 'queued', 'none', ?, ?)`,
+             status, stage, requested_mode, retrieval_mode, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, 'queued', 'queued', ?, 'none', ?, ?)`,
         )
         .run(
           runId,
@@ -274,12 +298,19 @@ export class ChatService {
           conversationId,
           clientRequestId,
           messageId,
+          conversation.mode,
           now,
           now,
         );
       this.database
-        .prepare('UPDATE chat_conversations SET updated_at = ? WHERE id = ?')
-        .run(now, conversationId);
+        .prepare(
+          `UPDATE chat_conversations
+              SET title = CASE WHEN ? = 1 AND title = 'Nouvelle conversation'
+                               THEN ? ELSE title END,
+                  updated_at = ?
+            WHERE id = ?`,
+        )
+        .run(ordinal, titleFromFirstMessage(content), now, conversationId);
     })();
     this.kick();
     return runId;
@@ -288,7 +319,7 @@ export class ChatService {
   getRun(profileId: string, id: string): ChatRun {
     const row = this.database
       .prepare(
-        `SELECT id, conversation_id, status, stage, route, retrieval_mode,
+        `SELECT id, conversation_id, status, stage, route, requested_mode, retrieval_mode,
                 error_code, created_at, updated_at
            FROM chat_runs WHERE id = ? AND profile_id = ?`,
       )
@@ -300,6 +331,7 @@ export class ChatService {
       status: row.status,
       stage: row.stage,
       route: row.route,
+      requestedMode: row.requested_mode,
       retrievalMode: row.retrieval_mode,
       errorCode: row.error_code,
       createdAt: row.created_at,
@@ -326,6 +358,39 @@ export class ChatService {
     if (this.activeRun?.id === id) this.activeRun.controller.abort();
   }
 
+  async webUsage(): Promise<ChatWebUsage> {
+    const month = new Date().toISOString().slice(0, 7);
+    if (!this.engine.webUsage)
+      return ChatWebUsageSchema.parse({
+        month,
+        creditsUsed: 0,
+        remainingSearches: 0,
+        source: 'unavailable',
+        hardLimit: CHAT_WEB_HARD_LIMIT,
+      });
+    try {
+      const usage = await this.engine.webUsage(AbortSignal.timeout(10_000));
+      const hardLimit = Math.min(CHAT_WEB_HARD_LIMIT, usage.limit);
+      return ChatWebUsageSchema.parse({
+        month,
+        creditsUsed: usage.creditsUsed,
+        remainingSearches: Math.floor(
+          Math.max(0, hardLimit - usage.creditsUsed) / 2,
+        ),
+        source: 'tavily',
+        hardLimit,
+      });
+    } catch {
+      return ChatWebUsageSchema.parse({
+        month,
+        creditsUsed: 0,
+        remainingSearches: 0,
+        source: 'unavailable',
+        hardLimit: CHAT_WEB_HARD_LIMIT,
+      });
+    }
+  }
+
   private kick(): void {
     if (this.running || this.stopped) return;
     this.running = true;
@@ -338,7 +403,8 @@ export class ChatService {
   private nextPending(): PendingRunRow | undefined {
     return this.database
       .prepare(
-        `SELECT r.id, r.profile_id, r.conversation_id, r.user_message_id, m.content
+        `SELECT r.id, r.profile_id, r.conversation_id, r.user_message_id,
+                r.requested_mode, m.content
            FROM chat_runs r JOIN chat_messages m ON m.id = r.user_message_id
           WHERE r.status = 'queued' AND r.cancel_requested = 0
           ORDER BY r.created_at, r.id LIMIT 1`,
@@ -384,6 +450,7 @@ export class ChatService {
       ).reverse();
       const result = await this.engine.answer({
         content: run.content,
+        mode: run.requested_mode,
         priorTurns,
         signal: controller.signal,
         updateStage: (stage) => {
@@ -483,7 +550,7 @@ export class ChatService {
   private requireConversation(profileId: string, id: string): ChatConversation {
     const row = this.database
       .prepare(
-        `SELECT id, title, archived_at, created_at, updated_at
+        `SELECT id, title, mode, archived_at, created_at, updated_at
            FROM chat_conversations WHERE id = ? AND profile_id = ?`,
       )
       .get(id, profileId) as ConversationRow | undefined;
@@ -495,6 +562,7 @@ export class ChatService {
     return ChatConversationSchema.parse({
       id: row.id,
       title: row.title,
+      mode: row.mode,
       archivedAt: row.archived_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

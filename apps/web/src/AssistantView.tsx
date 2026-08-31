@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useRef,
   useState,
   type FormEvent,
 } from 'react';
@@ -11,8 +12,10 @@ import type {
   AssistantConversation,
   AssistantMessage,
   ChatConversation,
+  ChatMode,
   ChatMessage,
   ChatRun,
+  ChatWebUsage,
 } from '@friday/contracts';
 
 import {
@@ -24,10 +27,13 @@ import {
 import {
   cancelChatRun,
   createChatConversation,
+  deleteChatConversation,
   getChatMessages,
   getChatRun,
+  getChatWebUsage,
   listChatConversations,
   sendChatMessage,
+  updateChatConversation,
 } from './sync/chat-client.js';
 
 const AssistantMarkdown = lazy(() => import('./AssistantMarkdown.js'));
@@ -64,14 +70,29 @@ export function ChatAnswerStatus({
   );
 }
 
-function VerifiedChat() {
+const CHAT_MODES: ReadonlyArray<{ mode: ChatMode; label: string }> = [
+  { mode: 'friday', label: 'Friday' },
+  { mode: 'local', label: 'Local' },
+  { mode: 'web', label: 'Recherche Web' },
+];
+const ignoreAvailabilityChange = () => undefined;
+
+function VerifiedChat({
+  createRequest,
+  onAvailabilityChange,
+}: {
+  createRequest: number;
+  onAvailabilityChange(available: boolean): void;
+}) {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [content, setContent] = useState('');
   const [run, setRun] = useState<ChatRun | null>(null);
   const [disabled, setDisabled] = useState(false);
+  const [webUsage, setWebUsage] = useState<ChatWebUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const previousCreateRequest = useRef(createRequest);
 
   const refreshMessages = useCallback(async (conversationId: string) => {
     const result = await getChatMessages(conversationId);
@@ -88,24 +109,35 @@ function VerifiedChat() {
     );
   }, []);
 
+  const refreshWebUsage = useCallback(async () => {
+    const usage = await getChatWebUsage().catch(() => null);
+    setWebUsage(usage?.source === 'tavily' ? usage : null);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    void listChatConversations()
-      .then((next) => {
+    void Promise.all([
+      listChatConversations(),
+      getChatWebUsage().catch(() => null),
+    ])
+      .then(([next, usage]) => {
         if (cancelled) return;
         setConversations(next);
         setSelectedId(next[0]?.id ?? null);
+        setWebUsage(usage?.source === 'tavily' ? usage : null);
+        onAvailabilityChange(true);
       })
       .catch((caught: unknown) => {
         if (cancelled) return;
-        if (caught instanceof Error && caught.message === 'CHAT_DISABLED')
+        if (caught instanceof Error && caught.message === 'CHAT_DISABLED') {
           setDisabled(true);
-        else setError('Le Chat est momentanément indisponible.');
+          onAvailabilityChange(false);
+        } else setError('Le Chat est momentanément indisponible.');
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [onAvailabilityChange]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -136,6 +168,7 @@ function VerifiedChat() {
           await Promise.all([
             refreshConversations(),
             refreshMessages(next.conversationId),
+            refreshWebUsage(),
           ]);
         } else if (next.status === 'failed') {
           setError('La réponse n’a pas pu être produite.');
@@ -151,13 +184,58 @@ function VerifiedChat() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [refreshConversations, refreshMessages, run]);
+  }, [refreshConversations, refreshMessages, refreshWebUsage, run]);
 
-  async function createConversation(): Promise<string> {
-    const conversation = await createChatConversation();
+  const createConversation = useCallback(async (): Promise<string> => {
+    const conversation = await createChatConversation('friday');
     await refreshConversations();
     setSelectedId(conversation.id);
     return conversation.id;
+  }, [refreshConversations]);
+
+  useEffect(() => {
+    if (previousCreateRequest.current === createRequest) return;
+    previousCreateRequest.current = createRequest;
+    void createConversation().catch(() =>
+      setError('Création de la conversation impossible.'),
+    );
+  }, [createConversation, createRequest]);
+
+  const selected = conversations.find(({ id }) => id === selectedId) ?? null;
+
+  async function selectMode(mode: ChatMode): Promise<void> {
+    if (!selected || selected.mode === mode) return;
+    setError(null);
+    try {
+      const updated = await updateChatConversation(selected.id, { mode });
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === updated.id ? updated : conversation,
+        ),
+      );
+    } catch {
+      setError('Le mode de réponse n’a pas pu être modifié.');
+    }
+  }
+
+  async function deleteSelected(): Promise<void> {
+    if (
+      !selected ||
+      !window.confirm(`Supprimer définitivement « ${selected.title} » ?`)
+    )
+      return;
+    setError(null);
+    try {
+      await deleteChatConversation(selected.id);
+      setMessages([]);
+      setRun((current) =>
+        current?.conversationId === selected.id ? null : current,
+      );
+      setSelectedId(null);
+      await refreshConversations();
+    } catch {
+      setError('Suppression de la conversation impossible.');
+    }
   }
 
   async function submit(event: FormEvent): Promise<void> {
@@ -196,13 +274,15 @@ function VerifiedChat() {
     <section className="assistant-live" aria-label="Nouveau Chat">
       <header className="assistant-live-header">
         <h2>Friday</h2>
-        <button
-          className="secondary-button"
-          onClick={() => void createConversation()}
-          type="button"
-        >
-          Nouvelle conversation
-        </button>
+        {webUsage ? (
+          <small
+            className="assistant-remaining-searches"
+            aria-label={`${webUsage.remainingSearches.toString()} recherches Web approfondies restantes ce mois`}
+            title="Quota Tavily commun. Une question peut lancer plusieurs recherches approfondies."
+          >
+            Web · {webUsage.remainingSearches} recherches restantes
+          </small>
+        ) : null}
       </header>
       {error ? <p className="error-banner">{error}</p> : null}
       {conversations.length ? (
@@ -229,6 +309,31 @@ function VerifiedChat() {
               </button>
             ))}
         </nav>
+      ) : null}
+      {selected ? (
+        <div className="assistant-chat-toolbar">
+          <div className="assistant-mode" aria-label="Mode de réponse">
+            {CHAT_MODES.map(({ mode, label }) => (
+              <button
+                aria-pressed={selected.mode === mode}
+                disabled={run?.status === 'running' || run?.status === 'queued'}
+                key={mode}
+                onClick={() => void selectMode(mode)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            aria-label="Supprimer la conversation"
+            className="secondary-button danger assistant-delete-conversation"
+            onClick={() => void deleteSelected()}
+            type="button"
+          >
+            Supprimer
+          </button>
+        </div>
       ) : null}
       <div className="assistant-messages" aria-live="polite">
         {messages.map((message) => (
@@ -292,6 +397,7 @@ function VerifiedChat() {
           value={content}
         />
         <button
+          className="primary-button"
           disabled={
             !content.trim() ||
             !navigator.onLine ||
@@ -307,7 +413,13 @@ function VerifiedChat() {
   );
 }
 
-export default function AssistantView() {
+export default function AssistantView({
+  createRequest = 0,
+  onAvailabilityChange = ignoreAvailabilityChange,
+}: {
+  createRequest?: number;
+  onAvailabilityChange?(available: boolean): void;
+}) {
   const [conversations, setConversations] = useState<AssistantConversation[]>(
     [],
   );
@@ -414,7 +526,10 @@ export default function AssistantView() {
 
   return (
     <section className="assistant-shell" aria-label="Archive du Chat">
-      <VerifiedChat />
+      <VerifiedChat
+        createRequest={createRequest}
+        onAvailabilityChange={onAvailabilityChange}
+      />
 
       <details className="assistant-legacy-archive">
         <summary>Archive historique en lecture seule</summary>

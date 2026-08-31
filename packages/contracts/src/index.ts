@@ -1792,6 +1792,7 @@ export const ChatRetrievalModeSchema = z.enum([
   'lexical_fallback',
 ]);
 export const ChatRouteSchema = z.enum(['local_unverified', 'web_verified']);
+export const ChatModeSchema = z.enum(['friday', 'local', 'web']);
 export const ChatRunStatusSchema = z.enum([
   'queued',
   'running',
@@ -1826,6 +1827,7 @@ export const ChatConversationSchema = z
   .object({
     id: UuidSchema,
     title: z.string().trim().min(1).max(120),
+    mode: ChatModeSchema,
     archivedAt: z.string().datetime().nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -1850,6 +1852,7 @@ export const ChatRunSchema = z
     status: ChatRunStatusSchema,
     stage: ChatRunStageSchema,
     route: ChatRouteSchema.nullable(),
+    requestedMode: ChatModeSchema,
     retrievalMode: ChatRetrievalModeSchema,
     errorCode: z
       .string()
@@ -1860,11 +1863,15 @@ export const ChatRunSchema = z
   })
   .strict();
 export const ChatCreateConversationRequestSchema = z
-  .object({ title: z.string().trim().min(1).max(120).optional() })
+  .object({
+    title: z.string().trim().min(1).max(120).optional(),
+    mode: ChatModeSchema.optional(),
+  })
   .strict();
 export const ChatUpdateConversationRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(120).optional(),
+    mode: ChatModeSchema.optional(),
     archived: z.boolean().optional(),
   })
   .strict();
@@ -1888,6 +1895,15 @@ export const ChatEnqueueResponseSchema = z
   .strict();
 export const ChatDeleteResponseSchema = z
   .object({ deleted: z.literal(true) })
+  .strict();
+export const ChatWebUsageSchema = z
+  .object({
+    month: z.string().regex(/^\d{4}-\d{2}$/u),
+    creditsUsed: z.number().int().nonnegative(),
+    remainingSearches: z.number().int().nonnegative(),
+    source: z.enum(['tavily', 'unavailable']),
+    hardLimit: z.number().int().positive(),
+  })
   .strict();
 
 export type TaskRecord = z.infer<typeof TaskRecordSchema>;
@@ -1992,12 +2008,14 @@ export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 export type ChatAnswerStatus = z.infer<typeof ChatAnswerStatusSchema>;
 export type ChatRetrievalMode = z.infer<typeof ChatRetrievalModeSchema>;
 export type ChatRoute = z.infer<typeof ChatRouteSchema>;
+export type ChatMode = z.infer<typeof ChatModeSchema>;
 export type ChatRunStatus = z.infer<typeof ChatRunStatusSchema>;
 export type ChatRunStage = z.infer<typeof ChatRunStageSchema>;
 export type ChatSource = z.infer<typeof ChatSourceSchema>;
 export type ChatConversation = z.infer<typeof ChatConversationSchema>;
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatRun = z.infer<typeof ChatRunSchema>;
+export type ChatWebUsage = z.infer<typeof ChatWebUsageSchema>;
 export type ChatSendMessageRequest = z.infer<
   typeof ChatSendMessageRequestSchema
 >;

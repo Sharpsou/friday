@@ -446,6 +446,85 @@ test('the gated Chat keeps its historical archive and disables offline sending',
   await context.setOffline(false);
 });
 
+test('the active Chat creates, switches mode and deletes from the mobile UI', async ({
+  page,
+}) => {
+  const firstId = '81bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const secondId = '91bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const now = '2026-08-31T12:00:00.000Z';
+  let conversations = [
+    {
+      id: firstId,
+      title: 'Question déjà titrée',
+      mode: 'friday',
+      archivedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+  await page.route('**/api/chat/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === '/api/chat/web-usage')
+      return route.fulfill({
+        json: {
+          month: '2026-08',
+          creditsUsed: 50,
+          remainingSearches: 450,
+          source: 'tavily',
+          hardLimit: 950,
+        },
+      });
+    if (url.pathname === '/api/chat/conversations') {
+      if (request.method() === 'POST') {
+        const created = {
+          id: secondId,
+          title: 'Nouvelle conversation',
+          mode: 'friday',
+          archivedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        conversations = [created, ...conversations];
+        return route.fulfill({ status: 201, json: created });
+      }
+      return route.fulfill({ json: { conversations } });
+    }
+    const id = url.pathname.split('/')[4];
+    const conversation = conversations.find((item) => item.id === id);
+    if (url.pathname.endsWith('/messages'))
+      return route.fulfill({ json: { conversation, messages: [] } });
+    if (request.method() === 'PATCH' && conversation) {
+      const update = request.postDataJSON() as { mode?: string };
+      Object.assign(conversation, update);
+      return route.fulfill({ json: conversation });
+    }
+    if (request.method() === 'DELETE') {
+      conversations = conversations.filter((item) => item.id !== id);
+      return route.fulfill({ json: { deleted: true } });
+    }
+    return route.abort();
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await expect(page.getByText('Web · 450 recherches restantes')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Friday' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Local', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Local' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Nouvelle conversation' }).click();
+  await expect(page.getByText('Nouvelle conversation')).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Supprimer la conversation' }).click();
+  await expect(page.getByText('Nouvelle conversation')).toHaveCount(0);
+});
+
 test('the seven destinations fit at 360px and budget data can persist or be removed', async ({
   context,
   page,

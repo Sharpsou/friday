@@ -10,6 +10,7 @@ import {
   ChatRunSchema,
   ChatSendMessageRequestSchema,
   ChatUpdateConversationRequestSchema,
+  ChatWebUsageSchema,
 } from '@friday/contracts';
 
 import {
@@ -56,6 +57,16 @@ export const chatPlugin: FastifyPluginAsync<ChatPluginOptions> = async (
     }
   });
 
+  app.get('/web-usage', async (request, reply) => {
+    if (!options.enabled) return disabled(reply);
+    try {
+      await authenticate(request.headers);
+      return ChatWebUsageSchema.parse(await options.service.webUsage());
+    } catch (error) {
+      return options.handleAuthError(error, reply);
+    }
+  });
+
   app.post('/conversations', async (request, reply) => {
     if (!options.enabled) return disabled(reply);
     if (!mutationAllowed(request.headers))
@@ -69,7 +80,13 @@ export const chatPlugin: FastifyPluginAsync<ChatPluginOptions> = async (
       const profileId = await authenticate(request.headers);
       return reply
         .code(201)
-        .send(options.service.createConversation(profileId, body.data.title));
+        .send(
+          options.service.createConversation(
+            profileId,
+            body.data.title,
+            body.data.mode,
+          ),
+        );
     } catch (error) {
       return options.handleAuthError(error, reply);
     }
@@ -87,6 +104,7 @@ export const chatPlugin: FastifyPluginAsync<ChatPluginOptions> = async (
       const profileId = await authenticate(request.headers);
       return options.service.updateConversation(profileId, params.data.id, {
         ...(body.data.title === undefined ? {} : { title: body.data.title }),
+        ...(body.data.mode === undefined ? {} : { mode: body.data.mode }),
         ...(body.data.archived === undefined
           ? {}
           : { archived: body.data.archived }),

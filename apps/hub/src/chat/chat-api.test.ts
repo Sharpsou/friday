@@ -61,10 +61,11 @@ describe('Chat v2 API', () => {
       method: 'POST',
       url: '/api/chat/conversations',
       headers: { cookie },
-      payload: {},
+      payload: { mode: 'web' },
     });
     expect(created.statusCode).toBe(201);
     const conversationId = created.json().id as string;
+    expect(created.json().mode).toBe('web');
     const sent = await app.inject({
       method: 'POST',
       url: `/api/chat/conversations/${conversationId}/messages`,
@@ -98,5 +99,13 @@ describe('Chat v2 API', () => {
       answerStatus: 'unverified',
       content: 'Réponse.',
     });
+    expect(messages.json().conversation.title).toBe('Bonjour');
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/chat/conversations/${conversationId}`,
+      headers: { cookie },
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toEqual({ deleted: true });
   });
 });

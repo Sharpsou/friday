@@ -4,8 +4,10 @@ Date : 31 août 2026
 Statut : runtime activé sur A17 par décision utilisateur, archive historique
 active, gate qualitative v2 encore ouverte
 
-Le nouveau Chat expose une expérience unique. Le code choisit entre réponse
-locale portant le badge « Non vérifié par des sources » et réponse Web auditée.
+Le nouveau Chat expose trois choix lisibles : `Friday` laisse le code choisir,
+`Local` force une réponse portant le badge « Non vérifié par des sources » et
+`Recherche Web` force la recherche auditée. Il n'existe plus de distinction
+léger/approfondi : toute recherche Web est approfondie.
 Le runtime ne possède aucun outil Maison, Budget ou Robot.
 
 ## Configuration
@@ -27,11 +29,14 @@ seul conserve le traitement en `lexical_fallback`.
 
 ## API et stockage
 
-Le plugin `/api/chat` expose conversations, messages et runs. L'envoi retourne
+Le plugin `/api/chat` expose conversations, messages, runs et le quota Tavily
+via `GET /web-usage`. L'envoi retourne
 202 avec un `runId`, puis la PWA suit `queued`, `routing`, `research`, `writing`,
 `auditing`, `finalizing`. DELETE sur un run demande son annulation.
 
-SQLite 41 utilise seulement les tables `chat_*`. Les tables `assistant_*`
+SQLite 42 utilise seulement les tables `chat_*`. La migration 42 ajoute le mode
+de conversation et le mode figé de chaque run ; elle attribue aux conversations
+créées avant ce lot un titre dérivé de leur premier message. Les tables `assistant_*`
 restent l'archive historique accessible par `/api/assistant`; son ancienne
 route d'envoi continue à répondre 410. Dexie 8 ajoute `chatConversations` et
 `chatMessages`, chiffrés, sans nouvelle outbox. Aucun contenu Web brut, passage,
@@ -55,6 +60,10 @@ partielle honnête, mais a révélé un rappel insuffisant du passage attendu et
 des citations de passage mal formatées. Le runtime retire désormais
 déterministiquement toute URL produite par le modèle et normalise les groupes
 `(P1, P3)` avant la résolution contrôlée `P → S → URL`.
+
+La PWA crée une conversation depuis le bouton flottant `+`, permet sa
+suppression et affiche le quota en recherches approfondies restantes. Ce quota
+est global au compte Tavily ; une question peut consommer plusieurs recherches.
 
 ## Banc privé v2
 
