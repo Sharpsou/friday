@@ -13,10 +13,12 @@
     "corpus:init": "tsx src/cli.ts corpus:init",
     "evaluate": "tsx src/cli.ts evaluate",
     "review:build": "tsx src/cli.ts review:build",
+    "review:ai": "tsx src/cli.ts review:ai",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@friday/assistant-core": "workspace:*",
     "jsdom": "26.1.0",
     "zod": "4.4.3"
   },

@@ -39,11 +39,12 @@ describe('selectEvidencePassages', () => {
     );
 
     expect(dossier.passages).toHaveLength(2);
-    expect(dossier.passages.map(({ sourceId }) => sourceId)).toEqual([
-      'S1',
-      'S2',
-    ]);
-    expect(dossier.passages[0]?.text).toContain('dix heures');
+    expect(new Set(dossier.passages.map(({ sourceId }) => sourceId))).toEqual(
+      new Set(['S1', 'S2']),
+    );
+    expect(
+      dossier.passages.some(({ text }) => text.includes('dix heures')),
+    ).toBe(true);
     expect(dossier.characterCount).toBeLessThanOrEqual(1_000);
   });
 

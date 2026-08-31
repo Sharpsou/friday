@@ -1,4 +1,5 @@
 import type { AnswerAudit, AuditUnit } from './contracts.js';
+import type { FunctionalOutcome } from './audit.js';
 
 export interface AutomatedMetrics {
   factualUnitCount: number;
@@ -9,6 +10,7 @@ export interface AutomatedMetrics {
   usefulness: AnswerAudit['usefulness'];
   evidenceSufficiency: AnswerAudit['evidenceSufficiency'];
   emptyAnswer: boolean;
+  outcome: FunctionalOutcome;
 }
 
 export interface HumanReview {
@@ -26,6 +28,8 @@ export interface ReleaseGateAssessment {
   supportedUnitRate: number;
   aspectCoverageRate: number;
   sufficientEvidenceEmptyRate: number;
+  citationPrecision: number;
+  citationCompleteness: number;
   failures: string[];
 }
 
@@ -33,6 +37,7 @@ export function computeAutomatedMetrics(
   answer: string,
   units: AuditUnit[],
   audit: AnswerAudit,
+  outcome: FunctionalOutcome = 'answered',
 ): AutomatedMetrics {
   const auditByUnit = new Map(audit.units.map((unit) => [unit.unitId, unit]));
   const factual = units.filter(
@@ -73,6 +78,7 @@ export function computeAutomatedMetrics(
     usefulness: audit.usefulness,
     evidenceSufficiency: audit.evidenceSufficiency,
     emptyAnswer: answer.trim().length === 0,
+    outcome,
   };
 }
 
@@ -120,8 +126,23 @@ export function assessReleaseGate(input: {
   const sufficientEvidenceEmptyRate =
     sufficient.length === 0
       ? 1
-      : sufficient.filter(({ emptyAnswer }) => emptyAnswer).length /
-        sufficient.length;
+      : sufficient.filter(
+          ({ outcome }) => outcome === 'abstained' || outcome === 'audit_error',
+        ).length / sufficient.length;
+  const citationPrecision =
+    input.automated.length === 0
+      ? 0
+      : input.automated.reduce(
+          (sum, metric) => sum + metric.citationPrecision,
+          0,
+        ) / input.automated.length;
+  const citationCompleteness =
+    input.automated.length === 0
+      ? 0
+      : input.automated.reduce(
+          (sum, metric) => sum + metric.citationCompleteness,
+          0,
+        ) / input.automated.length;
   const failures: string[] = [];
   if (
     input.human.some(({ importantContradiction }) => importantContradiction)
@@ -132,6 +153,10 @@ export function assessReleaseGate(input: {
     failures.push('SUPPORTED_UNITS_BELOW_90_PERCENT');
   if (aspectCoverageRate < 0.8)
     failures.push('ASPECT_COVERAGE_BELOW_80_PERCENT');
+  if (citationPrecision < 0.9)
+    failures.push('CITATION_PRECISION_BELOW_90_PERCENT');
+  if (citationCompleteness < 0.8)
+    failures.push('CITATION_COMPLETENESS_BELOW_80_PERCENT');
   if (sufficientEvidenceEmptyRate >= 0.05) {
     failures.push('EMPTY_ANSWERS_AT_OR_ABOVE_5_PERCENT');
   }
@@ -144,6 +169,8 @@ export function assessReleaseGate(input: {
     supportedUnitRate,
     aspectCoverageRate,
     sufficientEvidenceEmptyRate,
+    citationPrecision,
+    citationCompleteness,
     failures,
   };
 }

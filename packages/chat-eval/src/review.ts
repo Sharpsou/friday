@@ -18,6 +18,12 @@ function mean(values: number[]): number {
     : values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function percentile95(values: number[]): number {
+  if (!values.length) return 0;
+  const ordered = [...values].sort((left, right) => left - right);
+  return ordered[Math.ceil(ordered.length * 0.95) - 1] ?? 0;
+}
+
 function weightedUnitRate(
   values: EvaluationResult[],
   key: 'supportedUnitRate' | 'contradictedUnitRate',
@@ -54,6 +60,22 @@ function summarizePair(pairId: string, values: EvaluationResult[]) {
       values.map(({ auditFallbacks }) => (auditFallbacks > 0 ? 1 : 0)),
     ),
     averageElapsedMs: mean(values.map(({ elapsedMs }) => elapsedMs)),
+    p95ElapsedMs: percentile95(values.map(({ elapsedMs }) => elapsedMs)),
+    lexicalFallbackRate: mean(
+      values.map(({ retrievalMode }) =>
+        retrievalMode === 'lexical_fallback' ? 1 : 0,
+      ),
+    ),
+    referenceParagraphRecall: mean(
+      values.flatMap(({ referenceParagraphRecall }) =>
+        referenceParagraphRecall === null ? [] : [referenceParagraphRecall],
+      ),
+    ),
+    retrievalDimensionCoverage: mean(
+      values.flatMap(({ retrievalDimensionCoverage }) =>
+        retrievalDimensionCoverage === null ? [] : [retrievalDimensionCoverage],
+      ),
+    ),
   };
 }
 

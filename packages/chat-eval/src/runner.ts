@@ -2,9 +2,12 @@ import { createHash } from 'node:crypto';
 
 import {
   decideEvaluation,
+  citedPassageIds,
+  functionalOutcome,
   splitAuditUnits,
   suppressUnsupportedUnits,
   type EvaluationDecision,
+  type FunctionalOutcome,
 } from './audit.js';
 import {
   AnswerAuditJsonSchema,
@@ -23,7 +26,8 @@ import { type OllamaClient } from './ollama.js';
 import {
   DEFAULT_PASSAGE_LIMITS,
   resolvePassageSources,
-  selectEvidencePassages,
+  selectEvidencePassagesHybrid,
+  type EmbeddingProvider,
   type EvidenceDossier,
   type PassageSelectionLimits,
 } from './passages.js';
@@ -67,6 +71,7 @@ export interface EvaluationRunnerOptions {
   targetedResearch?: TargetedResearch;
   passageLimits?: PassageSelectionLimits;
   maxModelCalls?: number;
+  embeddings?: EmbeddingProvider;
 }
 
 export interface EvaluationResult {
@@ -82,6 +87,11 @@ export interface EvaluationResult {
   researchUsed: boolean;
   revisionUsed: boolean;
   auditFallbacks: number;
+  outcome: FunctionalOutcome;
+  retrievalMode: EvidenceDossier['retrievalMode'];
+  retrievalDiagnostics: EvidenceDossier['diagnostics'];
+  referenceParagraphRecall: number | null;
+  retrievalDimensionCoverage: number | null;
   elapsedMs: number;
   promptVersions: typeof PROMPT_VERSIONS;
 }
@@ -141,9 +151,9 @@ export class EvaluationRunner {
 
   constructor(private readonly options: EvaluationRunnerOptions) {
     this.limits = options.passageLimits ?? DEFAULT_PASSAGE_LIMITS;
-    this.maxModelCalls = options.maxModelCalls ?? 4;
-    if (this.maxModelCalls < 2 || this.maxModelCalls > 4) {
-      throw new Error('MODEL_CALL_LIMIT_MUST_BE_2_TO_4');
+    this.maxModelCalls = options.maxModelCalls ?? 6;
+    if (this.maxModelCalls < 2 || this.maxModelCalls > 6) {
+      throw new Error('MODEL_CALL_LIMIT_MUST_BE_2_TO_6');
     }
   }
 
@@ -158,11 +168,16 @@ export class EvaluationRunner {
     let researchUsed = false;
     let revisionUsed = false;
     let auditFallbacks = 0;
-    let dossier = selectEvidencePassages(
-      evalCase.question,
-      evalCase.pages,
-      this.limits,
-    );
+    let auditError = false;
+    let dossier = await selectEvidencePassagesHybrid({
+      question: evalCase.question,
+      pages: evalCase.pages,
+      limits: this.limits,
+      ...(this.options.embeddings
+        ? { embeddings: this.options.embeddings }
+        : {}),
+      signal,
+    });
 
     const generate = async (
       model: string,
@@ -207,47 +222,53 @@ export class EvaluationRunner {
       evidence: EvidenceDossier,
     ): Promise<{ units: AuditUnit[]; audit: AnswerAudit }> => {
       const units = splitAuditUnits(answer);
-      const raw = await generate(
-        pair.auditorModel,
-        auditorPrompt({
-          question: evalCase.question,
-          units,
-          passages: evidence.passages,
-        }),
-        AnswerAuditJsonSchema,
-        2_500,
-        0,
-      );
-      try {
-        return { units, audit: parseAudit(raw, units, evidence.passages) };
-      } catch {
-        auditFallbacks += 1;
-        return {
-          units,
-          audit: {
-            units: units.map(({ id }) => ({
-              unitId: id,
-              verdict: 'unsupported' as const,
-              passageIds: [],
-              reason: 'Audit structuré invalide.',
-            })),
-            usefulness: 'misses',
-            missingAspects: ['Audit structuré invalide'],
-            evidenceSufficiency: 'sufficient',
-          },
-        };
+      const prompt = auditorPrompt({
+        question: evalCase.question,
+        units,
+        passages: evidence.passages,
+      });
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const raw = await generate(
+          pair.auditorModel,
+          prompt,
+          AnswerAuditJsonSchema,
+          2_500,
+          0,
+        );
+        try {
+          return { units, audit: parseAudit(raw, units, evidence.passages) };
+        } catch {
+          auditFallbacks += 1;
+        }
       }
+      auditError = true;
+      return {
+        units,
+        audit: {
+          units: units.map(({ id }) => ({
+            unitId: id,
+            verdict: 'unsupported' as const,
+            passageIds: [],
+            reason: 'Audit structuré invalide après une répétition bornée.',
+          })),
+          usefulness: 'misses',
+          missingAspects: ['Vérification indisponible'],
+          evidenceSufficiency: 'insufficient',
+        },
+      };
     };
 
     let answer = await write(dossier);
     let audited = await auditAnswer(answer, dossier);
-    let decision = decideEvaluation(audited.audit, {
-      revisionUsed,
-      researchUsed,
-      finalAudit: false,
-    });
+    let decision: EvaluationDecision = auditError
+      ? 'partial'
+      : decideEvaluation(audited.audit, {
+          revisionUsed,
+          researchUsed,
+          finalAudit: false,
+        });
 
-    if (decision === 'research') {
+    if (!auditError && decision === 'research') {
       researchUsed = true;
       if (this.options.targetedResearch) {
         const extraPages = FrozenPageSchema.array()
@@ -260,22 +281,29 @@ export class EvaluationRunner {
               signal,
             }),
           );
-        dossier = selectEvidencePassages(
-          evalCase.question,
-          mergePages(evalCase.pages, extraPages),
-          this.limits,
-        );
+        dossier = await selectEvidencePassagesHybrid({
+          question: evalCase.question,
+          queries: audited.audit.missingAspects,
+          pages: mergePages(evalCase.pages, extraPages),
+          limits: this.limits,
+          ...(this.options.embeddings
+            ? { embeddings: this.options.embeddings }
+            : {}),
+          signal,
+        });
         answer = await write(dossier);
         audited = await auditAnswer(answer, dossier);
-        decision = decideEvaluation(audited.audit, {
-          revisionUsed,
-          researchUsed,
-          finalAudit: true,
-        });
+        decision = auditError
+          ? 'partial'
+          : decideEvaluation(audited.audit, {
+              revisionUsed,
+              researchUsed,
+              finalAudit: true,
+            });
       } else {
         decision = 'partial';
       }
-    } else if (decision === 'revise') {
+    } else if (!auditError && decision === 'revise') {
       revisionUsed = true;
       answer = validateModelMarkdown(
         await generate(
@@ -293,20 +321,30 @@ export class EvaluationRunner {
         dossier.passages,
       );
       audited = await auditAnswer(answer, dossier);
-      decision = decideEvaluation(audited.audit, {
-        revisionUsed,
-        researchUsed,
-        finalAudit: true,
-      });
+      decision = auditError
+        ? 'partial'
+        : decideEvaluation(audited.audit, {
+            revisionUsed,
+            researchUsed,
+            finalAudit: true,
+          });
     }
 
     if (decision === 'partial') {
       answer = suppressUnsupportedUnits(audited.units, audited.audit);
     }
-    const citedIds = audited.units.flatMap(
-      ({ citedPassageIds }) => citedPassageIds,
-    );
+    const citedIds = citedPassageIds(answer);
     const sources = resolvePassageSources([...new Set(citedIds)], dossier);
+    const selectedParagraphs = new Set(
+      dossier.diagnostics.selectedParagraphKeys,
+    );
+    const referenceEvidence = evalCase.criteria.referenceEvidence ?? [];
+    const referenceParagraphs = referenceEvidence.flatMap(({ paragraphs }) =>
+      paragraphs.map(
+        ({ sourceId, sectionIndex, paragraphIndex }) =>
+          `${sourceId}:${sectionIndex.toString()}:${paragraphIndex.toString()}`,
+      ),
+    );
     return {
       caseId: evalCase.id,
       pairId: pair.id,
@@ -314,12 +352,35 @@ export class EvaluationRunner {
       answer,
       decision,
       audit: audited.audit,
-      metrics: computeAutomatedMetrics(answer, audited.units, audited.audit),
+      metrics: computeAutomatedMetrics(
+        answer,
+        audited.units,
+        audited.audit,
+        functionalOutcome(answer, decision, auditError),
+      ),
       sourceIds: sources.map(({ id }) => id),
       calls,
       researchUsed,
       revisionUsed,
       auditFallbacks,
+      outcome: functionalOutcome(answer, decision, auditError),
+      retrievalMode: dossier.retrievalMode,
+      retrievalDiagnostics: dossier.diagnostics,
+      referenceParagraphRecall:
+        referenceParagraphs.length === 0
+          ? null
+          : referenceParagraphs.filter((key) => selectedParagraphs.has(key))
+              .length / referenceParagraphs.length,
+      retrievalDimensionCoverage:
+        referenceEvidence.length === 0
+          ? null
+          : referenceEvidence.filter(({ paragraphs }) =>
+              paragraphs.some(({ sourceId, sectionIndex, paragraphIndex }) =>
+                selectedParagraphs.has(
+                  `${sourceId}:${sectionIndex.toString()}:${paragraphIndex.toString()}`,
+                ),
+              ),
+            ).length / referenceEvidence.length,
       elapsedMs: Math.round(performance.now() - startedAt),
       promptVersions: PROMPT_VERSIONS,
     };

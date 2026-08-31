@@ -38,6 +38,7 @@ describe('separate grounding metrics', () => {
           usefulness: 'answers',
           evidenceSufficiency: 'sufficient',
           emptyAnswer: false,
+          outcome: 'answered',
         },
       ],
       human: [

@@ -71,7 +71,6 @@ describe('EvaluationRunner', () => {
     const responses = [
       'L’autonomie annoncée est de dix heures [P1].',
       '{invalid',
-      'L’autonomie mesurée est de dix heures [P1].',
       '{still-invalid',
     ];
     const runner = new EvaluationRunner({
@@ -89,9 +88,10 @@ describe('EvaluationRunner', () => {
     );
     expect(result).toMatchObject({
       decision: 'partial',
-      calls: 4,
-      revisionUsed: true,
+      calls: 3,
+      revisionUsed: false,
       auditFallbacks: 2,
+      outcome: 'audit_error',
     });
     expect(result.answer).toContain('Je ne peux pas fournir');
   });

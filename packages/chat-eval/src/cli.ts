@@ -16,6 +16,7 @@ import {
   type EvaluationResult,
 } from './runner.js';
 import { buildReviewArtifacts } from './review.js';
+import { runBlindAiReview } from './ai-review.js';
 
 interface EvaluationFailure {
   caseId: string;
@@ -85,7 +86,24 @@ async function evaluate(): Promise<void> {
     maxConcurrency: concurrency,
     timeoutMs: 300_000,
   });
-  const runner = new EvaluationRunner({ ollama: client });
+  const retrieval = argument('retrieval') ?? 'hybrid';
+  if (!['hybrid', 'lexical'].includes(retrieval))
+    throw new Error('RETRIEVAL_MUST_BE_HYBRID_OR_LEXICAL');
+  const runner = new EvaluationRunner({
+    ollama: client,
+    ...(retrieval === 'hybrid'
+      ? {
+          embeddings: {
+            embed: async (input: string[], signal?: AbortSignal) =>
+              client.embed({
+                model: 'qwen3-embedding:0.6b',
+                input,
+                ...(signal ? { signal } : {}),
+              }),
+          },
+        }
+      : {}),
+  });
   const previous = await readFile(resultPath, 'utf8')
     .then((raw) => JSON.parse(raw) as { results?: StoredResult[] })
     .catch(() => ({ results: [] as StoredResult[] }));
@@ -100,7 +118,7 @@ async function evaluate(): Promise<void> {
   const persist = async (): Promise<void> => {
     await writeFile(
       resultPath,
-      `${JSON.stringify({ corpusVersion: corpus.version, split, seeds, results }, null, 2)}\n`,
+      `${JSON.stringify({ corpusVersion: corpus.version, split, retrieval, seeds, results }, null, 2)}\n`,
       'utf8',
     );
   };
@@ -255,8 +273,17 @@ async function main(): Promise<void> {
     );
     return;
   }
+  if (command === 'review:ai') {
+    const runId = argument('run');
+    if (!runId) throw new Error('REVIEW_RUN_ID_REQUIRED');
+    const reviewModel = argument('model');
+    process.stdout.write(
+      `${JSON.stringify(await runBlindAiReview({ root, runId, ...(reviewModel ? { model: reviewModel } : {}) }))}\n`,
+    );
+    return;
+  }
   throw new Error(
-    'USAGE: corpus:init | corpus:build | corpus:freeze | evaluate | review:build',
+    'USAGE: corpus:init | corpus:build | corpus:freeze | evaluate | review:build | review:ai',
   );
 }
 

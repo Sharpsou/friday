@@ -9,7 +9,7 @@
     "pnpm": ">=11.16.0 <12"
   },
   "scripts": {
-    "build": "pnpm --filter @friday/contracts build && pnpm --filter @friday/domain build && pnpm --filter @friday/chat-eval build && pnpm --filter @friday/web build && pnpm --filter @friday/hub build",
+    "build": "pnpm --filter @friday/contracts build && pnpm --filter @friday/domain build && pnpm --filter @friday/assistant-core build && pnpm --filter @friday/chat-eval build && pnpm --filter @friday/web build && pnpm --filter @friday/hub build",
     "dev": "concurrently -k -n HUB,WEB -c blue,green \"pnpm --filter @friday/hub dev\" \"pnpm --filter @friday/web dev\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

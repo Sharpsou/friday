@@ -1,4 +1,5 @@
 export * from './audit.js';
+export * from './ai-review.js';
 export * from './contracts.js';
 export * from './corpus.js';
 export * from './corpus-build.js';

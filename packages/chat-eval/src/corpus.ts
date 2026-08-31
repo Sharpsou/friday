@@ -13,7 +13,7 @@ import {
 } from './contracts.js';
 
 export const DEFAULT_CORPUS_ROOT =
-  'D:\\FridayData\\evaluations\\chat-foundation-v1';
+  'D:\\FridayData\\evaluations\\chat-foundation-v2';
 
 const DraftCaseSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{2,79}$/u),
@@ -39,7 +39,7 @@ const DraftCaseSchema = z.strictObject({
 });
 
 const DraftCorpusSchema = z.strictObject({
-  version: z.literal('chat-foundation-v1'),
+  version: z.string().regex(/^chat-foundation-v\d+$/u),
   warning: z.string(),
   cases: z.array(DraftCaseSchema).length(20),
 });
@@ -104,6 +104,7 @@ export async function initializeCorpusWorkspace(
       priorTurns: [],
       criteria: {
         expectedAspects: ['[À définir avant gel]'],
+        referenceEvidence: [],
         catastrophicFailures: ['citation ou URL inventée'],
       },
       pages: [],
@@ -111,9 +112,9 @@ export async function initializeCorpusWorkspace(
     })),
   );
   const draft = DraftCorpusSchema.parse({
-    version: 'chat-foundation-v1',
+    version: 'chat-foundation-v2',
     warning:
-      'BROUILLON NON EXÉCUTABLE : compléter les questions, critères et pages originales, puis geler avec corpus:freeze.',
+      'BROUILLON V2 NON EXÉCUTABLE : compléter questions, critères, références de paragraphes et pages originales, puis geler avec corpus:freeze.',
     cases,
   });
   const draftPath = join(safeRoot, 'corpus-draft.json');
@@ -140,7 +141,7 @@ export async function initializeCorpusWorkspace(
       typeof existing === 'object' &&
       existing !== null &&
       'version' in existing &&
-      existing.version === 'chat-foundation-v1' &&
+      /^chat-foundation-v\d+$/u.test(String(existing.version)) &&
       'cases' in existing &&
       Array.isArray(existing.cases) &&
       existing.cases.some(
