@@ -1,7 +1,7 @@
 # Runbook Chat — état de reconstruction
 
-Date : 30 août 2026
-Statut : archive historique active, banc hors ligne implanté
+Date : 31 août 2026
+Statut : archive historique active, campagne hors ligne prête à relire
 
 Le Chat n'envoie plus de message et n'appelle plus Ollama, Tavily ou Exa. Les
 anciens modes et le sélecteur de modèle ont été supprimés. La PWA permet encore
@@ -47,20 +47,22 @@ manifests en lecture seule :
 pnpm --filter @friday/chat-eval corpus:init
 ```
 
-Compléter `corpus-draft.json` avec les pages originales et critères humains,
-passer chaque fiche à `ready_to_freeze`, puis geler une seule fois :
+Pour reconstruire un nouveau corpus, préparer `corpus-spec.json` dans ce
+dossier privé puis télécharger, contrôler et geler les pages en une fois :
 
 ```powershell
-pnpm --filter @friday/chat-eval corpus:freeze
+pnpm --filter @friday/chat-eval corpus:build
 ```
 
-Le fichier `corpus.json` est créé avec l'option exclusive : un second gel
-échoue au lieu d'écraser la validation. Lancer d'abord le développement, puis
-la validation seulement lorsque les ajustements sont terminés :
+Le fichier `corpus.json` et chaque instantané sont créés avec l'option
+exclusive : un second gel échoue au lieu d'écraser la validation. Le corpus v1
+actuel contient 20 cas et 35 instantanés dont les empreintes ont été contrôlées.
+
+La campagne de référence est reprenable et exécute deux tentatives en parallèle :
 
 ```powershell
-pnpm --filter @friday/chat-eval evaluate -- --split=development
-pnpm --filter @friday/chat-eval evaluate -- --split=validation
+pnpm --filter @friday/chat-eval evaluate -- --run=campaign-v2 --concurrency=2
+pnpm --filter @friday/chat-eval review:build -- --run=campaign-v2
 ```
 
 Chaque commande compare les deux couples Gemma/Qwen sur trois graines. Les
@@ -68,10 +70,12 @@ réponses complètes et la clé restent dans `results`; `reviews` reçoit les
 sorties A/B sans nom de modèle. Aucun prompt, page brute, secret ou chaîne de
 raisonnement n'est journalisé.
 
-Une erreur de schéma, une URL/HTML/citation inventée, un timeout ou une sortie
-trop grande produit un code sûr et arrête la tentative concernée. Il n'existe
-pas de réparation JSON ni de boucle supplémentaire. Tant que les 20 fiches ne
-sont pas gelées et jugées humainement, le HTTP d'envoi reste `410`.
+Une URL/HTML/citation inventée, un timeout ou une sortie trop grande produit un
+code sûr et arrête la tentative concernée. Une unité d'audit omise est marquée
+`unsupported`; un audit JSON invalide déclenche un audit conservateur sans fait
+soutenu. Il n'existe pas de réparation JSON ni de boucle supplémentaire. Le
+run `campaign-v2` compte 120 résultats et 60 paires. Tant que la revue humaine
+n'est pas terminée, le HTTP d'envoi reste `410`.
 
 Contrôler le banc seul avec :
 

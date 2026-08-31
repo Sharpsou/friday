@@ -100,7 +100,7 @@ describe('hostile corpus gates', () => {
     ).rejects.toThrow(code);
   });
 
-  it('rejects invalid auditor JSON once without a repair loop', async () => {
+  it('fails closed on invalid auditor JSON without a JSON repair loop', async () => {
     let calls = 0;
     const runner = new EvaluationRunner({
       ollama: {
@@ -119,7 +119,10 @@ describe('hostile corpus gates', () => {
         { id: 'pair', writerModel: 'writer', auditorModel: 'auditor' },
         17,
       ),
-    ).rejects.toThrow('AUDIT_INVALID_JSON');
-    expect(calls).toBe(2);
+    ).resolves.toMatchObject({
+      decision: 'partial',
+      auditFallbacks: 2,
+    });
+    expect(calls).toBe(4);
   });
 });

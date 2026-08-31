@@ -1,6 +1,6 @@
 # État canonique Friday — application et robot
 
-Date de mise à jour : 30 août 2026
+Date de mise à jour : 31 août 2026
 Statut : **source de vérité d’implémentation**
 
 ## Application
@@ -28,12 +28,13 @@ La fondation hors ligne `packages/chat-eval` est implantée sans route Hub ni
 dépendance PWA. Elle contient contrats stricts, sélection de passages, prompts
 versionnés, routage renforcé, client Ollama local borné, décision de publication
 par le code, métriques séparées et sorties A/B. Le dossier privé de corpus a été
-initialisé avec 10 fiches de développement et 10 de validation, encore marquées
-non exécutables jusqu'à ajout et gel des pages originales. Aucun modèle n'est
-donc choisi et le HTTP d'envoi reste `410`.
+gelé avec 10 fiches de développement, 10 de validation et 35 pages originales
+contrôlées par empreinte. La campagne `campaign-v2` a produit les 120 résultats
+attendus et 60 paires A/B sur trois graines. La revue humaine aveugle reste
+ouverte : aucun modèle n'est donc choisi et le HTTP d'envoi reste `410`.
 
 Le retrait est déployé sur l'origine A17. Après ajout du banc isolé, `pnpm
-verify` passe avec 27 tests Robot, 32 `chat-eval`, 25 contrats, 15 domaine, 107
+verify` passe avec 27 tests Robot, 37 `chat-eval`, 25 contrats, 15 domaine, 107
 Hub, 100 PWA et 25 Playwright. Le health check du runtime déployé répond
 `status=ok`, `database=ok`, `ollama=not-required`. La SQLite active reste en
 migration 40, intègre et sans violation de clé étrangère ; les quatre

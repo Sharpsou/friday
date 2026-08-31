@@ -60,10 +60,40 @@ describe('EvaluationRunner', () => {
       7,
     );
     expect(result.decision).toBe('pass');
+    expect(result.auditFallbacks).toBe(0);
     expect(result.calls).toBe(2);
     expect(result.sourceIds).toEqual(['S1']);
     expect(requests[0]?.format).toBeUndefined();
     expect(requests[1]?.format).toMatchObject({ type: 'object' });
+  });
+
+  it('fails closed without recursive JSON repair when the audit is invalid', async () => {
+    const responses = [
+      'L’autonomie annoncée est de dix heures [P1].',
+      '{invalid',
+      'L’autonomie mesurée est de dix heures [P1].',
+      '{still-invalid',
+    ];
+    const runner = new EvaluationRunner({
+      ollama: {
+        generate: async (): Promise<GenerateResult> => ({
+          response: responses.shift()!,
+          durationMs: 1,
+        }),
+      } as never,
+    });
+    const result = await runner.runCase(
+      evalCase,
+      { id: 'pair', writerModel: 'writer', auditorModel: 'auditor' },
+      17,
+    );
+    expect(result).toMatchObject({
+      decision: 'partial',
+      calls: 4,
+      revisionUsed: true,
+      auditFallbacks: 2,
+    });
+    expect(result.answer).toContain('Je ne peux pas fournir');
   });
 
   it('rejects a URL or unknown citation emitted by the writer', async () => {

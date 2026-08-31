@@ -81,6 +81,7 @@ export interface EvaluationResult {
   calls: number;
   researchUsed: boolean;
   revisionUsed: boolean;
+  auditFallbacks: number;
   elapsedMs: number;
   promptVersions: typeof PROMPT_VERSIONS;
 }
@@ -156,6 +157,7 @@ export class EvaluationRunner {
     let calls = 0;
     let researchUsed = false;
     let revisionUsed = false;
+    let auditFallbacks = 0;
     let dossier = selectEvidencePassages(
       evalCase.question,
       evalCase.pages,
@@ -166,6 +168,8 @@ export class EvaluationRunner {
       model: string,
       prompt: string,
       format?: object,
+      maxTokens?: number,
+      temperature?: number,
     ): Promise<string> => {
       calls += 1;
       if (calls > this.maxModelCalls)
@@ -175,6 +179,8 @@ export class EvaluationRunner {
         prompt,
         seed,
         ...(format === undefined ? {} : { format }),
+        ...(maxTokens === undefined ? {} : { maxTokens }),
+        ...(temperature === undefined ? {} : { temperature }),
         signal,
       });
       return result.response;
@@ -189,6 +195,9 @@ export class EvaluationRunner {
             priorTurns: evalCase.priorTurns,
             passages: evidence.passages,
           }),
+          undefined,
+          1_500,
+          0.2,
         ),
         evidence.passages,
       );
@@ -206,8 +215,28 @@ export class EvaluationRunner {
           passages: evidence.passages,
         }),
         AnswerAuditJsonSchema,
+        2_500,
+        0,
       );
-      return { units, audit: parseAudit(raw, units, evidence.passages) };
+      try {
+        return { units, audit: parseAudit(raw, units, evidence.passages) };
+      } catch {
+        auditFallbacks += 1;
+        return {
+          units,
+          audit: {
+            units: units.map(({ id }) => ({
+              unitId: id,
+              verdict: 'unsupported' as const,
+              passageIds: [],
+              reason: 'Audit structuré invalide.',
+            })),
+            usefulness: 'misses',
+            missingAspects: ['Audit structuré invalide'],
+            evidenceSufficiency: 'sufficient',
+          },
+        };
+      }
     };
 
     let answer = await write(dossier);
@@ -257,6 +286,9 @@ export class EvaluationRunner {
             audit: audited.audit,
             passages: dossier.passages,
           }),
+          undefined,
+          1_500,
+          0.2,
         ),
         dossier.passages,
       );
@@ -287,6 +319,7 @@ export class EvaluationRunner {
       calls,
       researchUsed,
       revisionUsed,
+      auditFallbacks,
       elapsedMs: Math.round(performance.now() - startedAt),
       promptVersions: PROMPT_VERSIONS,
     };

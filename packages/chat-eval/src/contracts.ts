@@ -74,6 +74,13 @@ export const AnswerAuditSchema = z
 
 export const FrozenPageSchema = z.strictObject({
   source: EvidenceSourceSchema,
+  snapshot: z
+    .strictObject({
+      file: z.string().regex(/^pages\/[a-z0-9][a-z0-9._-]{2,199}\.html$/u),
+      sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+      contentType: z.enum(['text/html', 'text/plain']),
+    })
+    .optional(),
   sections: z
     .array(
       z.strictObject({
@@ -161,16 +168,25 @@ export function validateAuditReferences(
 ): AnswerAudit {
   const unitIds = new Set(units.map(({ id }) => id));
   const passageIds = new Set(passages.map(({ id }) => id));
-  if (audit.units.length !== units.length) {
-    throw new Error('AUDIT_UNIT_COUNT_MISMATCH');
-  }
   for (const unit of audit.units) {
     if (!unitIds.has(unit.unitId)) throw new Error('AUDIT_UNKNOWN_UNIT');
     if (unit.passageIds.some((id) => !passageIds.has(id))) {
       throw new Error('AUDIT_UNKNOWN_PASSAGE');
     }
   }
-  return audit;
+  const byId = new Map(audit.units.map((unit) => [unit.unitId, unit]));
+  return {
+    ...audit,
+    units: units.map(
+      ({ id }) =>
+        byId.get(id) ?? {
+          unitId: id,
+          verdict: 'unsupported' as const,
+          passageIds: [],
+          reason: 'Unité omise par l’auditeur.',
+        },
+    ),
+  };
 }
 
 export const AnswerAuditJsonSchema = z.toJSONSchema(AnswerAuditSchema);

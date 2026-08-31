@@ -76,7 +76,7 @@ const QUESTIONS: Record<(typeof CATEGORIES)[number], string> = {
     '[À préciser] Répondre à une relance en utilisant au plus deux tours.',
 };
 
-function ensurePrivateRoot(root: string): string {
+export function privateCorpusRoot(root: string): string {
   const resolved = resolve(root);
   const allowed = resolve('D:\\FridayData\\evaluations');
   const relation = relative(allowed, resolved);
@@ -89,7 +89,7 @@ function ensurePrivateRoot(root: string): string {
 export async function initializeCorpusWorkspace(
   root = DEFAULT_CORPUS_ROOT,
 ): Promise<{ root: string; created: string[]; legacyCandidates: number }> {
-  const safeRoot = ensurePrivateRoot(root);
+  const safeRoot = privateCorpusRoot(root);
   await mkdir(join(safeRoot, 'pages'), { recursive: true });
   await mkdir(join(safeRoot, 'results'), { recursive: true });
   await mkdir(join(safeRoot, 'reviews'), { recursive: true });
@@ -199,7 +199,7 @@ export async function importLegacyFrozenPages(
   destinationRoot: string,
   evaluationsRoot = 'D:\\FridayData\\evaluations',
 ): Promise<number> {
-  const destination = ensurePrivateRoot(destinationRoot);
+  const destination = privateCorpusRoot(destinationRoot);
   const files = (await jsonFiles(evaluationsRoot)).filter(
     (path) => !path.startsWith(destination),
   );
@@ -246,7 +246,7 @@ export async function importLegacyFrozenPages(
 export async function loadFrozenCorpus(
   root = DEFAULT_CORPUS_ROOT,
 ): Promise<Corpus> {
-  const safeRoot = ensurePrivateRoot(root);
+  const safeRoot = privateCorpusRoot(root);
   const payload = JSON.parse(
     await readFile(join(safeRoot, 'corpus.json'), 'utf8'),
   ) as unknown;
@@ -256,7 +256,7 @@ export async function loadFrozenCorpus(
 export async function freezeCorpus(
   root = DEFAULT_CORPUS_ROOT,
 ): Promise<string> {
-  const safeRoot = ensurePrivateRoot(root);
+  const safeRoot = privateCorpusRoot(root);
   const draft = DraftCorpusSchema.parse(
     JSON.parse(await readFile(join(safeRoot, 'corpus-draft.json'), 'utf8')),
   );

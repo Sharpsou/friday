@@ -184,6 +184,7 @@ export class OllamaClient {
               model: request.model,
               prompt: request.prompt,
               stream: false,
+              think: false,
               ...(request.format === undefined
                 ? {}
                 : { format: request.format }),

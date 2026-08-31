@@ -16,6 +16,7 @@ describe('OllamaClient', () => {
     const fetchImplementation = vi.fn<typeof fetch>(async (_url, init) => {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       expect(body.prompt).toBe('audit bref');
+      expect(body.think).toBe(false);
       expect(body.format).toEqual({ type: 'object' });
       return new Response(
         JSON.stringify({ response: '{"units":[]}', eval_count: 4 }),

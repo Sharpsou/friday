@@ -5,7 +5,7 @@ import {
   splitAuditUnits,
   suppressUnsupportedUnits,
 } from '../src/audit.js';
-import type { AnswerAudit } from '../src/contracts.js';
+import { validateAuditReferences, type AnswerAudit } from '../src/contracts.js';
 
 const audit: AnswerAudit = {
   units: [
@@ -55,5 +55,24 @@ describe('audit decisions', () => {
         { revisionUsed: false, researchUsed: false, finalAudit: false },
       ),
     ).toBe('research');
+  });
+
+  it('marks an omitted audit unit unsupported instead of trusting it', () => {
+    const units = splitAuditUnits('Fait soutenu [P1]. Second fait [P1].');
+    const normalized = validateAuditReferences(
+      {
+        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
+        usefulness: 'answers',
+        missingAspects: [],
+        evidenceSufficiency: 'sufficient',
+      },
+      units,
+      [{ id: 'P1', sourceId: 'S1', text: 'Deux faits vérifiables.' }],
+    );
+    expect(normalized.units[1]).toMatchObject({
+      unitId: 'U2',
+      verdict: 'unsupported',
+      passageIds: [],
+    });
   });
 });

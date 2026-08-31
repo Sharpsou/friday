@@ -8,16 +8,20 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
+    "corpus:build": "tsx src/cli.ts corpus:build",
     "corpus:freeze": "tsx src/cli.ts corpus:freeze",
     "corpus:init": "tsx src/cli.ts corpus:init",
     "evaluate": "tsx src/cli.ts evaluate",
+    "review:build": "tsx src/cli.ts review:build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "jsdom": "26.1.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@types/jsdom": "21.1.7",
     "@types/node": "24.13.3",
     "tsx": "4.23.1"
   }

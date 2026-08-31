@@ -1,7 +1,7 @@
 # Fondation de la reconstruction du Chat Friday
 
-Date : 30 août 2026
-Statut : **fondation hors ligne implantée ; corpus à compléter et geler**
+Date : 31 août 2026
+Statut : **corpus gelé et campagne exécutée ; revue humaine A/B ouverte**
 
 ## 1. Décision prise
 
@@ -313,10 +313,18 @@ par le Hub ni par la PWA et n'enregistre aucune route. Il fournit :
   sur les graines 17, 29 et 43.
 
 Le dossier privé `D:\FridayData\evaluations\chat-foundation-v1` contient les
-sous-dossiers `pages`, `imports`, `results`, `reviews` et un brouillon de 20
-fiches. Il reste délibérément non exécutable : aucune page originale exploitable
-n'a été trouvée dans les anciens manifests, qui ont été lus sans modification.
-Le gel échoue tant qu'une fiche n'est pas explicitement `ready_to_freeze`.
+sous-dossiers `pages`, `imports`, `results`, `reviews`, la spécification privée
+et le corpus gelé. Les 20 cas se répartissent en 10 développement et 10
+validation, avec 35 pages originales figées. Chaque instantané conserve son
+URL finale, son type, sa date de récupération et une empreinte SHA-256 ; les 35
+empreintes ont été revérifiées après le gel. Les anciens manifests ont été lus
+sans modification et ne contenaient aucune page originale réutilisable.
+
+Le téléchargement du corpus accepte seulement HTTPS public, revalide le DNS à
+chaque redirection, refuse les réseaux privés et les identifiants dans l'URL,
+borne redirections, délai et taille, puis extrait titres et paragraphes. Les
+scripts, formulaires, iframes, navigation et autres contenus exécutables ne
+sont jamais interprétés comme des instructions.
 
 ## 11. Analyse du code et dette technique
 
@@ -357,15 +365,36 @@ Ces points ne justifient pas d'élargir ce lot. En particulier, découper les
 quatre gros fichiers ou migrer Workbox sans test fonctionnel dédié ajouterait
 un risque sans améliorer la qualité mesurée du Chat.
 
-## 12. Preuve de la fondation hors ligne
+## 12. Preuve de la fondation et campagne `campaign-v2`
 
-La gate finale `pnpm verify` passe après intégration du workspace : 27 tests
-Robot, 32 tests `chat-eval` dont le corpus hostile, 25 contrats, 15 domaine, 107
-Hub, 100 PWA, les builds de production et 25 scénarios Playwright mobiles.
-L'analyse d'imports confirme qu'aucun fichier du Hub ou de la PWA n'importe le
-banc. Le corpus privé compte bien 10 fiches de développement et 10 de validation ;
-un essai de gel prématuré échoue avec `CASE_NOT_READY` sans créer `corpus.json`.
+La campagne privée `campaign-v2` a exécuté 120 tentatives : 20 cas, deux couples
+de modèles et les graines 17, 29 et 43. La rédaction utilise une température
+faible de 0,2 afin que les graines mesurent une variabilité réelle ; l'audit
+reste déterministe. Les 120 résultats et 60 paires A/B sont présents, sans
+tentative manquante. Huit tentatives ont exercé le repli d'audit : une unité
+omise devient `unsupported` et un audit invalide ne soutient aucune unité. Il
+n'existe aucune réparation JSON récursive ; au plus l'unique révision normale
+est appliquée, puis le code produit une réponse partielle sûre.
 
-Aucune campagne de modèles n'est déclarée réussie à ce stade : les pages
-originales et critères humains doivent être complétés puis gelés. Cette absence
-de résultat est une gate volontaire, pas une donnée manquante à inventer.
+Les auto-métriques, à confirmer humainement, donnent :
+
+- Gemma rédacteur + Qwen auditeur : 58,3 % `pass`, 77,0 % d'unités soutenues,
+  91,9 % de précision des citations, 77,8 % de complétude et 103,9 s en moyenne ;
+- Qwen rédacteur + Gemma auditeur : 68,3 % `pass`, 84,2 % d'unités soutenues,
+  93,3 % de précision des citations, 67,4 % de complétude et 121,7 s en moyenne.
+
+Sur la seule validation gelée, le soutien pondéré est respectivement de 87,7 %
+et 93,3 %. Le second couple franchit donc le seuil automatique de soutien sur
+la validation, mais pas la gate globale : sa complétude moyenne des citations
+reste à 70,0 % et les aspects attendus n'ont pas encore été notés humainement.
+
+Ces chiffres viennent des auditeurs candidats et ne constituent pas une
+validation humaine ni un choix de modèle. Le fichier privé
+`reviews\campaign-v2\blind-review.html` présente les 60 comparaisons sans nom
+de modèle, rend les réponses comme texte inerte et exporte les jugements au
+format JSON. Le HTTP d'envoi reste `410` jusqu'à cette revue et à la décision
+explicite du prochain checkpoint.
+
+La gate fraîche `pnpm verify` du 31 août 2026 passe : formatage, lint, types, 27
+tests Robot, 37 `chat-eval`, 25 contrats, 15 domaine, 107 Hub, 100 PWA, builds
+de production et 25 scénarios Playwright mobiles.
