@@ -463,6 +463,7 @@ test('the active Chat creates, switches mode, renames and deletes from the mobil
   const runId = 'b1bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
   const now = '2026-08-31T12:00:00.000Z';
   const messages = new Map<string, Array<Record<string, unknown>>>();
+  const createdModes: string[] = [];
   let conversations = [
     {
       id: firstId,
@@ -488,10 +489,14 @@ test('the active Chat creates, switches mode, renames and deletes from the mobil
       });
     if (url.pathname === '/api/chat/conversations') {
       if (request.method() === 'POST') {
+        const { mode = 'friday' } = request.postDataJSON() as {
+          mode?: string;
+        };
+        createdModes.push(mode);
         const created = {
           id: secondId,
           title: 'Nouvelle conversation',
-          mode: 'friday',
+          mode,
           archivedAt: null,
           createdAt: now,
           updatedAt: now,
@@ -593,6 +598,36 @@ test('the active Chat creates, switches mode, renames and deletes from the mobil
     .getByRole('button', { name: 'Supprimer la conversation' })
     .click();
   await expect(page.getByText('Conversation renommée')).toHaveCount(0);
+
+  await page.getByLabel('Actions pour Question déjà titrée').click();
+  await page.getByRole('button', { name: 'Supprimer', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Supprimer définitivement ?' })
+    .getByRole('button', { name: 'Supprimer la conversation' })
+    .click();
+  await expect(
+    page.getByText('Choisissez un mode, puis écrivez votre premier message.'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Nouvelle conversation' }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Local' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  await page.getByRole('button', { name: 'Recherche Web' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Recherche Web' }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await page
+    .getByLabel('Votre message')
+    .fill('Recherche depuis une liste entièrement vide');
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+  await expect.poll(() => createdModes.at(-1)).toBe('web');
+  await expect(
+    page.getByRole('button', { name: 'Recherche Web' }),
+  ).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('the seven destinations fit at 360px and budget data can persist or be removed', async ({

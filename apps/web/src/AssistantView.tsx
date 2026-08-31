@@ -86,6 +86,7 @@ function VerifiedChat({
 }) {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draftMode, setDraftMode] = useState<ChatMode>('friday');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [content, setContent] = useState('');
   const [run, setRun] = useState<ChatRun | null>(null);
@@ -112,9 +113,10 @@ function VerifiedChat({
     const next = await listChatConversations();
     setConversations(next);
     setSelectedId((current) =>
-      current && next.some(({ id }) => id === current)
+      current &&
+      next.some(({ id, archivedAt }) => id === current && !archivedAt)
         ? current
-        : (next[0]?.id ?? null),
+        : (next.find(({ archivedAt }) => !archivedAt)?.id ?? null),
     );
   }, []);
 
@@ -132,7 +134,7 @@ function VerifiedChat({
       .then(([next, usage]) => {
         if (cancelled) return;
         setConversations(next);
-        setSelectedId(next[0]?.id ?? null);
+        setSelectedId(next.find(({ archivedAt }) => !archivedAt)?.id ?? null);
         setWebUsage(usage?.source === 'tavily' ? usage : null);
         onAvailabilityChange(true);
       })
@@ -195,28 +197,41 @@ function VerifiedChat({
     };
   }, [refreshConversations, refreshMessages, refreshWebUsage, run]);
 
-  const createConversation = useCallback(async (): Promise<string> => {
-    const conversation = await createChatConversation('friday');
-    await refreshConversations();
-    setSelectedId(conversation.id);
-    return conversation.id;
-  }, [refreshConversations]);
+  const createConversation = useCallback(
+    async (mode: ChatMode): Promise<string> => {
+      const conversation = await createChatConversation(mode);
+      await refreshConversations();
+      setDraftMode(conversation.mode);
+      setSelectedId(conversation.id);
+      return conversation.id;
+    },
+    [refreshConversations],
+  );
 
   useEffect(() => {
     if (previousCreateRequest.current === createRequest) return;
     previousCreateRequest.current = createRequest;
-    void createConversation().catch(() =>
+    void createConversation(selectedId ? 'friday' : draftMode).catch(() =>
       setError('Création de la conversation impossible.'),
     );
-  }, [createConversation, createRequest]);
+  }, [createConversation, createRequest, draftMode, selectedId]);
 
   const selected = conversations.find(({ id }) => id === selectedId) ?? null;
+  const selectedMode = selected?.mode ?? draftMode;
+  const visibleConversations = conversations.filter(
+    ({ archivedAt }) => !archivedAt,
+  );
 
   async function selectMode(mode: ChatMode): Promise<void> {
-    if (!selected || selected.mode === mode) return;
+    if (!selected) {
+      setDraftMode(mode);
+      return;
+    }
+    if (selected.mode === mode) return;
     setError(null);
     try {
       const updated = await updateChatConversation(selected.id, { mode });
+      setDraftMode(updated.mode);
       setConversations((current) =>
         current.map((conversation) =>
           conversation.id === updated.id ? updated : conversation,
@@ -264,6 +279,7 @@ function VerifiedChat({
     setError(null);
     try {
       await deleteChatConversation(deleteTarget.id);
+      setDraftMode(deleteTarget.mode);
       setMessages([]);
       setRun((current) =>
         current?.conversationId === deleteTarget.id ? null : current,
@@ -285,7 +301,8 @@ function VerifiedChat({
       return;
     setError(null);
     try {
-      const conversationId = selectedId ?? (await createConversation());
+      const conversationId =
+        selectedId ?? (await createConversation(draftMode));
       setContent('');
       const runId = await sendChatMessage(conversationId, question);
       const [nextRun] = await Promise.all([
@@ -329,46 +346,45 @@ function VerifiedChat({
         ) : null}
       </header>
       {error ? <p className="error-banner">{error}</p> : null}
-      {conversations.length ? (
+      {visibleConversations.length ? (
         <nav
           className="assistant-conversation-list"
           aria-label="Nouvelles conversations"
         >
-          {conversations
-            .filter(({ archivedAt }) => !archivedAt)
-            .map((conversation) => (
-              <button
-                className={conversation.id === selectedId ? 'is-active' : ''}
-                key={conversation.id}
-                onClick={() => {
-                  setMessages([]);
-                  setSelectedId(conversation.id);
-                }}
-                type="button"
-              >
-                <strong>{conversation.title}</strong>
-                <small>
-                  {new Date(conversation.updatedAt).toLocaleDateString('fr-FR')}
-                </small>
-              </button>
-            ))}
+          {visibleConversations.map((conversation) => (
+            <button
+              className={conversation.id === selectedId ? 'is-active' : ''}
+              key={conversation.id}
+              onClick={() => {
+                setMessages([]);
+                setDraftMode(conversation.mode);
+                setSelectedId(conversation.id);
+              }}
+              type="button"
+            >
+              <strong>{conversation.title}</strong>
+              <small>
+                {new Date(conversation.updatedAt).toLocaleDateString('fr-FR')}
+              </small>
+            </button>
+          ))}
         </nav>
       ) : null}
-      {selected ? (
-        <div className="assistant-chat-toolbar">
-          <div className="assistant-mode" aria-label="Mode de réponse">
-            {CHAT_MODES.map(({ mode, label }) => (
-              <button
-                aria-pressed={selected.mode === mode}
-                disabled={run?.status === 'running' || run?.status === 'queued'}
-                key={mode}
-                onClick={() => void selectMode(mode)}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+      <div className="assistant-chat-toolbar">
+        <div className="assistant-mode" aria-label="Mode de réponse">
+          {CHAT_MODES.map(({ mode, label }) => (
+            <button
+              aria-pressed={selectedMode === mode}
+              disabled={run?.status === 'running' || run?.status === 'queued'}
+              key={mode}
+              onClick={() => void selectMode(mode)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {selected ? (
           <details
             className="assistant-conversation-actions"
             ref={actionMenuRef}
@@ -395,12 +411,14 @@ function VerifiedChat({
               </button>
             </div>
           </details>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       <div className="assistant-messages" aria-live="polite">
-        {selected && messages.length === 0 ? (
+        {messages.length === 0 ? (
           <p className="assistant-empty assistant-chat-empty">
-            Commencez une conversation privée avec Friday.
+            {selected
+              ? 'Commencez une conversation privée avec Friday.'
+              : 'Choisissez un mode, puis écrivez votre premier message.'}
           </p>
         ) : null}
         {messages.map((message) => (
