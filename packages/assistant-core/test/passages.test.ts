@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  AnswerAuditJsonSchema,
+  UnitAuditJsonSchema,
   auditorPrompt,
   auditorRetryPrompt,
   selectEvidencePassagesHybrid,
@@ -18,7 +18,8 @@ describe('bounded audit output', () => {
   ];
 
   it('keeps the structured response compact and makes the retry corrective', () => {
-    expect(JSON.stringify(AnswerAuditJsonSchema)).not.toContain('reason');
+    expect(JSON.stringify(UnitAuditJsonSchema)).not.toContain('reason');
+    expect(JSON.stringify(UnitAuditJsonSchema)).not.toContain('axes');
     const first = auditorPrompt({ question: 'Question ?', units, passages });
     const retry = auditorRetryPrompt({
       question: 'Question ?',

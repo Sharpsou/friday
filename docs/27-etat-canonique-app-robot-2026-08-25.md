@@ -1,6 +1,6 @@
 # État canonique Friday — application et robot
 
-Date de mise à jour : 31 août 2026
+Date de mise à jour : 1er septembre 2026
 Statut : **source de vérité d’implémentation**
 
 ## Application
@@ -26,14 +26,16 @@ Le bouton flottant crée les conversations ; leur menu permet renommage et
 suppression avec confirmation Friday, et le titre du premier message apparaît
 sans attendre la fin de l'inférence. Les modes et le bouton restent utilisables
 quand la dernière conversation est supprimée. Pendant un run, la PWA affiche
-immédiatement « Friday travaille » et l'étape courante. L'audit Qwen utilise
-une sortie compacte sans justification répétitive et une unique correction de
-forme contextualisée ; un audit encore invalide continue d'échouer fermé.
+immédiatement « Friday travaille » et l'étape courante. L'audit Qwen rend
+uniquement un verdict et des passages pour chaque unité. Le code valide les
+identifiants, dérive la couverture des axes et décide recherche, révision ou
+publication ; une unique correction de forme reste autorisée et un second
+échec continue d'échouer fermé.
 L'archive privée historique reste une section distincte ; son ancienne route
 d'envoi répond toujours HTTP 410.
 
-Un pipeline candidat par un à cinq axes est implanté derrière
-`FRIDAY_CHAT_AXES_ENABLED=false`. Il refuse les omissions d'unités ou d'axes,
+Le pipeline par un à cinq axes est actif avec
+`FRIDAY_CHAT_AXES_ENABLED=true`. Il refuse les omissions d'unités,
 compile les citations depuis les passages approuvés par l'auditeur et masque
 le brouillon lorsqu'aucune unité factuelle ne survit. Dans ce cas exceptionnel,
 seuls des extraits de sources bornés et explicitement douteux sont affichés.

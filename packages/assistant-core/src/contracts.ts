@@ -254,6 +254,23 @@ export type AuditUnit = z.infer<typeof AuditUnitSchema>;
 export type AnswerAxis = z.infer<typeof AnswerAxisSchema>;
 export type AnswerPlan = z.infer<typeof AnswerPlanSchema>;
 export type AnswerAudit = z.infer<typeof AnswerAuditSchema>;
+export const UnitAuditOutputSchema = z.strictObject({
+  units: z
+    .array(
+      z.strictObject({
+        unitId: UnitIdSchema,
+        verdict: z.enum([
+          'supported',
+          'unsupported',
+          'contradicted',
+          'not_factual',
+        ]),
+        passageIds: z.array(PassageIdSchema).max(12),
+      }),
+    )
+    .max(100),
+});
+export type UnitAuditOutput = z.infer<typeof UnitAuditOutputSchema>;
 export type FrozenPage = z.infer<typeof FrozenPageSchema>;
 export type ChatEvalCase = z.infer<typeof ChatEvalCaseSchema>;
 export type Corpus = z.infer<typeof CorpusSchema>;
@@ -311,38 +328,29 @@ export function validateAuditReferences(
   };
 }
 
-const AnswerAuditOutputSchema = z.strictObject({
-  units: z
-    .array(
-      z.strictObject({
-        unitId: UnitIdSchema,
-        verdict: z.enum([
-          'supported',
-          'unsupported',
-          'contradicted',
-          'not_factual',
-        ]),
-        passageIds: z.array(PassageIdSchema).max(12),
-      }),
-    )
-    .max(100),
-  axes: z
-    .array(
-      z.strictObject({
-        axisId: AxisIdSchema,
-        coverage: z.enum(['covered', 'partial', 'missing']),
-        passageIds: z.array(PassageIdSchema).max(12),
-      }),
-    )
-    .max(5),
-  usefulness: z.enum(['answers', 'partial', 'misses']),
-  missingAspects: z.array(z.string().trim().min(1).max(300)).max(20),
-  evidenceSufficiency: z.enum(['sufficient', 'insufficient']),
-});
-
-// The runtime output contract deliberately omits per-unit prose. Repeated
-// reasons made otherwise valid audits exceed the bounded Ollama response on
-// answers containing many short units. AnswerAuditSchema still accepts an
-// optional reason when importing human-authored or historical fixtures.
-export const AnswerAuditJsonSchema = z.toJSONSchema(AnswerAuditOutputSchema);
+// Keep the grammar sent to Ollama deliberately small. Zod and the reference
+// validator below remain authoritative after generation.
+export const UnitAuditJsonSchema = {
+  type: 'object',
+  properties: {
+    units: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          unitId: { type: 'string' },
+          verdict: {
+            type: 'string',
+            enum: ['supported', 'unsupported', 'contradicted', 'not_factual'],
+          },
+          passageIds: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['unitId', 'verdict', 'passageIds'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['units'],
+  additionalProperties: false,
+} as const;
 export const AnswerPlanJsonSchema = z.toJSONSchema(AnswerPlanSchema);

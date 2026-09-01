@@ -51,10 +51,6 @@ describe('EvaluationRunner', () => {
       'L’autonomie mesurée est de dix heures [P1].',
       JSON.stringify({
         units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
-        axes: [{ axisId: 'A1', coverage: 'covered', passageIds: ['P1'] }],
-        usefulness: 'answers',
-        missingAspects: [],
-        evidenceSufficiency: 'sufficient',
       }),
     ];
     const runner = new EvaluationRunner({
@@ -87,9 +83,6 @@ describe('EvaluationRunner', () => {
       'L’autonomie mesurée est de dix heures [P1].',
       JSON.stringify({
         units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
-        usefulness: 'answers',
-        missingAspects: [],
-        evidenceSufficiency: 'sufficient',
       }),
     ];
     const ollama = {
@@ -175,16 +168,10 @@ describe('EvaluationRunner', () => {
       'Autonomie annoncée : douze heures [P1].',
       JSON.stringify({
         units: [{ unitId: 'U1', verdict: 'contradicted', passageIds: ['P1'] }],
-        usefulness: 'partial',
-        missingAspects: [],
-        evidenceSufficiency: 'sufficient',
       }),
       'Autonomie mesurée : dix heures [P1].',
       JSON.stringify({
         units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
-        usefulness: 'answers',
-        missingAspects: [],
-        evidenceSufficiency: 'sufficient',
       }),
     ];
     const runner = new EvaluationRunner({
@@ -210,23 +197,30 @@ describe('EvaluationRunner', () => {
 
   it('performs at most one targeted research before the final draft', async () => {
     const responses = [
+      JSON.stringify({
+        intent: 'explain',
+        axes: [
+          {
+            id: 'A1',
+            label: 'Température ambiante',
+            question: 'Quelle température ambiante encadrait le test ?',
+            importance: 'required',
+            query: 'température ambiante test',
+          },
+        ],
+      }),
       'La preuve initiale est insuffisante.',
       JSON.stringify({
         units: [{ unitId: 'U1', verdict: 'unsupported', passageIds: [] }],
-        usefulness: 'misses',
-        missingAspects: ['mesure indépendante'],
-        evidenceSufficiency: 'insufficient',
       }),
-      'Une mesure indépendante confirme neuf heures [P2].',
+      'Le test a été réalisé à vingt degrés [P2].',
       JSON.stringify({
         units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P2'] }],
-        usefulness: 'answers',
-        missingAspects: [],
-        evidenceSufficiency: 'sufficient',
       }),
     ];
     let searches = 0;
     const runner = new EvaluationRunner({
+      axesEnabled: true,
       ollama: {
         generate: async (): Promise<GenerateResult> => ({
           response: responses.shift()!,
@@ -239,12 +233,12 @@ describe('EvaluationRunner', () => {
           {
             source: {
               id: 'S2',
-              title: 'Mesure indépendante',
+              title: 'Conditions du test',
               url: 'https://example.org/measure',
               retrievedAt: '2026-08-30T00:00:00.000Z',
             },
             sections: [
-              { paragraphs: ['La mesure indépendante donne neuf heures.'] },
+              { paragraphs: ['Le test a été réalisé à vingt degrés.'] },
             ],
           },
         ];
@@ -260,7 +254,7 @@ describe('EvaluationRunner', () => {
       decision: 'pass',
       revisionUsed: false,
       researchUsed: true,
-      calls: 4,
+      calls: 5,
     });
   });
 });

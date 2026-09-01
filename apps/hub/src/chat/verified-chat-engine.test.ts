@@ -199,10 +199,6 @@ describe('axis verified pipeline', () => {
       'Une découverte de James Webb a été publiée en 2026 [P1].',
       JSON.stringify({
         units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
-        axes: [{ axisId: 'A1', coverage: 'covered', passageIds: ['P1'] }],
-        usefulness: 'answers',
-        missingAspects: [],
-        evidenceSufficiency: 'sufficient',
       }),
     ];
     const engine = new VerifiedChatEngine({
@@ -268,10 +264,6 @@ describe('axis verified pipeline', () => {
       'Le protocole mesure dix heures [P1].',
       JSON.stringify({
         units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
-        axes: [{ axisId: 'A1', coverage: 'covered', passageIds: ['P1'] }],
-        usefulness: 'answers',
-        missingAspects: [],
-        evidenceSufficiency: 'sufficient',
       }),
     ]);
     const stages: string[] = [];
@@ -297,10 +289,6 @@ describe('axis verified pipeline', () => {
   it('masks a fully rejected draft and shows only a sourced doubt dossier', async () => {
     const rejectedAudit = JSON.stringify({
       units: [{ unitId: 'U1', verdict: 'unsupported', passageIds: [] }],
-      axes: [{ axisId: 'A1', coverage: 'missing', passageIds: [] }],
-      usefulness: 'misses',
-      missingAspects: ['mesure confirmée'],
-      evidenceSufficiency: 'sufficient',
     });
     const engine = axesEngine([
       plan,

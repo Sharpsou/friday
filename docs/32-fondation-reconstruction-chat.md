@@ -485,12 +485,14 @@ catégorie, archive et recherche sont déclassées ; pour une demande récente,
 une source non datée reste seulement contextuelle. La date est extraite des
 métadonnées de la page originale lorsque Tavily ne la fournit pas.
 
-L'audit exige que chaque unité et chaque axe soient rendus exactement une fois.
-`supported` et `covered` exigent une preuve connue reliée à une unité soutenue.
-Une omission déclenche l'unique correction JSON au lieu de devenir
-silencieusement `unsupported`. Les phrases et listes sont découpées plus
-finement afin qu'une proposition douteuse ne supprime pas une proposition
-voisine correcte.
+L'audit modèle exige seulement que chaque unité soit rendue exactement une
+fois avec son verdict et ses passages. `supported` exige toujours une preuve
+connue ; identifiant inventé, doublon, omission ou passage inconnu déclenche
+l'unique correction JSON. La couverture des axes n'est plus demandée à Qwen :
+le code la dérive par intersection entre passages affectés à l'axe et passages
+approuvés dans les unités. Il distingue ainsi révision avec preuve disponible
+et nouvelle recherche faute de preuve, sans faire confiance à un jugement
+global du modèle.
 
 Les citations écrites par Gemma ne sont plus publiées. Après l'audit, le code
 retire tous les identifiants `P`, conserve uniquement les unités soutenues ou
@@ -516,6 +518,6 @@ restent historiques et ne mesurent pas ce nouveau pipeline.
 Le candidat a été déployé le 1er septembre 2026 avec SQLite 43 : healthcheck
 `ok`, `integrity_check=ok` et zéro violation de clé étrangère. Le Chat reste
 actif via `FRIDAY_CHAT_ENABLED=true`, tandis que
-`FRIDAY_CHAT_AXES_ENABLED` est absent et vaut donc `false`. La sauvegarde
+`FRIDAY_CHAT_AXES_ENABLED=true`. La sauvegarde
 cohérente pré-migration est
 `D:\FridayData\backups\friday-pre-chat-axes-migration43-20260831-235916.sqlite`.

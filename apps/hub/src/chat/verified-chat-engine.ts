@@ -1,12 +1,12 @@
 import {
-  AnswerAuditJsonSchema,
-  AnswerAuditSchema,
   AnswerPlanJsonSchema,
   ContextResolutionJsonSchema,
   OllamaClient,
   PROMPT_VERSIONS,
   RoutePlanJsonSchema,
   RoutePlanOutputSchema,
+  UnitAuditJsonSchema,
+  UnitAuditOutputSchema,
   answerPlanPrompt,
   assignEvidenceToAxes,
   auditorPrompt,
@@ -16,6 +16,7 @@ import {
   compileAuditedAnswer,
   contextualQuestionPrompt,
   decideEvaluation,
+  deriveAnswerAudit,
   fallbackAnswerPlan,
   fallbackContextualQuestion,
   localPrompt,
@@ -35,7 +36,7 @@ import {
   splitAuditUnits,
   stripPassageCitations,
   suppressUnsupportedUnits,
-  validateAuditReferences,
+  validateUnitAuditReferences,
   writerPrompt,
   type AnswerAudit,
   type AnswerPlan,
@@ -45,6 +46,7 @@ import {
   type EvidencePassage,
   type FrozenPage,
   type RouteDecision,
+  type UnitAuditOutput,
 } from '@friday/assistant-core';
 import type { ChatMode, ChatSource } from '@friday/contracts';
 
@@ -135,19 +137,17 @@ function parseAudit(
   raw: string,
   units: AuditUnit[],
   passages: EvidencePassage[],
-  axes = [] as AnswerPlan['axes'],
-): AnswerAudit {
+): UnitAuditOutput {
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch {
     throw new Error('AUDIT_INVALID_JSON');
   }
-  return validateAuditReferences(
-    AnswerAuditSchema.parse(value),
+  return validateUnitAuditReferences(
+    UnitAuditOutputSchema.parse(value),
     units,
     passages,
-    axes,
   );
 }
 
@@ -499,7 +499,14 @@ export class VerifiedChatEngine implements ChatEngine {
     }
 
     let answer = await this.write(input, dossier, generate, plan, assignments);
-    let audited = await this.audit(input, answer, dossier, generate, plan.axes);
+    let audited = await this.audit(
+      input,
+      answer,
+      dossier,
+      generate,
+      plan.axes,
+      assignments,
+    );
     if (audited.auditError)
       return this.evidenceFallback(
         plan,
@@ -554,6 +561,7 @@ export class VerifiedChatEngine implements ChatEngine {
         dossier,
         generate,
         plan.axes,
+        assignments,
         calls < 5 ? 2 : 1,
       );
       decision = audited.auditError
@@ -591,6 +599,7 @@ export class VerifiedChatEngine implements ChatEngine {
         dossier,
         generate,
         plan.axes,
+        assignments,
         calls < 5 ? 2 : 1,
       );
       decision = audited.auditError
@@ -899,6 +908,7 @@ export class VerifiedChatEngine implements ChatEngine {
       request: Parameters<OllamaClient['generate']>[0],
     ) => Promise<string>,
     axes: AnswerPlan['axes'] = [],
+    assignments: AxisEvidence[] = [],
     maxAttempts = 2,
   ): Promise<{ units: AuditUnit[]; audit: AnswerAudit; auditError: boolean }> {
     input.updateStage('auditing');
@@ -907,7 +917,6 @@ export class VerifiedChatEngine implements ChatEngine {
       question: input.content,
       units,
       passages: dossier.passages,
-      axes,
     };
     const prompt = auditorPrompt(promptInput);
     let failureCode = 'AUDIT_VALIDATION_FAILED';
@@ -919,15 +928,19 @@ export class VerifiedChatEngine implements ChatEngine {
             ? prompt
             : auditorRetryPrompt({ ...promptInput, failureCode }),
         seed: this.seed,
-        format: AnswerAuditJsonSchema,
-        maxTokens: 2_500,
+        format: UnitAuditJsonSchema,
+        maxTokens: 1_500,
         temperature: 0,
         signal: input.signal,
       });
       try {
         return {
           units,
-          audit: parseAudit(raw, units, dossier.passages, axes),
+          audit: deriveAnswerAudit(
+            parseAudit(raw, units, dossier.passages),
+            axes,
+            assignments,
+          ),
           auditError: false,
         };
       } catch (error) {

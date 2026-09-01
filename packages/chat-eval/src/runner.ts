@@ -5,6 +5,7 @@ import {
   citedPassageIds,
   compileAuditedAnswer,
   functionalOutcome,
+  deriveAnswerAudit,
   splitAuditSegments,
   splitAuditUnits,
   suppressUnsupportedUnits,
@@ -12,23 +13,23 @@ import {
   type FunctionalOutcome,
 } from './audit.js';
 import {
-  AnswerAuditJsonSchema,
-  AnswerAuditSchema,
   AnswerPlanJsonSchema,
   FrozenPageSchema,
+  UnitAuditJsonSchema,
+  UnitAuditOutputSchema,
   assignEvidenceToAxes,
   fallbackAnswerPlan,
   mergeRedundantAxes,
   parseAnswerPlan,
-  validateAuditReferences,
+  validateUnitAuditReferences,
   type AnswerAudit,
-  type AnswerPlan,
   type AuditUnit,
   type AxisEvidence,
   type ChatEvalCase,
   type EvidencePassage,
   type EvidenceSource,
   type FrozenPage,
+  type UnitAuditOutput,
 } from './contracts.js';
 import { computeAutomatedMetrics, type AutomatedMetrics } from './metrics.js';
 import { type OllamaClient } from './ollama.js';
@@ -136,16 +137,18 @@ function parseAudit(
   raw: string,
   units: AuditUnit[],
   passages: EvidencePassage[],
-  axes: AnswerPlan['axes'] = [],
-): AnswerAudit {
+): UnitAuditOutput {
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
     throw new Error('AUDIT_INVALID_JSON');
   }
-  const audit = AnswerAuditSchema.parse(json);
-  return validateAuditReferences(audit, units, passages, axes);
+  return validateUnitAuditReferences(
+    UnitAuditOutputSchema.parse(json),
+    units,
+    passages,
+  );
 }
 
 function safeAuditFailureCode(error: unknown): string {
@@ -276,7 +279,6 @@ export class EvaluationRunner {
         question: evalCase.question,
         units,
         passages: evidence.passages,
-        axes: this.options.axesEnabled ? plan.axes : [],
       };
       const prompt = auditorPrompt(promptInput);
       let failureCode = 'AUDIT_VALIDATION_FAILED';
@@ -286,18 +288,17 @@ export class EvaluationRunner {
           attempt === 0
             ? prompt
             : auditorRetryPrompt({ ...promptInput, failureCode }),
-          AnswerAuditJsonSchema,
-          2_500,
+          UnitAuditJsonSchema,
+          1_500,
           0,
         );
         try {
           return {
             units,
-            audit: parseAudit(
-              raw,
-              units,
-              evidence.passages,
+            audit: deriveAnswerAudit(
+              parseAudit(raw, units, evidence.passages),
               this.options.axesEnabled ? plan.axes : [],
+              this.options.axesEnabled ? assignments : [],
             ),
           };
         } catch (error) {

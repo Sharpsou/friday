@@ -98,7 +98,10 @@ la forme JSON de l'audit, la sortie structurée de l'auditeur a été compactée
 elle n'inclut plus de justification répétitive par unité. La seconde tentative
 reçoit désormais le code d'échec et les identifiants U/P autorisés au lieu de
 répéter le même prompt avec la même graine. Un contrôle Ollama synthétique de
-30 unités a produit 30 verdicts valides sous la limite. La PWA affiche
+30 unités a produit 30 verdicts valides sous la limite. Depuis le 1er septembre,
+le schéma `auditor-v6-units` supprime aussi axes, utilité, aspects manquants et
+suffisance de la sortie modèle ; ces champs sont reconstruits de façon
+déterministe par `assistant-core`. La PWA affiche
 immédiatement « Friday travaille » puis l'étape Recherche, Rédaction ou
 Vérification, y compris avant l'obtention du premier statut de run.
 
@@ -140,20 +143,22 @@ humaine et ne doit pas être nommée ainsi.
 
 ## Pipeline par axes
 
-`FRIDAY_CHAT_AXES_ENABLED=true` active le pipeline candidat. Qwen produit un
+`FRIDAY_CHAT_AXES_ENABLED=true` active le pipeline. Qwen produit un
 plan sans faits de un à cinq axes, puis la sélection hybride affecte les
-passages bruts à ces axes. Gemma rédige avec ces passages ; Qwen audite chaque
-unité et la couverture des axes. Le code retire toutes les citations du
+passages bruts à ces axes. Gemma rédige avec ces passages ; Qwen audite
+uniquement chaque unité face aux passages. Le code dérive la couverture des
+axes, l'utilité et la suffisance des preuves, puis retire toutes les citations du
 rédacteur et reconstruit uniquement celles approuvées par l'auditeur.
 
-Une unité omise, un axe omis, `supported` sans passage ou `covered` sans unité
-soutenue rendent l'audit invalide et déclenchent son unique correction de
-forme. Ils ne sont plus convertis silencieusement en rejet. Après deux audits
+Une unité omise, dupliquée, inconnue, `supported` sans passage ou une référence
+à un passage inconnu rendent l'audit invalide et déclenchent son unique
+correction de forme. La couverture d'un axe est calculée seulement lorsqu'une
+unité soutenue utilise un passage qui lui avait été affecté. Après deux audits
 invalides, ou si un audit valide rejette tout, le brouillon reste masqué : la
 PWA affiche des extraits bornés des pages originales avec leurs sources et le
 doute de l'audit. Ces extraits ne portent jamais le statut `verified`.
 
 Le banc utilise ce chemin avec `--pipeline=axes` par défaut. Pour établir une
 base comparative seulement, `--pipeline=legacy` conserve l'ancien exécuteur.
-Le flag runtime reste à `false` jusqu'à réussite de la campagne et des cinq
-smokes réels prévus.
+Le flag runtime a été activé par décision utilisateur ; la gate qualitative
+reste ouverte et l'activation ne vaut pas validation humaine.

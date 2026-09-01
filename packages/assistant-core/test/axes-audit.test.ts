@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   compileAuditedAnswer,
+  decideEvaluation,
+  deriveAnswerAudit,
   fallbackAnswerPlan,
   parseAnswerPlan,
   searchQueriesForPlan,
   splitAuditSegments,
+  validateUnitAuditReferences,
   validateAuditReferences,
   type AnswerAudit,
 } from '../src/index.js';
@@ -91,5 +94,92 @@ describe('answer axes and recoverable audits', () => {
     expect(result.markdown).not.toContain('P9');
     expect(result.markdown).not.toContain('Proposition douteuse');
     expect(result.rejectedUnitCount).toBe(1);
+  });
+
+  it('derives axis coverage and revision need in code from approved passages', () => {
+    const axes = [
+      {
+        id: 'A1' as const,
+        label: 'Mesure',
+        question: 'Quelle mesure ?',
+        importance: 'required' as const,
+        query: 'mesure',
+      },
+      {
+        id: 'A2' as const,
+        label: 'Limites',
+        question: 'Quelles limites ?',
+        importance: 'required' as const,
+        query: 'limites',
+      },
+    ];
+    const audit = deriveAnswerAudit(
+      {
+        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
+      },
+      axes,
+      [
+        { axis: axes[0]!, passageIds: ['P1'] },
+        { axis: axes[1]!, passageIds: ['P2'] },
+      ],
+    );
+    expect(audit).toMatchObject({
+      usefulness: 'partial',
+      missingAspects: ['Limites'],
+      evidenceSufficiency: 'sufficient',
+      axes: [
+        { axisId: 'A1', coverage: 'covered', passageIds: ['P1'] },
+        { axisId: 'A2', coverage: 'missing', passageIds: [] },
+      ],
+    });
+    expect(
+      decideEvaluation(audit, {
+        revisionUsed: false,
+        researchUsed: false,
+        finalAudit: false,
+        requiredAxisIds: ['A1', 'A2'],
+      }),
+    ).toBe('revise');
+  });
+
+  it('requests research only when a required axis has no selected evidence', () => {
+    const axis = {
+      id: 'A1' as const,
+      label: 'Limites',
+      question: 'Quelles limites ?',
+      importance: 'required' as const,
+      query: 'limites',
+    };
+    const audit = deriveAnswerAudit(
+      {
+        units: [{ unitId: 'U1', verdict: 'not_factual', passageIds: [] }],
+      },
+      [axis],
+      [{ axis, passageIds: [] }],
+    );
+    expect(audit.evidenceSufficiency).toBe('insufficient');
+    expect(
+      decideEvaluation(audit, {
+        revisionUsed: false,
+        researchUsed: false,
+        finalAudit: false,
+        requiredAxisIds: ['A1'],
+      }),
+    ).toBe('research');
+  });
+
+  it('rejects incomplete or invented model audit identifiers', () => {
+    const units = splitAuditSegments(
+      'Premier fait [P1]. Second fait [P1].',
+    ).map(({ unit }) => unit);
+    expect(() =>
+      validateUnitAuditReferences(
+        {
+          units: [{ unitId: 'U99', verdict: 'supported', passageIds: ['P1'] }],
+        },
+        units,
+        [{ id: 'P1', sourceId: 'S1', text: 'Preuve.' }],
+      ),
+    ).toThrow('AUDIT_UNKNOWN_UNIT');
   });
 });
