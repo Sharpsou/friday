@@ -121,18 +121,27 @@ export async function sendChatMessage(
   content: string,
 ): Promise<string> {
   if (!navigator.onLine) throw new Error('CHAT_OFFLINE');
-  const result = await parse(
-    await fetch(
-      `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ clientRequestId: crypto.randomUUID(), content }),
-      },
-    ),
-    ChatEnqueueResponseSchema,
-  );
-  return result.runId;
+  try {
+    const result = await parse(
+      await fetch(
+        `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            clientRequestId: crypto.randomUUID(),
+            content,
+          }),
+        },
+      ),
+      ChatEnqueueResponseSchema,
+    );
+    return result.runId;
+  } catch (error) {
+    if (!navigator.onLine || error instanceof TypeError)
+      throw new Error('CHAT_OFFLINE', { cause: error });
+    throw error;
+  }
 }
 
 export async function getChatRun(runId: string) {

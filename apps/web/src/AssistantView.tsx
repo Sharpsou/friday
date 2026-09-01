@@ -78,6 +78,11 @@ const CHAT_MODES: ReadonlyArray<{ mode: ChatMode; label: string }> = [
 ];
 const ignoreAvailabilityChange = () => undefined;
 
+interface PendingChatMessage {
+  conversationId: string | null;
+  content: string;
+}
+
 function VerifiedChat({
   createRequest,
   onAvailabilityChange,
@@ -90,8 +95,11 @@ function VerifiedChat({
   const [draftMode, setDraftMode] = useState<ChatMode>('friday');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [content, setContent] = useState('');
+  const [pendingMessage, setPendingMessage] =
+    useState<PendingChatMessage | null>(null);
   const [run, setRun] = useState<ChatRun | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine);
   const [disabled, setDisabled] = useState(false);
   const [conversationBusy, setConversationBusy] = useState(false);
   const [renameTarget, setRenameTarget] = useState<ChatConversation | null>(
@@ -106,6 +114,16 @@ function VerifiedChat({
   const previousCreateRequest = useRef(createRequest);
   const actionMenuRef = useRef<HTMLDetailsElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const updateOnlineState = () => setOnline(navigator.onLine);
+    window.addEventListener('online', updateOnlineState);
+    window.addEventListener('offline', updateOnlineState);
+    return () => {
+      window.removeEventListener('online', updateOnlineState);
+      window.removeEventListener('offline', updateOnlineState);
+    };
+  }, []);
 
   const refreshMessages = useCallback(async (conversationId: string) => {
     const result = await getChatMessages(conversationId);
@@ -163,7 +181,12 @@ function VerifiedChat({
       .then(([result, activeRun]) => {
         if (cancelled) return;
         setMessages(result.messages);
-        setRun(activeRun);
+        setRun((current) =>
+          current?.conversationId === selectedId &&
+          (current.status === 'queued' || current.status === 'running')
+            ? current
+            : activeRun,
+        );
       })
       .catch(() => {
         if (!cancelled) setError('Historique du Chat indisponible.');
@@ -186,20 +209,32 @@ function VerifiedChat({
       try {
         const next = await getChatRun(runId);
         if (cancelled) return;
-        setRun(next);
         if (next.status === 'completed') {
           await Promise.all([
             refreshConversations(),
             refreshMessages(next.conversationId),
             refreshWebUsage(),
           ]);
+          if (cancelled) return;
+          setRun(next);
+          setError(null);
         } else if (next.status === 'failed') {
+          setRun(next);
           setError('La réponse n’a pas pu être produite.');
-        } else if (!cancelled) {
+        } else if (next.status === 'queued' || next.status === 'running') {
+          setRun(next);
+          setError(null);
           timer = window.setTimeout(() => void poll(), 900);
+        } else {
+          setRun(next);
         }
       } catch {
-        if (!cancelled) setError('Suivi de la réponse indisponible.');
+        if (!cancelled) {
+          setError(
+            'Connexion au Hub interrompue. Le suivi reprend automatiquement.',
+          );
+          timer = window.setTimeout(() => void poll(), 1_500);
+        }
       }
     };
     timer = window.setTimeout(() => void poll(), 250);
@@ -306,6 +341,7 @@ function VerifiedChat({
       await deleteChatConversation(deleteTarget.id);
       setDraftMode(deleteTarget.mode);
       setMessages([]);
+      setPendingMessage(null);
       setRun((current) =>
         current?.conversationId === deleteTarget.id ? null : current,
       );
@@ -325,16 +361,19 @@ function VerifiedChat({
     if (!question || isWorking) return;
     setError(null);
     setSubmitting(true);
+    setPendingMessage({ conversationId: selectedId, content: question });
+    setContent('');
     try {
       const conversationId =
         selectedId ?? (await createConversation(draftMode));
+      setPendingMessage({ conversationId, content: question });
       const runId = await sendChatMessage(conversationId, question);
-      setContent('');
       const [nextRun] = await Promise.all([
         getChatRun(runId),
         refreshMessages(conversationId),
         refreshConversations(),
       ]);
+      setPendingMessage(null);
       setRun(nextRun);
       if (nextRun.status === 'completed') {
         await Promise.all([
@@ -346,6 +385,8 @@ function VerifiedChat({
         setError('La réponse n’a pas pu être produite.');
       }
     } catch (caught) {
+      setPendingMessage(null);
+      setContent((current) => current || question);
       setError(
         caught instanceof Error && caught.message === 'CHAT_OFFLINE'
           ? 'L’envoi nécessite une connexion au Hub. L’historique reste consultable.'
@@ -393,6 +434,7 @@ function VerifiedChat({
               key={conversation.id}
               onClick={() => {
                 setMessages([]);
+                setPendingMessage(null);
                 setRun(null);
                 setDraftMode(conversation.mode);
                 setSelectedId(conversation.id);
@@ -480,6 +522,14 @@ function VerifiedChat({
             )}
           </article>
         ))}
+        {pendingMessage &&
+        (pendingMessage.conversationId === selectedId ||
+          (pendingMessage.conversationId === null && selectedId === null)) ? (
+          <article className="assistant-message is-user is-pending">
+            <small>Vous · envoi en cours</small>
+            <p>{pendingMessage.content}</p>
+          </article>
+        ) : null}
         {isWorking ? (
           <div
             className="assistant-run-progress"
@@ -519,20 +569,18 @@ function VerifiedChat({
       >
         <textarea
           aria-label="Votre message"
-          disabled={!navigator.onLine || isWorking}
+          disabled={!online || isWorking}
           maxLength={8000}
           onChange={(event) => setContent(event.target.value)}
           placeholder={
-            navigator.onLine
-              ? 'Écrivez votre message…'
-              : 'Envoi indisponible hors ligne'
+            online ? 'Écrivez votre message…' : 'Envoi indisponible hors ligne'
           }
           rows={3}
           value={content}
         />
         <button
           className="primary-button"
-          disabled={!content.trim() || !navigator.onLine || isWorking}
+          disabled={!content.trim() || !online || isWorking}
           type="submit"
         >
           Envoyer

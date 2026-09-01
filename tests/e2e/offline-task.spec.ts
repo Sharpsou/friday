@@ -403,6 +403,9 @@ test('the gated Chat keeps its historical archive and disables offline sending',
         },
       }),
   );
+  await page.route('**/api/chat/conversations', (route) =>
+    route.fulfill({ status: 503, json: { error: 'chat_disabled' } }),
+  );
   await page.goto('/');
   await page.getByRole('button', { name: 'Chat', exact: true }).click();
   await expect(
@@ -760,6 +763,143 @@ test('an in-progress follow-up is restored and visible inside the conversation',
   await expect(progress).toBeInViewport();
   await expect(page.getByText('Réponse de suivi.')).toBeVisible({
     timeout: 8_000,
+  });
+});
+
+test('a follow-up is shown immediately while the Hub accepts it', async ({
+  page,
+}) => {
+  const conversationId = '81bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const runId = '91bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const now = '2026-09-01T13:00:00.000Z';
+  let accepted = false;
+  let completed = false;
+  const conversation = {
+    id: conversationId,
+    title: 'Imprimantes 3D',
+    mode: 'web',
+    archivedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const messages = () => [
+    {
+      id: 'a1bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+      conversationId,
+      role: 'user',
+      content: 'Compare des imprimantes 3D.',
+      answerStatus: null,
+      route: null,
+      sources: [],
+      createdAt: now,
+    },
+    {
+      id: 'b1bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+      conversationId,
+      role: 'assistant',
+      content: 'Première réponse.',
+      answerStatus: 'verified',
+      route: 'web_verified',
+      sources: [],
+      createdAt: now,
+    },
+    ...(accepted
+      ? [
+          {
+            id: 'c1bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+            conversationId,
+            role: 'user',
+            content: 'Donne-moi des modèles précis.',
+            answerStatus: null,
+            route: null,
+            sources: [],
+            createdAt: now,
+          },
+        ]
+      : []),
+    ...(completed
+      ? [
+          {
+            id: 'd1bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+            conversationId,
+            role: 'assistant',
+            content: 'Voici des modèles précis.',
+            answerStatus: 'verified',
+            route: 'web_verified',
+            sources: [],
+            createdAt: now,
+          },
+        ]
+      : []),
+  ];
+
+  await page.route('**/api/chat/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === '/api/chat/web-usage')
+      return route.fulfill({
+        json: {
+          month: '2026-09',
+          creditsUsed: 10,
+          remainingSearches: 470,
+          source: 'tavily',
+          hardLimit: 950,
+        },
+      });
+    if (url.pathname === '/api/chat/conversations')
+      return route.fulfill({ json: { conversations: [conversation] } });
+    if (url.pathname.endsWith('/active-run'))
+      return route.fulfill({ json: { run: null } });
+    if (url.pathname.endsWith('/messages')) {
+      if (request.method() === 'POST') {
+        await new Promise((resolve) => setTimeout(resolve, 1_200));
+        accepted = true;
+        return route.fulfill({ status: 202, json: { runId } });
+      }
+      return route.fulfill({
+        json: { conversation, messages: messages() },
+      });
+    }
+    if (url.pathname === `/api/chat/runs/${runId}`) {
+      completed = true;
+      return route.fulfill({
+        json: {
+          id: runId,
+          conversationId,
+          status: 'completed',
+          stage: 'completed',
+          route: 'web_verified',
+          requestedMode: 'web',
+          retrievalMode: 'hybrid',
+          errorCode: null,
+          axisCount: 2,
+          requiredAxisCount: 2,
+          coveredAxisCount: 2,
+          rejectedUnitCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    }
+    return route.abort();
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await expect(page.getByText('Première réponse.')).toBeVisible();
+  await page.getByLabel('Votre message').fill('Donne-moi des modèles précis.');
+  await page.getByRole('button', { name: 'Envoyer' }).click();
+  await expect(page.getByText('Vous · envoi en cours')).toBeVisible({
+    timeout: 500,
+  });
+  await expect(page.getByText('Donne-moi des modèles précis.')).toBeVisible({
+    timeout: 500,
+  });
+  await expect(page.getByText('Friday travaille')).toBeVisible({
+    timeout: 500,
+  });
+  await expect(page.getByText('Voici des modèles précis.')).toBeVisible({
+    timeout: 5_000,
   });
 });
 
