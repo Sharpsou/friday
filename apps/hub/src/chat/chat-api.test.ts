@@ -89,6 +89,13 @@ describe('Chat v2 API', () => {
         await new Promise((resolve) => setTimeout(resolve, 2));
     }
     expect(status).toBe('completed');
+    const activeRun = await app.inject({
+      method: 'GET',
+      url: `/api/chat/conversations/${conversationId}/active-run`,
+      headers: { cookie },
+    });
+    expect(activeRun.statusCode).toBe(200);
+    expect(activeRun.json()).toEqual({ run: null });
     const messages = await app.inject({
       method: 'GET',
       url: `/api/chat/conversations/${conversationId}/messages`,

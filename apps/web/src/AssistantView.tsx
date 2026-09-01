@@ -28,6 +28,7 @@ import {
   cancelChatRun,
   createChatConversation,
   deleteChatConversation,
+  getChatActiveRun,
   getChatMessages,
   getChatRun,
   getChatWebUsage,
@@ -104,6 +105,7 @@ function VerifiedChat({
   const [error, setError] = useState<string | null>(null);
   const previousCreateRequest = useRef(createRequest);
   const actionMenuRef = useRef<HTMLDetailsElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   const refreshMessages = useCallback(async (conversationId: string) => {
     const result = await getChatMessages(conversationId);
@@ -152,13 +154,16 @@ function VerifiedChat({
   }, [onAvailabilityChange]);
 
   useEffect(() => {
-    if (!selectedId) {
-      return;
-    }
+    if (!selectedId) return;
     let cancelled = false;
-    void getChatMessages(selectedId)
-      .then(({ messages: next }) => {
-        if (!cancelled) setMessages(next);
+    void Promise.all([
+      getChatMessages(selectedId),
+      getChatActiveRun(selectedId).catch(() => null),
+    ])
+      .then(([result, activeRun]) => {
+        if (cancelled) return;
+        setMessages(result.messages);
+        setRun(activeRun);
       })
       .catch(() => {
         if (!cancelled) setError('Historique du Chat indisponible.');
@@ -168,12 +173,18 @@ function VerifiedChat({
     };
   }, [selectedId]);
 
+  const runId = run?.id ?? null;
+  const runActive = Boolean(
+    run && (run.status === 'queued' || run.status === 'running'),
+  );
+
   useEffect(() => {
-    if (!run || !['queued', 'running'].includes(run.status)) return;
+    if (!runId || !runActive) return;
     let cancelled = false;
+    let timer: number | undefined;
     const poll = async () => {
       try {
-        const next = await getChatRun(run.id);
+        const next = await getChatRun(runId);
         if (cancelled) return;
         setRun(next);
         if (next.status === 'completed') {
@@ -185,18 +196,24 @@ function VerifiedChat({
         } else if (next.status === 'failed') {
           setError('La réponse n’a pas pu être produite.');
         } else if (!cancelled) {
-          window.setTimeout(() => void poll(), 900);
+          timer = window.setTimeout(() => void poll(), 900);
         }
       } catch {
         if (!cancelled) setError('Suivi de la réponse indisponible.');
       }
     };
-    const timer = window.setTimeout(() => void poll(), 250);
+    timer = window.setTimeout(() => void poll(), 250);
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [refreshConversations, refreshMessages, refreshWebUsage, run]);
+  }, [
+    refreshConversations,
+    refreshMessages,
+    refreshWebUsage,
+    runActive,
+    runId,
+  ]);
 
   const createConversation = useCallback(
     async (mode: ChatMode): Promise<string> => {
@@ -219,13 +236,16 @@ function VerifiedChat({
 
   const selected = conversations.find(({ id }) => id === selectedId) ?? null;
   const selectedMode = selected?.mode ?? draftMode;
-  const runActive = Boolean(
-    run && (run.status === 'queued' || run.status === 'running'),
-  );
   const isWorking = submitting || runActive;
   const visibleConversations = conversations.filter(
     ({ archivedAt }) => !archivedAt,
   );
+
+  useEffect(() => {
+    if (!isWorking) return;
+    const container = messagesRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [isWorking, messages.length, runId]);
 
   async function selectMode(mode: ChatMode): Promise<void> {
     if (!selected) {
@@ -373,6 +393,7 @@ function VerifiedChat({
               key={conversation.id}
               onClick={() => {
                 setMessages([]);
+                setRun(null);
                 setDraftMode(conversation.mode);
                 setSelectedId(conversation.id);
               }}
@@ -429,7 +450,7 @@ function VerifiedChat({
           </details>
         ) : null}
       </div>
-      <div className="assistant-messages" aria-live="polite">
+      <div className="assistant-messages" aria-live="polite" ref={messagesRef}>
         {messages.length === 0 ? (
           <p className="assistant-empty assistant-chat-empty">
             {selected
@@ -459,39 +480,39 @@ function VerifiedChat({
             )}
           </article>
         ))}
+        {isWorking ? (
+          <div
+            className="assistant-run-progress"
+            aria-live="assertive"
+            role="status"
+          >
+            <span className="assistant-working-label">
+              <i aria-hidden="true" />
+              <strong>Friday travaille</strong>
+              <small>
+                {submitting
+                  ? 'Préparation'
+                  : run
+                    ? STAGE_LABELS[run.stage]
+                    : 'En attente'}
+              </small>
+            </span>
+            {run && runActive ? (
+              <button
+                className="secondary-button danger"
+                onClick={() =>
+                  void cancelChatRun(run.id).then(() =>
+                    setRun({ ...run, status: 'cancelled' }),
+                  )
+                }
+                type="button"
+              >
+                Annuler
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-      {isWorking ? (
-        <div
-          className="assistant-run-progress"
-          aria-live="assertive"
-          role="status"
-        >
-          <span className="assistant-working-label">
-            <i aria-hidden="true" />
-            <strong>Friday travaille</strong>
-            <small>
-              {submitting
-                ? 'Préparation'
-                : run
-                  ? STAGE_LABELS[run.stage]
-                  : 'En attente'}
-            </small>
-          </span>
-          {run && runActive ? (
-            <button
-              className="secondary-button danger"
-              onClick={() =>
-                void cancelChatRun(run.id).then(() =>
-                  setRun({ ...run, status: 'cancelled' }),
-                )
-              }
-              type="button"
-            >
-              Annuler
-            </button>
-          ) : null}
-        </div>
-      ) : null}
       <form
         className="assistant-composer"
         onSubmit={(event) => void submit(event)}

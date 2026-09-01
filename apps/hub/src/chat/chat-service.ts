@@ -353,6 +353,20 @@ export class ChatService {
     });
   }
 
+  getActiveRun(profileId: string, conversationId: string): ChatRun | null {
+    this.requireConversation(profileId, conversationId);
+    const row = this.database
+      .prepare(
+        `SELECT id FROM chat_runs
+          WHERE profile_id = ? AND conversation_id = ?
+            AND status IN ('queued', 'running')
+          ORDER BY status = 'running' DESC, created_at ASC
+          LIMIT 1`,
+      )
+      .get(profileId, conversationId) as { id: string } | undefined;
+    return row ? this.getRun(profileId, row.id) : null;
+  }
+
   cancelRun(profileId: string, id: string): void {
     const run = this.getRun(profileId, id);
     if (

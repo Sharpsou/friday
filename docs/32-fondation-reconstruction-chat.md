@@ -500,6 +500,10 @@ non factuelles, ajoute les passages approuvés par Qwen, puis résout
 `P → S → URL`. Tout résidu, URL de modèle ou identifiant inconnu bloque le
 statut `verified`.
 
+La PWA restaure le run actif de la conversation depuis le Hub et place son
+étape au bas du fil. Une relance reste donc visible pendant recherche,
+rédaction ou vérification, même après remontage de l'onglet.
+
 Si l'audit structuré échoue deux fois ou rejette tout, le brouillon est masqué.
 Friday affiche seulement des extraits bornés des passages originaux, cités
 comme tels, avec un message indiquant les axes encore douteux. Un échec de

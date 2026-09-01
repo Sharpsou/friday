@@ -510,6 +510,8 @@ test('the active Chat creates, switches mode, renames and deletes from the mobil
     }
     const id = url.pathname.split('/')[4];
     const conversation = conversations.find((item) => item.id === id);
+    if (url.pathname.endsWith('/active-run'))
+      return route.fulfill({ json: { run: null } });
     if (url.pathname.endsWith('/messages')) {
       if (request.method() === 'POST' && conversation) {
         const { content } = request.postDataJSON() as { content: string };
@@ -641,6 +643,124 @@ test('the active Chat creates, switches mode, renames and deletes from the mobil
   await expect(
     page.getByRole('button', { name: 'Recherche Web' }),
   ).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('an in-progress follow-up is restored and visible inside the conversation', async ({
+  page,
+}) => {
+  const conversationId = '21bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const runId = '31bc3ea7-e269-46b3-9ac7-1c8cb7b310bb';
+  const now = '2026-09-01T12:00:00.000Z';
+  let runReads = 0;
+  const run = (completed: boolean) => ({
+    id: runId,
+    conversationId,
+    status: completed ? 'completed' : 'running',
+    stage: completed ? 'completed' : 'auditing',
+    route: completed ? 'web_verified' : null,
+    requestedMode: 'web',
+    retrievalMode: completed ? 'hybrid' : 'none',
+    errorCode: null,
+    axisCount: 2,
+    requiredAxisCount: 2,
+    coveredAxisCount: completed ? 2 : 0,
+    rejectedUnitCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const conversation = {
+    id: conversationId,
+    title: 'Découvertes de Webb',
+    mode: 'web',
+    archivedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const messages = () => [
+    {
+      id: '41bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+      conversationId,
+      role: 'user',
+      content: 'Quelles sont les découvertes de Webb ?',
+      answerStatus: null,
+      route: null,
+      sources: [],
+      createdAt: now,
+    },
+    {
+      id: '51bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+      conversationId,
+      role: 'assistant',
+      content: 'Première réponse.',
+      answerStatus: 'verified',
+      route: 'web_verified',
+      sources: [],
+      createdAt: now,
+    },
+    {
+      id: '61bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+      conversationId,
+      role: 'user',
+      content: 'Et en 2026 ?',
+      answerStatus: null,
+      route: null,
+      sources: [],
+      createdAt: now,
+    },
+    ...(runReads >= 5
+      ? [
+          {
+            id: '71bc3ea7-e269-46b3-9ac7-1c8cb7b310bb',
+            conversationId,
+            role: 'assistant',
+            content: 'Réponse de suivi.',
+            answerStatus: 'verified',
+            route: 'web_verified',
+            sources: [],
+            createdAt: now,
+          },
+        ]
+      : []),
+  ];
+  await page.route('**/api/chat/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/chat/web-usage')
+      return route.fulfill({
+        json: {
+          month: '2026-09',
+          creditsUsed: 10,
+          remainingSearches: 470,
+          source: 'tavily',
+          hardLimit: 950,
+        },
+      });
+    if (url.pathname === '/api/chat/conversations')
+      return route.fulfill({ json: { conversations: [conversation] } });
+    if (url.pathname.endsWith('/messages'))
+      return route.fulfill({
+        json: { conversation, messages: messages() },
+      });
+    if (url.pathname.endsWith('/active-run'))
+      return route.fulfill({ json: { run: run(false) } });
+    if (url.pathname === `/api/chat/runs/${runId}`) {
+      runReads += 1;
+      return route.fulfill({ json: run(runReads >= 5) });
+    }
+    return route.abort();
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await expect(page.getByText('Et en 2026 ?')).toBeVisible();
+  const progress = page.getByRole('status').filter({
+    hasText: 'Friday travaille',
+  });
+  await expect(progress).toBeVisible();
+  await expect(progress).toContainText('Vérification');
+  await expect(progress).toBeInViewport();
+  await expect(page.getByText('Réponse de suivi.')).toBeVisible({
+    timeout: 8_000,
+  });
 });
 
 test('the seven destinations fit at 360px and budget data can persist or be removed', async ({

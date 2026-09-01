@@ -24,7 +24,7 @@ acceptée.
 
 ```text
 FRIDAY_CHAT_ENABLED=true
-FRIDAY_CHAT_AXES_ENABLED=false
+FRIDAY_CHAT_AXES_ENABLED=true
 FRIDAY_TAVILY_API_KEY=<secret hors Git>
 ```
 
@@ -103,7 +103,10 @@ le schéma `auditor-v6-units` supprime aussi axes, utilité, aspects manquants e
 suffisance de la sortie modèle ; ces champs sont reconstruits de façon
 déterministe par `assistant-core`. La PWA affiche
 immédiatement « Friday travaille » puis l'étape Recherche, Rédaction ou
-Vérification, y compris avant l'obtention du premier statut de run.
+Vérification, y compris avant l'obtention du premier statut de run. Pour une
+relance, l'indicateur est rendu au bas du fil et la vue revient sur celui-ci.
+`GET /api/chat/conversations/:id/active-run` restaure le suivi après remontage
+de l'onglet ou rafraîchissement, avec le même contrôle privé par profil.
 
 ## Banc privé v2
 

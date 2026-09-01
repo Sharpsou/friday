@@ -1,4 +1,5 @@
 import {
+  ChatActiveRunResponseSchema,
   ChatConversationSchema,
   ChatConversationsResponseSchema,
   ChatEnqueueResponseSchema,
@@ -139,6 +140,16 @@ export async function getChatRun(runId: string) {
     await fetch(`/api/chat/runs/${encodeURIComponent(runId)}`),
     ChatRunSchema,
   );
+}
+
+export async function getChatActiveRun(conversationId: string) {
+  const result = await parse(
+    await fetch(
+      `/api/chat/conversations/${encodeURIComponent(conversationId)}/active-run`,
+    ),
+    ChatActiveRunResponseSchema,
+  );
+  return result.run;
 }
 
 export async function cancelChatRun(runId: string): Promise<void> {

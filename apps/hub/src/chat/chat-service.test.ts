@@ -146,6 +146,25 @@ describe('ChatService', () => {
     service.stop();
   });
 
+  it('restores the active run for a conversation without crossing profiles', async () => {
+    const { service } = fixture();
+    const conversation = service.createConversation('profile-a');
+    const runId = service.enqueue(
+      'profile-a',
+      conversation.id,
+      '1b9bc583-57b4-4160-aebe-14fd580e624d',
+      'Relance en cours',
+    );
+    expect(service.getActiveRun('profile-a', conversation.id)?.id).toBe(runId);
+    expect(() => service.getActiveRun('profile-b', conversation.id)).toThrow(
+      ChatNotFoundError,
+    );
+    service.start();
+    await waitCompleted(service, 'profile-a', runId);
+    expect(service.getActiveRun('profile-a', conversation.id)).toBeNull();
+    service.stop();
+  });
+
   it('persists only bounded axis counters and a safe fallback code', async () => {
     const { service } = fixture({
       answer: async () => ({

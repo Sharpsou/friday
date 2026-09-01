@@ -31,6 +31,9 @@ uniquement un verdict et des passages pour chaque unité. Le code valide les
 identifiants, dérive la couverture des axes et décide recherche, révision ou
 publication ; une unique correction de forme reste autorisée et un second
 échec continue d'échouer fermé.
+Les relances affichent leur progression directement au bas du fil. Le run
+actif de la conversation est relu depuis le Hub après remontage ou
+rafraîchissement ; son accès reste strictement borné au profil authentifié.
 L'archive privée historique reste une section distincte ; son ancienne route
 d'envoi répond toujours HTTP 410.
 

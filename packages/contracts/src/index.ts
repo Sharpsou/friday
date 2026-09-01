@@ -1897,6 +1897,9 @@ export const ChatMessagesResponseSchema = z
 export const ChatEnqueueResponseSchema = z
   .object({ runId: UuidSchema })
   .strict();
+export const ChatActiveRunResponseSchema = z
+  .object({ run: ChatRunSchema.nullable() })
+  .strict();
 export const ChatDeleteResponseSchema = z
   .object({ deleted: z.literal(true) })
   .strict();

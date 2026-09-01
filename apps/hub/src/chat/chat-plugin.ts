@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 
 import {
+  ChatActiveRunResponseSchema,
   ChatConversationsResponseSchema,
   ChatCreateConversationRequestSchema,
   ChatDeleteResponseSchema,
@@ -144,6 +145,23 @@ export const chatPlugin: FastifyPluginAsync<ChatPluginOptions> = async (
       return ChatMessagesResponseSchema.parse(
         options.service.getMessages(profileId, params.data.id),
       );
+    } catch (error) {
+      if (error instanceof ChatNotFoundError)
+        return reply.code(404).send({ error: 'chat_not_found' });
+      return options.handleAuthError(error, reply);
+    }
+  });
+
+  app.get('/conversations/:id/active-run', async (request, reply) => {
+    if (!options.enabled) return disabled(reply);
+    const params = IdParamsSchema.safeParse(request.params);
+    if (!params.success)
+      return reply.code(400).send({ error: 'invalid_chat_conversation' });
+    try {
+      const profileId = await authenticate(request.headers);
+      return ChatActiveRunResponseSchema.parse({
+        run: options.service.getActiveRun(profileId, params.data.id),
+      });
     } catch (error) {
       if (error instanceof ChatNotFoundError)
         return reply.code(404).send({ error: 'chat_not_found' });
