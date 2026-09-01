@@ -233,6 +233,7 @@ export class VerifiedChatEngine implements ChatEngine {
     input: ChatEngineInput,
   ): Promise<ChatEngineResult> {
     let calls = 0;
+    const researchBudget = { remaining: 6 };
     const generate = async (
       request: Parameters<OllamaClient['generate']>[0],
     ): Promise<string> => {
@@ -279,7 +280,13 @@ export class VerifiedChatEngine implements ChatEngine {
     }
 
     input.updateStage('research');
-    let pages = await this.discoverPages(deterministic.queries, input.signal);
+    let pages = await this.discoverPages(
+      deterministic.queries,
+      input.signal,
+      0,
+      false,
+      researchBudget,
+    );
     if (pages.length === 0) throw new Error('WEB_EVIDENCE_UNAVAILABLE');
     let dossier = await this.select(
       input.content,
@@ -314,6 +321,8 @@ export class VerifiedChatEngine implements ChatEngine {
         [query],
         input.signal,
         pages.length,
+        false,
+        researchBudget,
       );
       pages = [...pages, ...extra].slice(0, 16);
       dossier = await this.select(
@@ -393,6 +402,7 @@ export class VerifiedChatEngine implements ChatEngine {
     input: ChatEngineInput,
   ): Promise<ChatEngineResult> {
     let calls = 0;
+    const researchBudget = { remaining: 6 };
     const generate = async (
       request: Parameters<OllamaClient['generate']>[0],
     ): Promise<string> => {
@@ -444,6 +454,7 @@ export class VerifiedChatEngine implements ChatEngine {
         input.signal,
         0,
         plan.intent === 'recent',
+        researchBudget,
       );
     } catch (error) {
       if (input.signal.aborted) throw error;
@@ -471,6 +482,7 @@ export class VerifiedChatEngine implements ChatEngine {
         input.signal,
         pages.length,
         plan.intent === 'recent',
+        researchBudget,
       ).catch((error: unknown) => {
         if (input.signal.aborted) throw error;
         return [];
@@ -522,6 +534,7 @@ export class VerifiedChatEngine implements ChatEngine {
         input.signal,
         pages.length,
         plan.intent === 'recent',
+        researchBudget,
       ).catch((error: unknown) => {
         if (input.signal.aborted) throw error;
         return [];
@@ -948,11 +961,17 @@ export class VerifiedChatEngine implements ChatEngine {
     signal: AbortSignal,
     sourceOffset = 0,
     recent = false,
+    budget = { remaining: 6 },
   ): Promise<FrozenPage[]> {
+    const selectedQueries = queries.slice(
+      0,
+      Math.min(6, Math.max(0, budget.remaining)),
+    );
+    budget.remaining -= selectedQueries.length;
     const discoveries = await Promise.all(
-      queries
-        .slice(0, 3)
-        .map((query) => this.search.search(query, 'advanced', signal)),
+      selectedQueries.map((query) =>
+        this.search.search(query, 'advanced', signal),
+      ),
     );
     const unique = new Map<
       string,
@@ -975,7 +994,7 @@ export class VerifiedChatEngine implements ChatEngine {
           (right.publishedAt ?? '').localeCompare(left.publishedAt ?? '')
         );
       })
-      .slice(0, 8);
+      .slice(0, 16);
     const settled = await Promise.allSettled(
       entries.map(async (item, index): Promise<FrozenPage> => {
         const document = await this.pageReader.fetchArticleDocument(
@@ -994,8 +1013,8 @@ export class VerifiedChatEngine implements ChatEngine {
             id: `S${(sourceOffset + index + 1).toString()}`,
             title: item.title,
             url: item.url,
-            ...((document.publishedAt ?? item.publishedAt)
-              ? { publishedAt: document.publishedAt ?? item.publishedAt! }
+            ...((item.publishedAt ?? document.publishedAt)
+              ? { publishedAt: item.publishedAt ?? document.publishedAt! }
               : {}),
             retrievedAt: new Date().toISOString(),
           },
@@ -1003,9 +1022,11 @@ export class VerifiedChatEngine implements ChatEngine {
         };
       }),
     );
-    return settled.flatMap((result) =>
-      result.status === 'fulfilled' ? [result.value] : [],
-    );
+    return settled
+      .flatMap((result) =>
+        result.status === 'fulfilled' ? [result.value] : [],
+      )
+      .slice(0, 8);
   }
 }
 

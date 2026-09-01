@@ -87,6 +87,94 @@ const plan = JSON.stringify({
 });
 
 describe('axis verified pipeline', () => {
+  it('uses six deep queries and refills unreadable pages before keeping eight', async () => {
+    const searched: string[] = [];
+    const read: string[] = [];
+    const engine = new VerifiedChatEngine({
+      axesEnabled: true,
+      search: {
+        search: async (query: string) => {
+          searched.push(query);
+          const queryIndex = Number(query.replace('query-', ''));
+          return {
+            creditsUsed: 2,
+            evidence: Array.from({ length: 3 }, (_, resultIndex) => {
+              const index = queryIndex * 3 + resultIndex;
+              return {
+                title: `Source ${index.toString()}`,
+                url: `https://example.com/source-${index.toString()}`,
+                content: '',
+                publishedAt: '2026-08-31T00:00:00.000Z',
+              };
+            }),
+          };
+        },
+      } as never,
+      pageReader: {
+        fetchArticleDocument: async (url: string) => {
+          read.push(url);
+          const index = Number(url.match(/source-(\d+)/u)?.[1]);
+          if (index < 4) throw new Error('UNREADABLE');
+          return {
+            text: `Contenu exploitable de la source ${index.toString()}. Ce paragraphe est suffisamment long pour être retenu.`,
+            publishedAt: '2021-12-25T00:00:00.000Z',
+          };
+        },
+      } as never,
+    });
+    const pages = await (
+      engine as unknown as {
+        discoverPages(
+          queries: string[],
+          signal: AbortSignal,
+          sourceOffset: number,
+          recent: boolean,
+          budget?: { remaining: number },
+        ): Promise<
+          Array<{ source: { publishedAt?: string }; sections: unknown[] }>
+        >;
+      }
+    ).discoverPages(
+      Array.from({ length: 6 }, (_, index) => `query-${index.toString()}`),
+      new AbortController().signal,
+      0,
+      true,
+    );
+    expect(searched).toHaveLength(6);
+    expect(read.length).toBeGreaterThan(8);
+    expect(pages).toHaveLength(8);
+    expect(pages[0]?.source.publishedAt).toBe('2026-08-31T00:00:00.000Z');
+  });
+
+  it('caps all discovery passes of one run to six deep searches', async () => {
+    const searched: string[] = [];
+    const engine = new VerifiedChatEngine({
+      search: {
+        search: async (query: string) => {
+          searched.push(query);
+          return { creditsUsed: 2, evidence: [] };
+        },
+      } as never,
+    });
+    const discover = (
+      engine as unknown as {
+        discoverPages(
+          queries: string[],
+          signal: AbortSignal,
+          sourceOffset: number,
+          recent: boolean,
+          budget: { remaining: number },
+        ): Promise<unknown[]>;
+      }
+    ).discoverPages.bind(engine);
+    const budget = { remaining: 6 };
+    const signal = new AbortController().signal;
+    await discover(['q1', 'q2', 'q3', 'q4'], signal, 0, false, budget);
+    await discover(['q5', 'q6', 'q7', 'q8'], signal, 0, false, budget);
+    expect(searched).toEqual(['q1', 'q2', 'q3', 'q4', 'q5', 'q6']);
+    expect(budget.remaining).toBe(0);
+  });
+
   it('resolves a conversational follow-up before planning and Web search', async () => {
     const searched: string[] = [];
     const prompts: string[] = [];

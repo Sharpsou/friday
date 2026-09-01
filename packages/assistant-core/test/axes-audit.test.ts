@@ -4,12 +4,32 @@ import {
   compileAuditedAnswer,
   fallbackAnswerPlan,
   parseAnswerPlan,
+  searchQueriesForPlan,
   splitAuditSegments,
   validateAuditReferences,
   type AnswerAudit,
 } from '../src/index.js';
 
 describe('answer axes and recoverable audits', () => {
+  it('restores up to six distinct queries for deep Web research', () => {
+    const plan = parseAnswerPlan(
+      JSON.stringify({
+        intent: 'recent',
+        axes: Array.from({ length: 5 }, (_, index) => ({
+          id: `A${(index + 1).toString()}`,
+          label: `Axe ${(index + 1).toString()}`,
+          question: `Quelle est la dimension ${(index + 1).toString()} ?`,
+          importance: index < 2 ? 'required' : 'useful',
+          query: `requête distincte ${(index + 1).toString()}`,
+        })),
+      }),
+      'Quelles sont les découvertes récentes ?',
+    );
+    expect(
+      searchQueriesForPlan('Quelles sont les découvertes récentes ?', plan),
+    ).toHaveLength(6);
+  });
+
   it('falls back to one required fact-free axis when planning JSON is invalid', () => {
     expect(parseAnswerPlan('{broken', 'Pourquoi le ciel est bleu ?')).toEqual(
       fallbackAnswerPlan('Pourquoi le ciel est bleu ?'),

@@ -33,6 +33,9 @@ compléter**
   le routage, sur au plus trois échanges précédents et 8 000 caractères. La
   sortie JSON stricte ne peut ajouter d'URL ; une sortie invalide utilise un
   repli déterministe composé uniquement des demandes utilisateur récentes ;
+- la recherche Web utilise jusqu'à six requêtes Tavily approfondies et peut
+  tenter seize lectures validées pour constituer au plus huit sources finales ;
+  les échecs de lecture ne réduisent donc plus mécaniquement le dossier ;
 - la PWA Dexie 8 met en cache le nouvel historique dans deux stores chiffrés
   dédiés, sans outbox d'envoi, et conserve l'archive historique séparée ;
 - le rédacteur est `gemma4:e4b-it-qat`, l'auditeur

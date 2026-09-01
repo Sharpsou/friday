@@ -18,6 +18,10 @@ Les relances courtes sont désormais résolues en question autonome à partir de
 trois échanges récents au maximum avant le routage. La même question résolue
 est utilisée par la recherche et l'audit ; les réponses antérieures restent du
 contexte non fiable et ne deviennent jamais des preuves.
+La recherche Web retrouve le budget de l'ancien mode approfondi avec six
+requêtes Tavily au plus. Elle peut essayer seize pages originales protégées
+pour remplir le dossier final, toujours limité à huit sources et douze
+passages ; la date Tavily est prioritaire sur une date de page ambiguë.
 Le bouton flottant crée les conversations ; leur menu permet renommage et
 suppression avec confirmation Friday, et le titre du premier message apparaît
 sans attendre la fin de l'inférence. Les modes et le bouton restent utilisables

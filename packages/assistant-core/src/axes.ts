@@ -148,5 +148,5 @@ export function searchQueriesForPlan(
     .filter(
       (value, index, all) => value.length >= 2 && all.indexOf(value) === index,
     )
-    .slice(0, 3);
+    .slice(0, 6);
 }
