@@ -1,12 +1,70 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  dedupeResolvedSourceCitations,
+  extractReadableParagraphs,
+  explicitResourceSearchQueries,
+  highRiskNotice,
   normalizeGeneratedMarkdown,
   routeForcedByMode,
   VerifiedChatEngine,
 } from './verified-chat-engine.js';
 
+const readableAgenticArticle = [
+  'Cette formation consacrée à l’IA agentique présente les principes de conception des agents, leur orchestration et leur supervision dans des applications concrètes.',
+  'Le podcast associé examine des retours d’expérience, la validation des sorties, la limitation des outils et les bonnes pratiques nécessaires pour conserver un contrôle humain.',
+].join('\n\n');
+
+function unifiedEngine(responses: string[], searchFails = false) {
+  return new VerifiedChatEngine({
+    pipeline: 'unified',
+    ollama: {
+      generate: async () => ({
+        response: responses.shift()!,
+        durationMs: 1,
+      }),
+      embed: async ({ input }: { input: string[] }) => input.map(() => [1, 0]),
+    } as never,
+    search: {
+      search: async () => {
+        if (searchFails) throw new Error('TAVILY_UNAVAILABLE');
+        return {
+          creditsUsed: 2,
+          evidence: [
+            {
+              title: 'Formation et podcast sur l’IA agentique',
+              url: 'https://example.com/article-agentique',
+              content: '',
+              publishedAt: '2026-09-03T00:00:00.000Z',
+            },
+            {
+              title: 'Podcast agentique en vidéo',
+              url: 'https://youtube.com/watch?v=podcast',
+              content: '',
+              publishedAt: '2026-09-03T00:00:00.000Z',
+            },
+          ],
+        };
+      },
+    } as never,
+    pageReader: {
+      fetchArticleDocument: async (url: string) => ({
+        text: url.includes('youtube.com')
+          ? 'Présentation Presse Droits d’auteur Nous contacter Créateurs Publicité Conditions d’utilisation Confidentialité © Google LLC'
+          : readableAgenticArticle,
+        publishedAt: '2026-09-03T00:00:00.000Z',
+      }),
+    } as never,
+  });
+}
+
 describe('normalizeGeneratedMarkdown', () => {
+  it('deduplicates adjacent citations resolved to the same source', () => {
+    expect(dedupeResolvedSourceCitations('Fait [S1] [S1] [S2].')).toBe(
+      'Fait [S1] [S2].',
+    );
+  });
+
   it('retire les URLs produites par le modèle', () => {
     expect(
       normalizeGeneratedMarkdown(
@@ -49,9 +107,258 @@ describe('routeForcedByMode', () => {
   });
 });
 
+describe('unified evidence pipeline', () => {
+  it('rejects a platform footer as evidence while accepting a relevant article', () => {
+    expect(
+      extractReadableParagraphs(
+        'Présentation Presse Droits d’auteur Nous contacter Créateurs Publicité Conditions d’utilisation Confidentialité © Google LLC',
+        ['podcast agentique'],
+      ),
+    ).toEqual([]);
+    expect(
+      extractReadableParagraphs(readableAgenticArticle, [
+        'podcast formation agentique',
+      ]),
+    ).toHaveLength(2);
+  });
+
+  it('preserves each explicitly requested resource type before model topics', () => {
+    expect(
+      explicitResourceSearchQueries(
+        'Trouve des podcasts et des formations courtes sur l’agentique',
+      ).map((query) => query.split(' ')[0]),
+    ).toEqual(['podcast', 'formation']);
+  });
+
+  it('publishes the sourced draft and separates unreadable discoveries when audit JSON fails', async () => {
+    const engine = unifiedEngine([
+      plan,
+      'Le podcast et la formation présentent des pratiques de supervision [P1].',
+      '{broken',
+      '{broken-again',
+    ]);
+    const result = await engine.answer({
+      content:
+        'Trouve des podcasts et formations sur l’agentique et leurs bonnes pratiques',
+      mode: 'web',
+      priorTurns: [],
+      signal: new AbortController().signal,
+      updateStage: () => undefined,
+    });
+    expect(result).toMatchObject({
+      status: 'partial',
+      fallbackCode: 'AUDIT_INCOMPLETE_PUBLISHED',
+      readablePageCount: 1,
+      rejectedPageCount: 1,
+      leadCount: 1,
+    });
+    expect(result.markdown).toContain('podcast et la formation');
+    expect(result.markdown).toContain('Vérification automatique incomplète');
+    expect(result.markdown).not.toContain('Axes');
+    expect(result.sources.map(({ evidenceLevel }) => evidenceLevel)).toEqual([
+      'readable',
+      'discovery_only',
+    ]);
+  });
+
+  it('uses an extractive sourced answer instead of an error when every drafted fact is rejected', async () => {
+    const rejected = JSON.stringify({
+      units: [
+        {
+          unitId: 'U1',
+          verdict: 'unsupported',
+          passageIds: [],
+          addressedAxisIds: [],
+        },
+      ],
+    });
+    const engine = unifiedEngine([
+      plan,
+      'Affirmation trop large [P1].',
+      rejected,
+      'Affirmation encore trop large [P1].',
+      rejected,
+    ]);
+    const result = await engine.answer({
+      content: 'Trouve des podcasts et formations sur l’agentique',
+      mode: 'web',
+      priorTurns: [],
+      signal: new AbortController().signal,
+      updateStage: () => undefined,
+    });
+    expect(result.status).toBe('partial');
+    expect(result.fallbackCode).toBe('AUDIT_REJECTED_TO_EXTRACTIVE');
+    expect(result.markdown).toContain('Les sources consultées');
+    expect(result.markdown).not.toContain('Affirmation encore');
+    expect(
+      result.sources.some(({ evidenceLevel }) => evidenceLevel === 'readable'),
+    ).toBe(true);
+  });
+
+  it('falls back visibly to a local unverified answer when Web search fails', async () => {
+    const engine = unifiedEngine(
+      [plan, 'Voici une réponse locale prudente.'],
+      true,
+    );
+    const result = await engine.answer({
+      content: 'Donne une information actuelle',
+      mode: 'web',
+      priorTurns: [],
+      signal: new AbortController().signal,
+      updateStage: () => undefined,
+    });
+    expect(result).toMatchObject({
+      status: 'unverified',
+      route: 'local_unverified',
+      fallbackCode: 'WEB_SEARCH_UNAVAILABLE',
+    });
+    expect(result.markdown).toContain('recherche Web');
+  });
+
+  it('keeps a professional warning visible for an AVC question', () => {
+    expect(
+      highRiskNotice(
+        'Quels signes évoquent un AVC et quand appeler les secours ?',
+      ),
+    ).toContain('professionnel qualifié');
+  });
+
+  it('reads candidates round-robin across search topics before limiting pages', async () => {
+    const responses = [
+      JSON.stringify({
+        intent: 'recommend',
+        axes: [
+          {
+            id: 'A1',
+            label: 'Podcasts',
+            question: 'Quels podcasts agentiques écouter ?',
+            role: 'primary',
+            query: 'podcasts agentiques',
+          },
+          {
+            id: 'A2',
+            label: 'Formations',
+            question: 'Quelles formations agentiques suivre ?',
+            role: 'primary',
+            query: 'formations agentiques',
+          },
+        ],
+      }),
+      'Le podcast et la formation sont deux ressources distinctes [P1] [P2].',
+      '{broken',
+      '{broken-again',
+    ];
+    const engine = new VerifiedChatEngine({
+      pipeline: 'unified',
+      ollama: {
+        generate: async () => ({ response: responses.shift()!, durationMs: 1 }),
+        embed: async ({ input }: { input: string[] }) =>
+          input.map(() => [1, 0]),
+      } as never,
+      search: {
+        search: async (query: string) => ({
+          creditsUsed: 2,
+          evidence: Array.from({ length: 5 }, (_, index) => ({
+            title: `${query.includes('podcast') ? 'Podcast' : 'Formation'} ${index.toString()}`,
+            url: `https://example.com/${encodeURIComponent(query)}/${index.toString()}`,
+            content: '',
+            publishedAt: null,
+          })),
+        }),
+      } as never,
+      pageReader: {
+        fetchArticleDocument: async (url: string) => ({
+          text: url.includes('podcast')
+            ? `${readableAgenticArticle}\n\nCe programme audio est bien un podcast consacré aux agents.`
+            : `${readableAgenticArticle}\n\nCette session est une formation courte consacrée aux agents.`,
+          publishedAt: null,
+        }),
+      } as never,
+    });
+    const result = await engine.answer({
+      content: 'Trouve des podcasts et des formations sur l’agentique',
+      mode: 'web',
+      priorTurns: [],
+      signal: new AbortController().signal,
+      updateStage: () => undefined,
+    });
+    expect(
+      result.sources.some(({ title }) => title.startsWith('Podcast')),
+    ).toBe(true);
+    expect(
+      result.sources.some(({ title }) => title.startsWith('Formation')),
+    ).toBe(true);
+  });
+
+  it('revises once when an explicitly requested resource available in evidence was omitted', async () => {
+    const supported = JSON.stringify({
+      units: [
+        {
+          unitId: 'U1',
+          verdict: 'supported',
+          passageIds: ['P1'],
+        },
+      ],
+    });
+    const prompts: string[] = [];
+    const responses = [
+      plan,
+      'La formation propose des applications et des pratiques concrètes [P1].',
+      supported,
+      'Le podcast et la formation proposent des applications et des pratiques concrètes [P1].',
+      supported,
+    ];
+    const engine = new VerifiedChatEngine({
+      pipeline: 'unified',
+      ollama: {
+        generate: async ({ prompt }: { prompt: string }) => {
+          prompts.push(prompt);
+          return { response: responses.shift()!, durationMs: 1 };
+        },
+        embed: async ({ input }: { input: string[] }) =>
+          input.map(() => [1, 0]),
+      } as never,
+      search: {
+        search: async () => ({
+          creditsUsed: 2,
+          evidence: [
+            {
+              title: 'Podcast et formation sur l’IA agentique',
+              url: 'https://example.com/ressources-agentiques',
+              content: '',
+              publishedAt: null,
+            },
+          ],
+        }),
+      } as never,
+      pageReader: {
+        fetchArticleDocument: async () => ({
+          text: readableAgenticArticle,
+          publishedAt: null,
+        }),
+      } as never,
+    });
+    const result = await engine.answer({
+      content: 'Trouve des podcasts et des formations sur l’agentique',
+      mode: 'web',
+      priorTurns: [],
+      signal: new AbortController().signal,
+      updateStage: () => undefined,
+    });
+    expect(result.status).toBe('verified');
+    expect(result.markdown).toContain('podcast');
+    expect(
+      prompts.some((prompt) =>
+        prompt.includes('LIVRABLES_EXPLICITES_MANQUANTS=["podcast"]'),
+      ),
+    ).toBe(true);
+  });
+});
+
 function axesEngine(responses: string[]) {
   return new VerifiedChatEngine({
     axesEnabled: true,
+    pipeline: 'axes',
     ollama: {
       generate: async () => ({
         response: responses.shift()!,
@@ -117,6 +424,7 @@ const compositionPlan = JSON.stringify({
 function compositionEngine(responses: string[]) {
   return new VerifiedChatEngine({
     axesEnabled: true,
+    pipeline: 'axes',
     ollama: {
       generate: async () => ({
         response: responses.shift()!,
@@ -152,6 +460,7 @@ describe('axis verified pipeline', () => {
     const read: string[] = [];
     const engine = new VerifiedChatEngine({
       axesEnabled: true,
+      pipeline: 'axes',
       search: {
         search: async (query: string) => {
           searched.push(query);
@@ -270,6 +579,7 @@ describe('axis verified pipeline', () => {
     ];
     const engine = new VerifiedChatEngine({
       axesEnabled: true,
+      pipeline: 'axes',
       ollama: {
         generate: async ({ prompt }: { prompt: string }) => {
           prompts.push(prompt);
@@ -536,6 +846,7 @@ describe('axis verified pipeline', () => {
   it('abstains instead of silently falling back to local when Web is unavailable', async () => {
     const engine = new VerifiedChatEngine({
       axesEnabled: true,
+      pipeline: 'axes',
       ollama: {
         generate: async () => ({ response: plan, durationMs: 1 }),
       } as never,

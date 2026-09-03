@@ -6,6 +6,7 @@ import {
   RoutePlanJsonSchema,
   RoutePlanOutputSchema,
   UnitAuditJsonSchema,
+  UnifiedUnitAuditJsonSchema,
   UnitAuditOutputSchema,
   answerPlanPrompt,
   assignEvidenceToAxes,
@@ -31,6 +32,7 @@ import {
   routeDeterministically,
   routeQuestion,
   searchQueriesForPlan,
+  searchTopicPlanPrompt,
   selectEvidencePassagesHybrid,
   splitAuditSegments,
   splitAuditUnits,
@@ -67,6 +69,131 @@ export interface VerifiedChatEngineOptions {
   embeddingModel?: string;
   seed?: number;
   axesEnabled?: boolean;
+  pipeline?: 'unified' | 'axes';
+}
+
+interface DiscoveryLead {
+  title: string;
+  url: string;
+  publishedAt: string | null;
+  retrievedAt: string;
+}
+
+interface DiscoveryBundle {
+  pages: FrozenPage[];
+  leads: DiscoveryLead[];
+  discoveredCount: number;
+  rejectedPageCount: number;
+}
+
+const BOILERPLATE_PARAGRAPH =
+  /(?:droits? d['’]auteur|confidentialité|conditions d['’]utilisation|nous contacter|créateurs|publicité|cookies?|copyright|all rights reserved|sign in|se connecter|menu principal|navigation)/iu;
+const QUERY_STOP_WORDS = new Set([
+  'avec',
+  'dans',
+  'pour',
+  'quels',
+  'quelle',
+  'quelles',
+  'comment',
+  'autour',
+  'court',
+  'courte',
+  'courtes',
+  'exemple',
+  'exemples',
+  'trouve',
+  'trouves',
+]);
+
+function relevanceTokens(value: string): Set<string> {
+  return new Set(
+    value
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/gu, '')
+      .toLocaleLowerCase('fr-FR')
+      .match(/[a-z0-9]{4,}/gu)
+      ?.filter((token) => !QUERY_STOP_WORDS.has(token)) ?? [],
+  );
+}
+
+export function extractReadableParagraphs(
+  text: string,
+  queries: string[],
+): string[] {
+  const seen = new Set<string>();
+  const paragraphs = text
+    .replace(/[\u200B-\u200F\u2060-\u206F]/gu, '')
+    .split(/\n{2,}/u)
+    .map((value) => value.replace(/\s+/gu, ' ').trim())
+    .filter((value) => value.length >= 35)
+    .filter((value) => !BOILERPLATE_PARAGRAPH.test(value))
+    .filter((value) => {
+      const key = value.toLocaleLowerCase('fr-FR');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 500);
+  const body = paragraphs.join(' ');
+  if (body.length < 240) return [];
+  const expected = relevanceTokens(queries.join(' '));
+  if (expected.size === 0) return paragraphs;
+  const actual = relevanceTokens(body);
+  return [...expected].some((token) => actual.has(token)) ? paragraphs : [];
+}
+
+export function explicitResourceTypes(question: string): string[] {
+  const resourcePatterns: Array<[RegExp, string]> = [
+    [/\bpodcasts?\b/iu, 'podcast'],
+    [/\b(?:formations?|cours|bootcamps?)\b/iu, 'formation'],
+    [/\b(?:livres?|ouvrages?)\b/iu, 'livre'],
+    [/\b(?:vidéos?|cha[iî]nes? youtube)\b/iu, 'vidéo'],
+    [/\b(?:produits?|modèles?)\b/iu, 'produit'],
+    [/\bservices?\b/iu, 'service'],
+    [/\b(?:outils?|logiciels?)\b/iu, 'outil'],
+    [/\brestaurants?\b/iu, 'restaurant'],
+    [/\b(?:hôtels?|hébergements?)\b/iu, 'hébergement'],
+  ];
+  return resourcePatterns
+    .filter(([pattern]) => pattern.test(question))
+    .map(([, label]) => label)
+    .slice(0, 4);
+}
+
+export function explicitResourceSearchQueries(question: string): string[] {
+  return explicitResourceTypes(question).map((label) =>
+    `${label} ${question}`.slice(0, 300),
+  );
+}
+
+function availableRequestedResourceTypes(
+  requested: string[],
+  dossier: EvidenceDossier,
+): string[] {
+  const sourceTitles = new Map(
+    dossier.sources.map(({ id, title }) => [
+      id,
+      title.toLocaleLowerCase('fr-FR'),
+    ]),
+  );
+  return requested.filter((resource) => {
+    const token = resource.toLocaleLowerCase('fr-FR');
+    return dossier.passages.some(
+      ({ sourceId, heading, text }) =>
+        sourceTitles.get(sourceId)?.includes(token) ||
+        heading?.toLocaleLowerCase('fr-FR').includes(token) ||
+        text.toLocaleLowerCase('fr-FR').includes(token),
+    );
+  });
+}
+
+function missingRequestedResourceTypes(
+  answer: string,
+  available: string[],
+): string[] {
+  const normalized = answer.toLocaleLowerCase('fr-FR');
+  return available.filter((resource) => !normalized.includes(resource));
 }
 
 export function normalizeGeneratedMarkdown(markdown: string): string {
@@ -90,6 +217,10 @@ export function normalizeGeneratedMarkdown(markdown: string): string {
         .join(' '),
     )
     .trim();
+}
+
+export function dedupeResolvedSourceCitations(markdown: string): string {
+  return markdown.replace(/(\[S[1-9]\d*\])(?:\s+\1)+/gu, '$1');
 }
 
 export function routeForcedByMode(
@@ -177,13 +308,12 @@ function resolveAnswer(
   const exposed = new Map(
     sources.map((source, index) => [source.id, `S${(index + 1).toString()}`]),
   );
-  const markdown = answer.replace(
-    /\[(P[1-9]\d*)\]/gu,
-    (_all, passageId: string) => {
+  const markdown = dedupeResolvedSourceCitations(
+    answer.replace(/\[(P[1-9]\d*)\]/gu, (_all, passageId: string) => {
       const passage = passageMap.get(passageId as EvidencePassage['id']);
       if (!passage) throw new Error('UNKNOWN_PASSAGE_REFERENCE');
       return `[${exposed.get(passage.sourceId)!}]`;
-    },
+    }),
   );
   if (/[[(]\s*P[1-9]\d*/iu.test(markdown))
     throw new Error('UNRESOLVED_PASSAGE_REFERENCE');
@@ -196,8 +326,71 @@ function resolveAnswer(
       domain: new URL(source.url).hostname,
       publishedAt: source.publishedAt ?? null,
       retrievedAt: source.retrievedAt,
+      evidenceLevel: 'readable',
     })),
   };
+}
+
+function appendDiscoveryLeads(
+  result: { markdown: string; sources: ChatSource[] },
+  leads: DiscoveryLead[],
+): { markdown: string; sources: ChatSource[] } {
+  const knownUrls = new Set(result.sources.map(({ url }) => url));
+  const selected = leads
+    .filter(({ url }) => !knownUrls.has(url))
+    .slice(0, Math.max(0, 12 - result.sources.length));
+  return {
+    ...result,
+    sources: [
+      ...result.sources,
+      ...selected.map((lead, index) => ({
+        id: `S${(result.sources.length + index + 1).toString()}`,
+        title: lead.title,
+        url: lead.url,
+        domain: new URL(lead.url).hostname,
+        publishedAt: lead.publishedAt,
+        retrievedAt: lead.retrievedAt,
+        evidenceLevel: 'discovery_only' as const,
+      })),
+    ],
+  };
+}
+
+export function highRiskNotice(question: string): string {
+  return /\b(?:avc|santé|maladie|urgence|secours|médical|médecin|sympt[oô]me|traitement|médicament|juridique|avocat|droit|finance|financier|investir|placement|crédit|impôt)\b/iu.test(
+    question,
+  )
+    ? '\n\n_Information générale : pour une décision médicale, juridique ou financière importante, vérifiez ces éléments auprès d’un professionnel qualifié._'
+    : '';
+}
+
+function extractiveAnswer(
+  dossier: EvidenceDossier,
+  leads: DiscoveryLead[],
+  question: string,
+): { markdown: string; sources: ChatSource[] } {
+  const passages = dossier.passages.slice(0, 4);
+  const sourceById = new Map(
+    dossier.sources.map((source) => [source.id, source]),
+  );
+  const markdown = [
+    'Les sources consultées donnent les éléments suivants :',
+    ...passages.map((passage) => {
+      const title =
+        sourceById.get(passage.sourceId)?.title ?? 'Source consultée';
+      const excerpt = stripPassageCitations(passage.text)
+        .replace(/[<>]/gu, '')
+        .replace(/\s+/gu, ' ')
+        .trim()
+        .slice(0, 420);
+      return `- **${title.replace(/[[\]<>]/gu, '')}** — ${excerpt} [${passage.id}]`;
+    }),
+    '_Réponse partielle : la rédaction ou la vérification automatique n’a pas permis une synthèse plus précise._',
+  ].join('\n\n');
+  return appendDiscoveryLeads(
+    resolveAnswer(`${markdown}${highRiskNotice(question)}`, dossier),
+    leads,
+  );
 }
 
 export class VerifiedChatEngine implements ChatEngine {
@@ -209,6 +402,7 @@ export class VerifiedChatEngine implements ChatEngine {
   private readonly embeddingModel: string;
   private readonly seed: number;
   private readonly axesEnabled: boolean;
+  private readonly pipeline: 'unified' | 'axes';
 
   constructor(options: VerifiedChatEngineOptions = {}) {
     this.ollama =
@@ -224,6 +418,9 @@ export class VerifiedChatEngine implements ChatEngine {
     this.seed = options.seed ?? 17;
     this.axesEnabled =
       options.axesEnabled ?? process.env.FRIDAY_CHAT_AXES_ENABLED === 'true';
+    this.pipeline =
+      options.pipeline ??
+      (process.env.FRIDAY_CHAT_PIPELINE === 'unified' ? 'unified' : 'axes');
   }
 
   webUsage(signal: AbortSignal) {
@@ -231,6 +428,7 @@ export class VerifiedChatEngine implements ChatEngine {
   }
 
   async answer(input: ChatEngineInput): Promise<ChatEngineResult> {
+    if (this.pipeline === 'unified') return this.answerUnified(input);
     if (this.axesEnabled) return this.answerWithAxes(input);
     return this.answerLegacy(input);
   }
@@ -402,6 +600,384 @@ export class VerifiedChatEngine implements ChatEngine {
       retrievalMode: dossier.retrievalMode,
       modelCalls: calls,
       passageCount: dossier.passages.length,
+    };
+  }
+
+  private async answerUnified(
+    input: ChatEngineInput,
+  ): Promise<ChatEngineResult> {
+    let calls = 0;
+    const researchBudget = { remaining: 6 };
+    const generate = async (
+      request: Parameters<OllamaClient['generate']>[0],
+    ): Promise<string> => {
+      calls += 1;
+      if (calls > 6) throw new Error('MODEL_CALL_LIMIT_REACHED');
+      return (await this.ollama.generate(request)).response;
+    };
+    const localAfterWebFailure = async (fallbackCode: string) => {
+      input.updateStage('writing');
+      try {
+        const local = validateMarkdown(
+          await generate({
+            model: this.writerModel,
+            prompt: localPrompt({
+              question: input.content,
+              priorTurns: input.priorTurns,
+            }),
+            seed: this.seed,
+            maxTokens: 1_500,
+            temperature: 0.2,
+            signal: input.signal,
+          }),
+          [],
+        );
+        return {
+          markdown: `_${'La recherche Web n’a pas fourni de page exploitable ; cette réponse est locale et non vérifiée.'}_\n\n${local}${highRiskNotice(input.content)}`,
+          status: 'unverified' as const,
+          route: 'local_unverified' as const,
+          retrievalMode: 'none' as const,
+          sources: [],
+          modelCalls: calls,
+          passageCount: 0,
+          axisCount: 0,
+          requiredAxisCount: 0,
+          coveredAxisCount: 0,
+          rejectedUnitCount: 0,
+          fallbackCode,
+        };
+      } catch (error) {
+        if (input.signal.aborted) throw error;
+        return {
+          markdown:
+            'Friday n’a pu utiliser ni la recherche Web ni le modèle local. Réessayez lorsque les services seront disponibles.',
+          status: 'abstained' as const,
+          route: 'web_verified' as const,
+          retrievalMode: 'none' as const,
+          sources: [],
+          modelCalls: calls,
+          passageCount: 0,
+          axisCount: 0,
+          requiredAxisCount: 0,
+          coveredAxisCount: 0,
+          rejectedUnitCount: 0,
+          fallbackCode: 'WEB_AND_LOCAL_UNAVAILABLE',
+        };
+      }
+    };
+
+    input.updateStage('routing');
+    input = await this.contextualizeInput(input, generate);
+    const routed = await this.routeAndPlan(input, generate, true);
+    if (routed.route === 'local') {
+      input.updateStage('writing');
+      const markdown = validateMarkdown(
+        await generate({
+          model: this.writerModel,
+          prompt: localPrompt({
+            question: input.content,
+            priorTurns: input.priorTurns,
+          }),
+          seed: this.seed,
+          maxTokens: 1_500,
+          temperature: 0.2,
+          signal: input.signal,
+        }),
+        [],
+      );
+      return {
+        markdown,
+        status: 'unverified',
+        route: 'local_unverified',
+        retrievalMode: 'none',
+        sources: [],
+        modelCalls: calls,
+        passageCount: 0,
+        axisCount: 0,
+        requiredAxisCount: 0,
+        coveredAxisCount: 0,
+        rejectedUnitCount: 0,
+        fallbackCode: null,
+      };
+    }
+
+    const plan = routed.plan ?? fallbackAnswerPlan(input.content);
+    const requestedResourceTypes = explicitResourceTypes(input.content);
+    const queries = [
+      input.content,
+      ...explicitResourceSearchQueries(input.content),
+      ...searchQueriesForPlan(input.content, plan),
+    ]
+      .filter((value, index, all) => all.indexOf(value) === index)
+      .slice(0, 6);
+    input.updateStage('research');
+    let discovery: DiscoveryBundle;
+    try {
+      discovery = await this.discoverBundle(
+        queries,
+        input.signal,
+        0,
+        plan.intent === 'recent',
+        researchBudget,
+      );
+    } catch (error) {
+      if (input.signal.aborted) throw error;
+      return localAfterWebFailure('WEB_SEARCH_UNAVAILABLE');
+    }
+    if (discovery.pages.length === 0) {
+      if (discovery.leads.length > 0) {
+        input.updateStage('finalizing');
+        return {
+          ...appendDiscoveryLeads(
+            {
+              markdown:
+                'La recherche a trouvé des pistes, mais leur contenu original n’était pas suffisamment lisible pour construire une synthèse fiable. Elles restent accessibles ci-dessous.',
+              sources: [],
+            },
+            discovery.leads,
+          ),
+          status: 'partial',
+          route: 'web_verified',
+          retrievalMode: 'lexical_fallback',
+          modelCalls: calls,
+          passageCount: 0,
+          axisCount: plan.axes.length,
+          requiredAxisCount: 0,
+          coveredAxisCount: 0,
+          rejectedUnitCount: 0,
+          fallbackCode: 'DISCOVERY_ONLY',
+          discoveredPageCount: discovery.discoveredCount,
+          readablePageCount: 0,
+          rejectedPageCount: discovery.rejectedPageCount,
+          leadCount: discovery.leads.length,
+        };
+      }
+      return localAfterWebFailure('WEB_EVIDENCE_UNAVAILABLE');
+    }
+
+    const dossier = await this.select(
+      input.content,
+      queries.slice(1),
+      discovery.pages,
+      input.signal,
+    );
+    if (dossier.passages.length === 0)
+      return localAfterWebFailure('WEB_EVIDENCE_UNAVAILABLE');
+
+    let answer: string;
+    try {
+      answer = await this.write(
+        input,
+        dossier,
+        generate,
+        undefined,
+        undefined,
+        requestedResourceTypes,
+      );
+    } catch (error) {
+      if (input.signal.aborted) throw error;
+      const extracted = extractiveAnswer(
+        dossier,
+        discovery.leads,
+        input.content,
+      );
+      return {
+        ...extracted,
+        status: 'partial',
+        route: 'web_verified',
+        retrievalMode: dossier.retrievalMode,
+        modelCalls: calls,
+        passageCount: dossier.passages.length,
+        axisCount: plan.axes.length,
+        requiredAxisCount: 0,
+        coveredAxisCount: 0,
+        rejectedUnitCount: 0,
+        fallbackCode: 'WRITER_UNAVAILABLE',
+        discoveredPageCount: discovery.discoveredCount,
+        readablePageCount: discovery.pages.length,
+        rejectedPageCount: discovery.rejectedPageCount,
+        leadCount: discovery.leads.length,
+      };
+    }
+
+    let audited = await this.audit(
+      input,
+      answer,
+      dossier,
+      generate,
+      [],
+      [],
+      calls < 5 ? 2 : 1,
+    );
+    const partialDraft = (draft: string, fallbackCode: string) => {
+      if (citedPassageIds(draft).length === 0) {
+        const extracted = extractiveAnswer(
+          dossier,
+          discovery.leads,
+          input.content,
+        );
+        return {
+          ...extracted,
+          status: 'partial' as const,
+          route: 'web_verified' as const,
+          retrievalMode: dossier.retrievalMode,
+          modelCalls: calls,
+          passageCount: dossier.passages.length,
+          axisCount: plan.axes.length,
+          requiredAxisCount: 0,
+          coveredAxisCount: 0,
+          rejectedUnitCount: 0,
+          fallbackCode,
+          discoveredPageCount: discovery.discoveredCount,
+          readablePageCount: discovery.pages.length,
+          rejectedPageCount: discovery.rejectedPageCount,
+          leadCount: discovery.leads.length,
+        };
+      }
+      const notice =
+        '_Vérification automatique incomplète : consultez les sources pour les points importants._';
+      const resolved = appendDiscoveryLeads(
+        resolveAnswer(
+          `${draft}\n\n${notice}${highRiskNotice(input.content)}`,
+          dossier,
+        ),
+        discovery.leads,
+      );
+      return {
+        ...resolved,
+        status: 'partial' as const,
+        route: 'web_verified' as const,
+        retrievalMode: dossier.retrievalMode,
+        modelCalls: calls,
+        passageCount: dossier.passages.length,
+        axisCount: plan.axes.length,
+        requiredAxisCount: 0,
+        coveredAxisCount: 0,
+        rejectedUnitCount: 0,
+        fallbackCode,
+        discoveredPageCount: discovery.discoveredCount,
+        readablePageCount: discovery.pages.length,
+        rejectedPageCount: discovery.rejectedPageCount,
+        leadCount: discovery.leads.length,
+      };
+    };
+    if (audited.auditError)
+      return partialDraft(answer, 'AUDIT_INCOMPLETE_PUBLISHED');
+
+    const availableResourceTypes = availableRequestedResourceTypes(
+      requestedResourceTypes,
+      dossier,
+    );
+    let missingResourceTypes = missingRequestedResourceTypes(
+      answer,
+      availableResourceTypes,
+    );
+    let segments = splitAuditSegments(answer);
+    let compiled = compileAuditedAnswer(segments, audited.audit, false);
+    if (
+      (compiled.rejectedUnitCount > 0 || missingResourceTypes.length > 0) &&
+      calls <= 3
+    ) {
+      input.updateStage('writing');
+      const revised = validateMarkdown(
+        await generate({
+          model: this.writerModel,
+          prompt: revisionPrompt({
+            question: input.content,
+            answer,
+            audit: audited.audit,
+            passages: dossier.passages,
+            sources: dossier.sources,
+            missingResourceTypes,
+          }),
+          seed: this.seed,
+          maxTokens: 1_500,
+          temperature: 0.2,
+          signal: input.signal,
+        }),
+        dossier.passages,
+      );
+      const finalAudit = await this.audit(
+        input,
+        revised,
+        dossier,
+        generate,
+        [],
+        [],
+        1,
+      );
+      if (finalAudit.auditError)
+        return partialDraft(
+          citedPassageIds(revised).length > 0 ? revised : answer,
+          'FINAL_AUDIT_INCOMPLETE_PUBLISHED',
+        );
+      answer = revised;
+      audited = finalAudit;
+      segments = splitAuditSegments(answer);
+      compiled = compileAuditedAnswer(segments, audited.audit, false);
+      missingResourceTypes = missingRequestedResourceTypes(
+        answer,
+        availableResourceTypes,
+      );
+    }
+
+    if (compiled.retainedUnitCount === 0 || compiled.passageIds.length === 0) {
+      const extracted = extractiveAnswer(
+        dossier,
+        discovery.leads,
+        input.content,
+      );
+      return {
+        ...extracted,
+        status: 'partial',
+        route: 'web_verified',
+        retrievalMode: dossier.retrievalMode,
+        modelCalls: calls,
+        passageCount: dossier.passages.length,
+        axisCount: plan.axes.length,
+        requiredAxisCount: 0,
+        coveredAxisCount: 0,
+        rejectedUnitCount: compiled.rejectedUnitCount,
+        fallbackCode: 'AUDIT_REJECTED_TO_EXTRACTIVE',
+        discoveredPageCount: discovery.discoveredCount,
+        readablePageCount: discovery.pages.length,
+        rejectedPageCount: discovery.rejectedPageCount,
+        leadCount: discovery.leads.length,
+      };
+    }
+
+    input.updateStage('finalizing');
+    const resolved = appendDiscoveryLeads(
+      resolveAnswer(
+        `${compiled.markdown}${highRiskNotice(input.content)}`,
+        dossier,
+      ),
+      discovery.leads,
+    );
+    const verified =
+      compiled.rejectedUnitCount === 0 &&
+      discovery.leads.length === 0 &&
+      missingResourceTypes.length === 0;
+    return {
+      ...resolved,
+      status: verified ? 'verified' : 'partial',
+      route: 'web_verified',
+      retrievalMode: dossier.retrievalMode,
+      modelCalls: calls,
+      passageCount: dossier.passages.length,
+      axisCount: plan.axes.length,
+      requiredAxisCount: 0,
+      coveredAxisCount: 0,
+      rejectedUnitCount: compiled.rejectedUnitCount,
+      fallbackCode: verified
+        ? null
+        : missingResourceTypes.length
+          ? 'PARTIAL_MISSING_EXPLICIT_RESOURCE'
+          : 'PARTIAL_UNIFIED_EVIDENCE',
+      discoveredPageCount: discovery.discoveredCount,
+      readablePageCount: discovery.pages.length,
+      rejectedPageCount: discovery.rejectedPageCount,
+      leadCount: discovery.leads.length,
     };
   }
 
@@ -669,6 +1245,7 @@ export class VerifiedChatEngine implements ChatEngine {
     generate: (
       request: Parameters<OllamaClient['generate']>[0],
     ) => Promise<string>,
+    unified = false,
   ): Promise<{ route: 'local' | 'web'; plan: AnswerPlan | null }> {
     const forced = routeForcedByMode(input.mode, input.content);
     const deterministic = forced ?? routeDeterministically(input.content);
@@ -676,7 +1253,9 @@ export class VerifiedChatEngine implements ChatEngine {
     if (deterministic?.route === 'web') {
       const raw = await generate({
         model: this.auditorModel,
-        prompt: answerPlanPrompt(input.content),
+        prompt: unified
+          ? searchTopicPlanPrompt(input.content)
+          : answerPlanPrompt(input.content),
         seed: this.seed,
         format: AnswerPlanJsonSchema,
         maxTokens: 1_000,
@@ -868,6 +1447,7 @@ export class VerifiedChatEngine implements ChatEngine {
     ) => Promise<string>,
     plan?: AnswerPlan,
     assignments?: AxisEvidence[],
+    requestedResourceTypes?: string[],
   ): Promise<string> {
     input.updateStage('writing');
     return validateMarkdown(
@@ -878,6 +1458,7 @@ export class VerifiedChatEngine implements ChatEngine {
           priorTurns: input.priorTurns,
           passages: dossier.passages,
           sources: dossier.sources,
+          ...(requestedResourceTypes?.length ? { requestedResourceTypes } : {}),
           ...(plan ? { plan } : {}),
           ...(assignments
             ? {
@@ -927,7 +1508,7 @@ export class VerifiedChatEngine implements ChatEngine {
             ? prompt
             : auditorRetryPrompt({ ...promptInput, failureCode }),
         seed: this.seed,
-        format: UnitAuditJsonSchema,
+        format: axes.length ? UnitAuditJsonSchema : UnifiedUnitAuditJsonSchema,
         maxTokens: 4_096,
         temperature: 0,
         signal: input.signal,
@@ -968,58 +1549,80 @@ export class VerifiedChatEngine implements ChatEngine {
     };
   }
 
-  private async discoverPages(
+  private async discoverBundle(
     queries: string[],
     signal: AbortSignal,
     sourceOffset = 0,
     recent = false,
     budget = { remaining: 6 },
-  ): Promise<FrozenPage[]> {
+    enforceQuality = true,
+  ): Promise<DiscoveryBundle> {
     const selectedQueries = queries.slice(
       0,
       Math.min(6, Math.max(0, budget.remaining)),
     );
     budget.remaining -= selectedQueries.length;
-    const discoveries = await Promise.all(
+    const searchResults = await Promise.allSettled(
       selectedQueries.map((query) =>
         this.search.search(query, 'advanced', signal),
+      ),
+    );
+    const discoveries = searchResults.flatMap((result) =>
+      result.status === 'fulfilled' ? [result.value] : [],
+    );
+    if (discoveries.length === 0) throw new Error('WEB_SEARCH_UNAVAILABLE');
+    const listing = (value: string) =>
+      /\/(?:tag|tags|category|categories|archive|search)(?:\/|$)/iu.test(
+        new URL(value).pathname,
+      );
+    const rankedByQuery = discoveries.map(({ evidence }) =>
+      [...evidence].sort(
+        (left, right) =>
+          Number(listing(left.url)) - Number(listing(right.url)) ||
+          (recent
+            ? Number(Boolean(right.publishedAt)) -
+              Number(Boolean(left.publishedAt))
+            : 0) ||
+          (right.publishedAt ?? '').localeCompare(left.publishedAt ?? ''),
       ),
     );
     const unique = new Map<
       string,
       { title: string; url: string; publishedAt: string | null }
     >();
-    for (const item of discoveries.flatMap(({ evidence }) => evidence))
+    for (const item of rankedByQuery.flat())
       if (!unique.has(item.url)) unique.set(item.url, item);
-    const entries = [...unique.values()]
-      .sort((left, right) => {
-        const listing = (value: string) =>
-          /\/(?:tag|tags|category|categories|archive|search)(?:\/|$)/iu.test(
-            new URL(value).pathname,
-          );
-        return (
-          Number(listing(left.url)) - Number(listing(right.url)) ||
-          (recent
-            ? Number(Boolean(right.publishedAt)) -
-              Number(Boolean(left.publishedAt))
-            : 0) ||
-          (right.publishedAt ?? '').localeCompare(left.publishedAt ?? '')
-        );
-      })
-      .slice(0, 16);
+    const entries: Array<{
+      title: string;
+      url: string;
+      publishedAt: string | null;
+    }> = [];
+    const scheduled = new Set<string>();
+    const maxRank = Math.max(0, ...rankedByQuery.map((items) => items.length));
+    for (let rank = 0; rank < maxRank && entries.length < 16; rank += 1) {
+      for (const items of rankedByQuery) {
+        const item = items[rank];
+        if (!item || scheduled.has(item.url)) continue;
+        scheduled.add(item.url);
+        entries.push(item);
+        if (entries.length === 16) break;
+      }
+    }
+    const retrievedAt = new Date().toISOString();
     const settled = await Promise.allSettled(
       entries.map(async (item, index): Promise<FrozenPage> => {
         const document = await this.pageReader.fetchArticleDocument(
           item.url,
           signal,
         );
-        const text = document.text;
-        const paragraphs = text
-          .split(/\n{2,}/u)
-          .map((value) => value.trim())
-          .filter((value) => value.length >= 35)
-          .slice(0, 500);
-        if (!paragraphs.length) throw new Error('EMPTY_PAGE');
+        const paragraphs = enforceQuality
+          ? extractReadableParagraphs(document.text, queries)
+          : document.text
+              .split(/\n{2,}/u)
+              .map((value) => value.trim())
+              .filter((value) => value.length >= 35)
+              .slice(0, 500);
+        if (!paragraphs.length) throw new Error('EMPTY_OR_IRRELEVANT_PAGE');
         return {
           source: {
             id: `S${(sourceOffset + index + 1).toString()}`,
@@ -1028,17 +1631,52 @@ export class VerifiedChatEngine implements ChatEngine {
             ...((item.publishedAt ?? document.publishedAt)
               ? { publishedAt: item.publishedAt ?? document.publishedAt! }
               : {}),
-            retrievedAt: new Date().toISOString(),
+            retrievedAt,
           },
           sections: [{ paragraphs }],
         };
       }),
     );
-    return settled
-      .flatMap((result) =>
-        result.status === 'fulfilled' ? [result.value] : [],
+    const pages = settled.flatMap((result) =>
+      result.status === 'fulfilled' ? [result.value] : [],
+    );
+    const leads = settled.flatMap((result, index) => {
+      if (result.status === 'fulfilled') return [];
+      const item = entries[index]!;
+      return [
+        {
+          title: item.title,
+          url: item.url,
+          publishedAt: item.publishedAt,
+          retrievedAt,
+        },
+      ];
+    });
+    return {
+      pages: pages.slice(0, 8),
+      leads: leads.slice(0, 4),
+      discoveredCount: unique.size,
+      rejectedPageCount: settled.length - pages.length,
+    };
+  }
+
+  private async discoverPages(
+    queries: string[],
+    signal: AbortSignal,
+    sourceOffset = 0,
+    recent = false,
+    budget = { remaining: 6 },
+  ): Promise<FrozenPage[]> {
+    return (
+      await this.discoverBundle(
+        queries,
+        signal,
+        sourceOffset,
+        recent,
+        budget,
+        false,
       )
-      .slice(0, 8);
+    ).pages;
   }
 }
 

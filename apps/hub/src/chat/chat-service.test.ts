@@ -179,6 +179,10 @@ describe('ChatService', () => {
         requiredAxisCount: 2,
         coveredAxisCount: 1,
         rejectedUnitCount: 4,
+        discoveredPageCount: 12,
+        readablePageCount: 5,
+        rejectedPageCount: 7,
+        leadCount: 3,
         fallbackCode: 'AUDIT_REJECTED_ALL',
       }),
     });
@@ -197,6 +201,10 @@ describe('ChatService', () => {
       requiredAxisCount: 2,
       coveredAxisCount: 1,
       rejectedUnitCount: 4,
+      discoveredPageCount: 12,
+      readablePageCount: 5,
+      rejectedPageCount: 7,
+      leadCount: 3,
     });
     service.stop();
   });

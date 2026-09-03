@@ -1,12 +1,12 @@
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-import type { AssistantSource } from '@friday/contracts';
+import type { AssistantSource, ChatSource } from '@friday/contracts';
 
 interface AssistantMarkdownProps {
   content: string;
   messageId: string;
-  sources: AssistantSource[];
+  sources: Array<AssistantSource | ChatSource>;
 }
 
 function citationHref(messageId: string, sourceId: string): string {
@@ -29,7 +29,15 @@ export default function AssistantMarkdown({
   messageId,
   sources,
 }: AssistantMarkdownProps) {
-  const sourceIds = new Set(sources.map(({ id }) => id));
+  const readableSources = sources.filter(
+    (source) =>
+      !('evidenceLevel' in source) || source.evidenceLevel !== 'discovery_only',
+  );
+  const discoveryOnlySources = sources.filter(
+    (source) =>
+      'evidenceLevel' in source && source.evidenceLevel === 'discovery_only',
+  );
+  const sourceIds = new Set(readableSources.map(({ id }) => id));
   const withCitationLinks = content.replace(/\[(S\d+)\]/gu, (match, id) =>
     sourceIds.has(String(id))
       ? `[${String(id)}](${citationHref(messageId, String(id))})`
@@ -62,11 +70,11 @@ export default function AssistantMarkdown({
       >
         {withCitationLinks}
       </Markdown>
-      {sources.length > 0 ? (
+      {readableSources.length > 0 ? (
         <details className="assistant-sources" open>
-          <summary>Sources ({sources.length})</summary>
+          <summary>Sources consultées ({readableSources.length})</summary>
           <ol>
-            {sources.map((source) => {
+            {readableSources.map((source) => {
               const date = sourceDate(source);
               return (
                 <li
@@ -89,6 +97,23 @@ export default function AssistantMarkdown({
                 </li>
               );
             })}
+          </ol>
+        </details>
+      ) : null}
+      {discoveryOnlySources.length > 0 ? (
+        <details className="assistant-sources assistant-source-leads" open>
+          <summary>
+            Pistes non vérifiées ({discoveryOnlySources.length})
+          </summary>
+          <ol>
+            {discoveryOnlySources.map((source) => (
+              <li key={source.id}>
+                <a href={source.url} rel="noopener noreferrer" target="_blank">
+                  {source.title}
+                </a>
+                <small>{source.domain} · contenu original non lisible</small>
+              </li>
+            ))}
           </ol>
         </details>
       ) : null}

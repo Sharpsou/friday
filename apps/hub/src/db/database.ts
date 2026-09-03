@@ -1876,6 +1876,19 @@ const MIGRATION_043 = `
     CHECK (rejected_unit_count BETWEEN 0 AND 100);
 `;
 
+const MIGRATION_044 = `
+  ALTER TABLE chat_sources ADD COLUMN evidence_level TEXT NOT NULL DEFAULT 'readable'
+    CHECK (evidence_level IN ('readable', 'discovery_only'));
+  ALTER TABLE chat_runs ADD COLUMN discovered_page_count INTEGER NOT NULL DEFAULT 0
+    CHECK (discovered_page_count BETWEEN 0 AND 100);
+  ALTER TABLE chat_runs ADD COLUMN readable_page_count INTEGER NOT NULL DEFAULT 0
+    CHECK (readable_page_count BETWEEN 0 AND 20);
+  ALTER TABLE chat_runs ADD COLUMN rejected_page_count INTEGER NOT NULL DEFAULT 0
+    CHECK (rejected_page_count BETWEEN 0 AND 100);
+  ALTER TABLE chat_runs ADD COLUMN lead_count INTEGER NOT NULL DEFAULT 0
+    CHECK (lead_count BETWEEN 0 AND 4);
+`;
+
 const MIGRATIONS = [
   { sql: MIGRATION_001, version: 1 },
   { sql: MIGRATION_002, version: 2 },
@@ -1920,6 +1933,7 @@ const MIGRATIONS = [
   { sql: MIGRATION_041, version: 41 },
   { sql: MIGRATION_042, version: 42 },
   { sql: MIGRATION_043, version: 43 },
+  { sql: MIGRATION_044, version: 44 },
 ] as const;
 
 export function migrateDatabase(

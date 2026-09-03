@@ -363,4 +363,27 @@ export const UnitAuditJsonSchema = {
   required: ['units'],
   additionalProperties: false,
 } as const;
+export const UnifiedUnitAuditJsonSchema = {
+  type: 'object',
+  properties: {
+    units: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          unitId: { type: 'string' },
+          verdict: {
+            type: 'string',
+            enum: ['supported', 'unsupported', 'contradicted', 'not_factual'],
+          },
+          passageIds: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['unitId', 'verdict', 'passageIds'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['units'],
+  additionalProperties: false,
+} as const;
 export const AnswerPlanJsonSchema = z.toJSONSchema(AnswerPlanSchema);

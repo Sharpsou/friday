@@ -1821,6 +1821,7 @@ export const ChatSourceSchema = z
     domain: z.string().trim().min(1).max(253),
     publishedAt: z.string().datetime().nullable(),
     retrievedAt: z.string().datetime(),
+    evidenceLevel: z.enum(['readable', 'discovery_only']).default('readable'),
   })
   .strict();
 export const ChatConversationSchema = z
@@ -1841,7 +1842,7 @@ export const ChatMessageSchema = z
     content: z.string().max(100_000),
     answerStatus: ChatAnswerStatusSchema.nullable(),
     route: ChatRouteSchema.nullable(),
-    sources: z.array(ChatSourceSchema).max(8),
+    sources: z.array(ChatSourceSchema).max(12),
     createdAt: z.string().datetime(),
   })
   .strict();
@@ -1862,6 +1863,10 @@ export const ChatRunSchema = z
     requiredAxisCount: z.number().int().min(0).max(5),
     coveredAxisCount: z.number().int().min(0).max(5),
     rejectedUnitCount: z.number().int().min(0).max(100),
+    discoveredPageCount: z.number().int().min(0).max(100).default(0),
+    readablePageCount: z.number().int().min(0).max(20).default(0),
+    rejectedPageCount: z.number().int().min(0).max(100).default(0),
+    leadCount: z.number().int().min(0).max(4).default(0),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })

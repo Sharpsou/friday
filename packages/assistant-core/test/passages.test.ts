@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   UnitAuditJsonSchema,
+  UnifiedUnitAuditJsonSchema,
   auditorPrompt,
   auditorRetryPrompt,
   selectEvidencePassagesHybrid,
@@ -20,6 +21,9 @@ describe('bounded audit output', () => {
   it('keeps the structured response compact and makes the retry corrective', () => {
     expect(JSON.stringify(UnitAuditJsonSchema)).not.toContain('reason');
     expect(JSON.stringify(UnitAuditJsonSchema)).toContain('addressedAxisIds');
+    expect(JSON.stringify(UnifiedUnitAuditJsonSchema)).not.toContain(
+      'addressedAxisIds',
+    );
     expect(JSON.stringify(UnitAuditJsonSchema)).not.toContain('missingAspects');
     const first = auditorPrompt({ question: 'Question ?', units, passages });
     const retry = auditorRetryPrompt({
@@ -32,6 +36,7 @@ describe('bounded audit output', () => {
     expect(retry).toContain('AUDIT_UNKNOWN_PASSAGE');
     expect(retry).toContain('UNIT_IDS_AUTORISES=["U1"]');
     expect(retry).toContain('PASSAGE_IDS_AUTORISES=["P1"]');
+    expect(first).not.toContain('addressedAxisIds');
   });
 });
 

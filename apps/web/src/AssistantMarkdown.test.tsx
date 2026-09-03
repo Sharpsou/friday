@@ -68,4 +68,37 @@ describe('AssistantMarkdown', () => {
     expect(html).toContain('<th>Modèle</th>');
     expect(html).toContain('href="#assistant-source-message-3-S1"');
   });
+
+  it('separates readable sources from discovery-only leads', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMarkdown
+        content="Information confirmée [S1]. Une piste S2 n'est pas une citation."
+        messageId="message-4"
+        sources={[
+          {
+            id: 'S1',
+            title: 'Article lu',
+            url: 'https://example.com/readable',
+            domain: 'example.com',
+            publishedAt: null,
+            retrievedAt: '2026-09-03T00:00:00.000Z',
+            evidenceLevel: 'readable',
+          },
+          {
+            id: 'S2',
+            title: 'Podcast à explorer',
+            url: 'https://example.com/podcast',
+            domain: 'example.com',
+            publishedAt: null,
+            retrievedAt: '2026-09-03T00:00:00.000Z',
+            evidenceLevel: 'discovery_only',
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain('Sources consultées (1)');
+    expect(html).toContain('Pistes non vérifiées (1)');
+    expect(html).toContain('contenu original non lisible');
+    expect(html).not.toContain('href="#assistant-source-message-4-S2"');
+  });
 });

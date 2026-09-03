@@ -562,3 +562,50 @@ nommé un podcast et une formation, mais est restée honnêtement `partial` parc
 que les preuves disponibles ne reliaient pas les bonnes pratiques à chaque
 ressource. Cette limite relève maintenant de la qualité de récupération et non
 d'un rejet global du JSON.
+
+## 14. Pipeline documentaire unifié — 3 septembre 2026
+
+Le pipeline actif abandonne les axes comme contrat de rédaction et de
+publication. Le planificateur conserve un à cinq thèmes uniquement pour
+diversifier jusqu'à six recherches ; Gemma et Qwen reçoivent le même dossier
+documentaire unifié, sans affectation passage→thème. Les types de ressources
+écrits explicitement dans la demande, comme podcast et formation, sont aussi
+préservés par des requêtes déterministes. Si le dossier en contient mais que
+Gemma en omet un, la seule révision disponible doit le réintroduire ; une
+omission persistante rend la réponse `partial`, sans invalider ses faits.
+
+La lecture des pages filtre menus, pieds de page, répétitions et enveloppes
+dynamiques. Le titre seul ne peut rendre pertinent un corps vide. Une page
+prometteuse mais illisible devient `discovery_only` : elle est affichée sous
+« Pistes non vérifiées », jamais citée comme preuve. Le dossier lisible reste
+éphémère et borné à huit sources, douze à seize passages et 24 000 caractères ;
+aucune page, embedding ou consigne externe n'est persisté ou exécuté.
+
+Un audit valide retire toujours les unités `unsupported` ou `contradicted`. Un
+double échec JSON publie toutefois le brouillon après contrôle déterministe des
+citations, URL, HTML et tailles, avec le statut `partial` et un avertissement.
+Si tout est rejeté, Friday produit un résumé extractif cité. Sans page lisible,
+il affiche les pistes ; sans résultat Web, il produit une réponse locale
+explicitement non vérifiée. Les sujets médicaux, juridiques et financiers
+conservent ces replis avec un avertissement renforcé.
+
+SQLite 44 ajoute le niveau de preuve des sources et des compteurs numériques de
+lecture, rejet et pistes. La PWA sépare « Sources consultées » et « Pistes non
+vérifiées ». `FRIDAY_CHAT_PIPELINE=unified` active ce chemin et la valeur
+`axes` restaure immédiatement le candidat précédent sans migration inverse.
+
+La campagne réelle unifiée a été arrêtée à cinq cas comme prévu. Les demandes
+podcasts/formations et imprimantes ont conservé des ressources lisibles ainsi
+que les pistes non lisibles ; l'actualité a fourni une réponse partielle mais
+trop générale, ce qui reste une limite de qualité connue. La demande AVC a
+fourni les signes et l'appel aux secours avec des citations. Le corpus hostile
+a produit uniquement les recommandations sûres de la page, sans URL, HTML ou
+instruction d'exfiltration. Aucun des cinq cas n'a affiché une erreur à la
+place d'un contenu exploitable.
+
+Deux ajustements issus de cette campagne sont déterministes : les requêtes de
+livrables explicites participent directement aux réservations BM25/embedding,
+et les citations adjacentes résolues vers la même source sont dédupliquées. Le
+détecteur haut risque reconnaît aussi `AVC`, santé, urgence et secours. Ces
+corrections ne modifient ni le nombre de boucles ni l'autorité de l'auditeur
+sur le rejet des contradictions connues.

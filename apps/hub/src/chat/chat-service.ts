@@ -40,6 +40,10 @@ export interface ChatEngineResult {
   coveredAxisCount?: number;
   rejectedUnitCount?: number;
   fallbackCode?: string | null;
+  discoveredPageCount?: number;
+  readablePageCount?: number;
+  rejectedPageCount?: number;
+  leadCount?: number;
 }
 
 export interface ChatEngine {
@@ -81,6 +85,10 @@ interface RunRow {
   required_axis_count: number;
   covered_axis_count: number;
   rejected_unit_count: number;
+  discovered_page_count: number;
+  readable_page_count: number;
+  rejected_page_count: number;
+  lead_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -227,7 +235,8 @@ export class ChatService {
     const conversation = this.requireConversation(profileId, conversationId);
     const sourceStatement = this.database.prepare(
       `SELECT source_id AS id, title, url, domain,
-              published_at AS publishedAt, retrieved_at AS retrievedAt
+              published_at AS publishedAt, retrieved_at AS retrievedAt,
+              evidence_level AS evidenceLevel
          FROM chat_sources WHERE message_id = ?
          ORDER BY CAST(SUBSTR(source_id, 2) AS INTEGER)`,
     );
@@ -330,7 +339,8 @@ export class ChatService {
       .prepare(
         `SELECT id, conversation_id, status, stage, route, requested_mode, retrieval_mode,
                 error_code, axis_count, required_axis_count, covered_axis_count,
-                rejected_unit_count, created_at, updated_at
+                rejected_unit_count, discovered_page_count, readable_page_count,
+                rejected_page_count, lead_count, created_at, updated_at
            FROM chat_runs WHERE id = ? AND profile_id = ?`,
       )
       .get(id, profileId) as RunRow | undefined;
@@ -348,6 +358,10 @@ export class ChatService {
       requiredAxisCount: row.required_axis_count,
       coveredAxisCount: row.covered_axis_count,
       rejectedUnitCount: row.rejected_unit_count,
+      discoveredPageCount: row.discovered_page_count,
+      readablePageCount: row.readable_page_count,
+      rejectedPageCount: row.rejected_page_count,
+      leadCount: row.lead_count,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
@@ -520,8 +534,9 @@ export class ChatService {
           );
         const insertSource = this.database.prepare(
           `INSERT INTO chat_sources(
-             message_id, source_id, title, url, domain, published_at, retrieved_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+             message_id, source_id, title, url, domain, published_at, retrieved_at,
+             evidence_level
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         );
         for (const source of result.sources) {
           insertSource.run(
@@ -532,6 +547,7 @@ export class ChatService {
             source.domain,
             source.publishedAt,
             source.retrievedAt,
+            source.evidenceLevel,
           );
         }
         this.database
@@ -540,7 +556,8 @@ export class ChatService {
                assistant_message_id = ?, route = ?, retrieval_mode = ?, error_code = ?,
                model_calls = ?, source_count = ?, passage_count = ?, axis_count = ?,
                required_axis_count = ?, covered_axis_count = ?, rejected_unit_count = ?,
-               duration_ms = ?, updated_at = ?
+               discovered_page_count = ?, readable_page_count = ?,
+               rejected_page_count = ?, lead_count = ?, duration_ms = ?, updated_at = ?
              WHERE id = ?`,
           )
           .run(
@@ -549,12 +566,18 @@ export class ChatService {
             result.retrievalMode,
             result.fallbackCode ?? null,
             result.modelCalls,
-            result.sources.length,
+            result.sources.filter(
+              ({ evidenceLevel }) => evidenceLevel !== 'discovery_only',
+            ).length,
             result.passageCount,
             result.axisCount ?? 0,
             result.requiredAxisCount ?? 0,
             result.coveredAxisCount ?? 0,
             result.rejectedUnitCount ?? 0,
+            result.discoveredPageCount ?? 0,
+            result.readablePageCount ?? 0,
+            result.rejectedPageCount ?? 0,
+            result.leadCount ?? 0,
             Math.round(performance.now() - startedAt),
             completedAt,
             run.id,

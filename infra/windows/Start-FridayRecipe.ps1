@@ -33,6 +33,14 @@ if (-not $env:FRIDAY_CHAT_AXES_ENABLED) {
   }
 }
 
+if (-not $env:FRIDAY_CHAT_PIPELINE) {
+  $persistedChatPipeline =
+    [Environment]::GetEnvironmentVariable('FRIDAY_CHAT_PIPELINE', 'User')
+  if ($persistedChatPipeline) {
+    $env:FRIDAY_CHAT_PIPELINE = $persistedChatPipeline
+  }
+}
+
 function Show-FridayMessage {
   param(
     [Parameter(Mandatory = $true)][string]$Message,

@@ -30,7 +30,7 @@ export interface EmbeddingProvider {
 }
 export const DEFAULT_PASSAGE_LIMITS: PassageSelectionLimits = {
   maxSources: 8,
-  maxPassages: 12,
+  maxPassages: 16,
   maxCharacters: 24_000,
   maxPassagesPerSource: 3,
 };

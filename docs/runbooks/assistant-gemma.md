@@ -25,6 +25,7 @@ acceptée.
 ```text
 FRIDAY_CHAT_ENABLED=true
 FRIDAY_CHAT_AXES_ENABLED=true
+FRIDAY_CHAT_PIPELINE=unified
 FRIDAY_TAVILY_API_KEY=<secret hors Git>
 ```
 
@@ -34,10 +35,10 @@ Modèles locaux :
 - auditeur et routeur ambigu `qwen3.5:9b-q4_K_M` ;
 - sélection sémantique éphémère `qwen3-embedding:0.6b`.
 
-Lorsque le pipeline par axes est activé, l'absence de Tavily ou de pages
-originales exploitables produit une abstention explicite ; elle ne produit
-jamais une réponse locale silencieuse. L'échec de l'embedding
-seul conserve le traitement en `lexical_fallback`.
+Dans le pipeline unifié, l'absence de page lisible conserve les liens découverts
+comme pistes non vérifiées. Une panne Web totale produit une réponse locale
+portant explicitement l'état non vérifié ; l'échec de l'embedding seul conserve
+le traitement en `lexical_fallback`.
 
 ## API et stockage
 
@@ -46,7 +47,7 @@ via `GET /web-usage`. L'envoi retourne
 202 avec un `runId`, puis la PWA suit `queued`, `routing`, `research`, `writing`,
 `auditing`, `finalizing`. DELETE sur un run demande son annulation.
 
-SQLite 43 utilise seulement les tables `chat_*`. La migration 42 ajoute le mode
+SQLite 44 utilise seulement les tables `chat_*`. La migration 42 ajoute le mode
 de conversation et le mode figé de chaque run ; elle attribue aux conversations
 créées avant ce lot un titre dérivé de leur premier message. Les tables `assistant_*`
 restent l'archive historique accessible par `/api/assistant`; son ancienne
@@ -58,6 +59,12 @@ La migration 43 ajoute seulement quatre compteurs bornés aux runs : axes
 prévus, obligatoires et couverts, unités rejetées, ainsi qu'un code sûr de
 repli dans le champ existant. Aucun libellé
 d'axe ni contenu de preuve n'est persisté.
+
+La migration 44 ajoute `evidence_level` à `chat_sources` et quatre compteurs
+bornés aux runs : pages découvertes, pages lisibles, pages rejetées comme
+parasites et pistes exposées. Les sources historiques prennent la valeur
+`readable`. Une réponse peut exposer huit sources consultées et quatre pistes ;
+les pistes n'obtiennent jamais d'ancre dans le Markdown.
 
 Lorsque `FRIDAY_CHAT_ENABLED` n'est pas exactement `true`, toute route
 `/api/chat/*` répond 503 `{ "error": "chat_disabled" }`. La PWA affiche alors
@@ -86,7 +93,7 @@ Le quota en recherches approfondies restantes reste visible. Il est global au
 compte Tavily ; une question peut consommer plusieurs recherches.
 Chaque run Web peut de nouveau lancer jusqu'à six requêtes Tavily approfondies,
 comme l'ancien mode approfondi, tout en conservant un dossier final borné à
-huit sources et douze passages. Jusqu'à seize URL découvertes peuvent être
+huit sources et seize passages. Jusqu'à seize URL découvertes peuvent être
 lues afin que les pages illisibles ne prennent pas une des huit places finales.
 Tavily remet les crédits mensuels à zéro le premier jour du mois. Le compteur
 Friday affiche des recherches approfondies, pas des crédits : avec le plan à
@@ -144,7 +151,28 @@ La gate reste l'objectif de stabilisation même si l'utilisateur a explicitement
 ouvert le runtime avant sa réussite. Une revue IA n'est pas une validation
 humaine et ne doit pas être nommée ainsi.
 
+## Campagne unifiée du 3 septembre 2026
+
+Cinq essais réels bornés ont couvert podcasts/formations, imprimantes 3D,
+actualité, AVC et une page synthétique hostile. Tous ont produit une réponse
+lisible ou des pistes ; aucun échec d'audit n'a remplacé un contenu exploitable
+par une erreur. Le cas hostile n'a exposé ni URL, ni HTML, ni demande
+d'exfiltration. Le cas actualité est resté partiel et peu spécifique faute de
+pages récentes suffisamment riches : ce résultat illustre le repli accepté,
+mais ne ferme pas la gate qualitative.
+
+La campagne a révélé puis fait corriger trois détails : les requêtes des types
+de ressources explicites sont réservées dans la sélection, les citations
+adjacentes résolues vers une même source sont dédupliquées, et `AVC`/`secours`
+déclenchent l'avertissement haut risque. Le plafond de cinq essais ayant été
+atteint, le dernier point est confirmé automatiquement et devra être observé
+lors d'un prochain usage normal plutôt que par un sixième smoke dédié.
+
 ## Pipeline par axes
+
+Cette section décrit le rollback `FRIDAY_CHAT_PIPELINE=axes`. Le déploiement
+actif utilise `unified` ; `FRIDAY_CHAT_AXES_ENABLED` est conservé pour la
+compatibilité du chemin précédent.
 
 `FRIDAY_CHAT_AXES_ENABLED=true` active le pipeline. Qwen produit un
 plan sans faits de un à cinq axes, puis la sélection hybride affecte les
