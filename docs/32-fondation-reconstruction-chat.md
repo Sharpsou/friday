@@ -578,7 +578,7 @@ La lecture des pages filtre menus, pieds de page, répétitions et enveloppes
 dynamiques. Le titre seul ne peut rendre pertinent un corps vide. Une page
 prometteuse mais illisible devient `discovery_only` : elle est affichée sous
 « Pistes non vérifiées », jamais citée comme preuve. Le dossier lisible reste
-éphémère et borné à huit sources, douze à seize passages et 24 000 caractères ;
+éphémère et borné à huit sources, douze passages et 24 000 caractères ;
 aucune page, embedding ou consigne externe n'est persisté ou exécuté.
 
 Un audit valide retire toujours les unités `unsupported` ou `contradicted`. Un
@@ -609,3 +609,10 @@ et les citations adjacentes résolues vers la même source sont dédupliquées. 
 détecteur haut risque reconnaît aussi `AVC`, santé, urgence et secours. Ces
 corrections ne modifient ni le nombre de boucles ni l'autorité de l'auditeur
 sur le rejet des contradictions connues.
+
+Après le premier envoi utilisateur suivant le déploiement, un plafond moteur
+porté par erreur à seize passages a heurté la contrainte SQLite historique
+`chat_runs.passage_count <= 12` au moment de la finalisation. Le run avait
+travaillé 151 secondes mais aucune réponse n'a pu être persistée. Le moteur est
+réaligné à douze passages et un test verrouille cette limite ; aucune migration
+supplémentaire ni modification rétroactive du run échoué n'est nécessaire.

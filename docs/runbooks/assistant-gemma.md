@@ -93,7 +93,7 @@ Le quota en recherches approfondies restantes reste visible. Il est global au
 compte Tavily ; une question peut consommer plusieurs recherches.
 Chaque run Web peut de nouveau lancer jusqu'à six requêtes Tavily approfondies,
 comme l'ancien mode approfondi, tout en conservant un dossier final borné à
-huit sources et seize passages. Jusqu'à seize URL découvertes peuvent être
+huit sources et douze passages. Jusqu'à seize URL découvertes peuvent être
 lues afin que les pages illisibles ne prennent pas une des huit places finales.
 Tavily remet les crédits mensuels à zéro le premier jour du mois. Le compteur
 Friday affiche des recherches approfondies, pas des crédits : avec le plan à

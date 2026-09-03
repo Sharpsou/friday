@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_PASSAGE_LIMITS,
   UnitAuditJsonSchema,
   UnifiedUnitAuditJsonSchema,
   auditorPrompt,
@@ -137,6 +138,8 @@ describe('ephemeral evidence selection', () => {
     expect(Math.max(...calls)).toBeLessThanOrEqual(32);
     expect(calls.length).toBeGreaterThan(1);
     expect(result.retrievalMode).toBe('hybrid');
+    expect(DEFAULT_PASSAGE_LIMITS.maxPassages).toBe(12);
+    expect(result.passages.length).toBeLessThanOrEqual(12);
   });
 
   it('separates titles, list items and sentences deterministically', () => {
