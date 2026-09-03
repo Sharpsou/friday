@@ -71,6 +71,10 @@ export interface VerifiedChatEngineOptions {
 
 export function normalizeGeneratedMarkdown(markdown: string): string {
   return markdown
+    .replace(
+      /^(?:#{1,6}\s*|\*\*)?(?:axes?\s+)?(?:requis(?:e|es)?|utiles?|required|useful)(?:\*\*)?\s*$/gimu,
+      '',
+    )
     .replace(/\[([^\]]+)\]\(https?:\/\/[^\s)]+\)/giu, '$1')
     .replace(/https?:\/\/[^\s<>()\]]+/giu, '')
     .replace(/\((P[1-9]\d*(?:\s*,\s*P[1-9]\d*)+)\)/gu, (_all, ids: string) =>
@@ -137,6 +141,7 @@ function parseAudit(
   raw: string,
   units: AuditUnit[],
   passages: EvidencePassage[],
+  axes: AnswerPlan['axes'] = [],
 ): UnitAuditOutput {
   let value: unknown;
   try {
@@ -148,6 +153,7 @@ function parseAudit(
     UnitAuditOutputSchema.parse(value),
     units,
     passages,
+    axes,
   );
 }
 
@@ -350,6 +356,7 @@ export class VerifiedChatEngine implements ChatEngine {
             answer,
             audit: audited.audit,
             passages: dossier.passages,
+            sources: dossier.sources,
           }),
           seed: this.seed,
           maxTokens: 1_500,
@@ -472,8 +479,7 @@ export class VerifiedChatEngine implements ChatEngine {
     plan = { ...plan, axes: assignments.map(({ axis }) => axis) };
     let researchUsed = false;
     const uncoveredBeforeWriting = assignments.filter(
-      ({ axis, passageIds }) =>
-        axis.importance === 'required' && passageIds.length === 0,
+      ({ passageIds }) => passageIds.length === 0,
     );
     if (uncoveredBeforeWriting.length) {
       researchUsed = true;
@@ -520,9 +526,7 @@ export class VerifiedChatEngine implements ChatEngine {
       revisionUsed: false,
       researchUsed,
       finalAudit: false,
-      requiredAxisIds: plan.axes
-        .filter(({ importance }) => importance === 'required')
-        .map(({ id }) => id),
+      requiredAxisIds: plan.axes.map(({ id }) => id),
     });
     if (decision === 'research' && !researchUsed) {
       const missingAxisIds = new Set(
@@ -570,9 +574,7 @@ export class VerifiedChatEngine implements ChatEngine {
             revisionUsed: false,
             researchUsed: true,
             finalAudit: true,
-            requiredAxisIds: plan.axes
-              .filter(({ importance }) => importance === 'required')
-              .map(({ id }) => id),
+            requiredAxisIds: plan.axes.map(({ id }) => id),
           });
     } else if (decision === 'revise') {
       input.updateStage('writing');
@@ -584,7 +586,9 @@ export class VerifiedChatEngine implements ChatEngine {
             answer,
             audit: audited.audit,
             passages: dossier.passages,
+            sources: dossier.sources,
             axes: plan.axes,
+            axisPassages: assignments,
           }),
           seed: this.seed,
           maxTokens: 1_500,
@@ -608,9 +612,7 @@ export class VerifiedChatEngine implements ChatEngine {
             revisionUsed: true,
             researchUsed,
             finalAudit: true,
-            requiredAxisIds: plan.axes
-              .filter(({ importance }) => importance === 'required')
-              .map(({ id }) => id),
+            requiredAxisIds: plan.axes.map(({ id }) => id),
           });
     }
     if (audited.auditError)
@@ -629,9 +631,7 @@ export class VerifiedChatEngine implements ChatEngine {
       audited.audit,
       decision === 'partial',
     );
-    const requiredAxisCount = plan.axes.filter(
-      ({ importance }) => importance === 'required',
-    ).length;
+    const requiredAxisCount = plan.axes.length;
     const coveredAxisCount = requiredAxesCovered(plan.axes, audited.audit);
     if (compiled.retainedUnitCount === 0 || compiled.passageIds.length === 0)
       return this.evidenceFallback(
@@ -786,7 +786,7 @@ export class VerifiedChatEngine implements ChatEngine {
       sections.push(
         `### ${assignment.axis.label}`,
         `> « ${excerpt} » [${passage.id}]`,
-        `*Doute de l’audit : axe ${doubt === 'partial' ? 'partiellement couvert' : 'non confirmé'}.*`,
+        `*Doute de l’audit : élément demandé ${doubt === 'partial' ? 'partiellement couvert' : 'non confirmé'}.*`,
       );
     }
     if (sections.length === 2 && dossier.passages[0]) {
@@ -805,9 +805,7 @@ export class VerifiedChatEngine implements ChatEngine {
       modelCalls,
       passageCount: dossier.passages.length,
       axisCount: plan.axes.length,
-      requiredAxisCount: plan.axes.filter(
-        ({ importance }) => importance === 'required',
-      ).length,
+      requiredAxisCount: plan.axes.length,
       coveredAxisCount: audit ? requiredAxesCovered(plan.axes, audit) : 0,
       rejectedUnitCount:
         audit?.units.filter(
@@ -833,9 +831,7 @@ export class VerifiedChatEngine implements ChatEngine {
       modelCalls,
       passageCount: 0,
       axisCount: plan.axes.length,
-      requiredAxisCount: plan.axes.filter(
-        ({ importance }) => importance === 'required',
-      ).length,
+      requiredAxisCount: plan.axes.length,
       coveredAxisCount: 0,
       rejectedUnitCount: 0,
       fallbackCode,
@@ -881,6 +877,7 @@ export class VerifiedChatEngine implements ChatEngine {
           question: input.content,
           priorTurns: input.priorTurns,
           passages: dossier.passages,
+          sources: dossier.sources,
           ...(plan ? { plan } : {}),
           ...(assignments
             ? {
@@ -917,6 +914,8 @@ export class VerifiedChatEngine implements ChatEngine {
       question: input.content,
       units,
       passages: dossier.passages,
+      sources: dossier.sources,
+      axes,
     };
     const prompt = auditorPrompt(promptInput);
     let failureCode = 'AUDIT_VALIDATION_FAILED';
@@ -929,7 +928,7 @@ export class VerifiedChatEngine implements ChatEngine {
             : auditorRetryPrompt({ ...promptInput, failureCode }),
         seed: this.seed,
         format: UnitAuditJsonSchema,
-        maxTokens: 1_500,
+        maxTokens: 4_096,
         temperature: 0,
         signal: input.signal,
       });
@@ -937,7 +936,7 @@ export class VerifiedChatEngine implements ChatEngine {
         return {
           units,
           audit: deriveAnswerAudit(
-            parseAudit(raw, units, dossier.passages),
+            parseAudit(raw, units, dossier.passages, axes),
             axes,
             assignments,
           ),

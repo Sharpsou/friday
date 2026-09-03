@@ -19,7 +19,8 @@ describe('bounded audit output', () => {
 
   it('keeps the structured response compact and makes the retry corrective', () => {
     expect(JSON.stringify(UnitAuditJsonSchema)).not.toContain('reason');
-    expect(JSON.stringify(UnitAuditJsonSchema)).not.toContain('axes');
+    expect(JSON.stringify(UnitAuditJsonSchema)).toContain('addressedAxisIds');
+    expect(JSON.stringify(UnitAuditJsonSchema)).not.toContain('missingAspects');
     const first = auditorPrompt({ question: 'Question ?', units, passages });
     const retry = auditorRetryPrompt({
       question: 'Question ?',

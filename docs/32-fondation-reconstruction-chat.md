@@ -472,7 +472,7 @@ La gate fraîche `pnpm verify` du 31 août 2026 passe pour le pipeline candidat 
 formatage, lint, types, 27 tests Robot, 38 `chat-eval`, 25 contrats, 15 domaine,
 124 Hub, 105 PWA, builds de production et 26 scénarios Playwright mobiles.
 
-## 13. Pipeline candidat par axes — 31 août 2026
+## 13. Pipeline candidat par axes — 31 août au 3 septembre 2026
 
 Le moteur partagé et le banc possèdent désormais un chemin candidat activable
 par `FRIDAY_CHAT_AXES_ENABLED`. Il remplace les conversions intermédiaires par
@@ -485,10 +485,14 @@ catégorie, archive et recherche sont déclassées ; pour une demande récente,
 une source non datée reste seulement contextuelle. La date est extraite des
 métadonnées de la page originale lorsque Tavily ne la fournit pas.
 
-L'audit modèle exige seulement que chaque unité soit rendue exactement une
-fois avec son verdict et ses passages. `supported` exige toujours une preuve
-connue ; identifiant inventé, doublon, omission ou passage inconnu déclenche
-l'unique correction JSON. La couverture des axes n'est plus demandée à Qwen :
+L'audit modèle exige seulement un verdict, des passages et les axes traités par
+unité. `supported` exige toujours une preuve connue. Après validation de la
+forme JSON, le code normalise conservativement les erreurs de référence : il
+ignore une unité inconnue ou répétée, retire les passages inconnus ou répétés et
+rétrograde en `unsupported` tout soutien ou contradiction privé de preuve. Une
+unité omise devient elle aussi `unsupported`. Ces défauts ne peuvent donc ni
+valider un fait ni faire échouer tout un audit par effet domino. La couverture
+des axes n'est plus demandée globalement à Qwen :
 le code la dérive par intersection entre passages affectés à l'axe et passages
 approuvés dans les unités. Il distingue ainsi révision avec preuve disponible
 et nouvelle recherche faute de preuve, sans faire confiance à un jugement
@@ -525,3 +529,36 @@ actif via `FRIDAY_CHAT_ENABLED=true`, tandis que
 `FRIDAY_CHAT_AXES_ENABLED=true`. La sauvegarde
 cohérente pré-migration est
 `D:\FridayData\backups\friday-pre-chat-axes-migration43-20260831-235916.sqlite`.
+
+Le 3 septembre, la revue d'une recherche réelle sur les podcasts, formations,
+applications et bonnes pratiques agentiques a révélé que la hiérarchie interne
+`required|useful` était recopiée comme structure visible. Elle permettait aussi
+à une dimension explicitement demandée mais classée `useful` de rester pauvre
+sans empêcher le statut `verified`.
+
+Le contrat remplace cette hiérarchie par `primary|cross_cutting` et rend tous
+les axes planifiés obligatoires. Le rédacteur reçoit le plan comme checklist
+privée, choisit une structure propre à l'intention et doit incorporer les
+dimensions transversales aux résultats principaux lorsque les preuves le
+permettent. L'auditeur factuel reste compact : il annote chaque unité avec les
+axes réellement traités, tandis que le code conserve seul la décision. Une
+couverture transversale exige une unité soutenue reliant les deux rôles et une
+preuve affectée à l'axe. Une erreur ou omission d'identifiant d'axe ne peut pas
+valider un fait ni invalider tout l'audit ; elle dégrade seulement la couverture
+et conduit à l'unique révision ou à une réponse partielle.
+Une seconde vérification réelle a montré qu'un axe générique « ressources »
+pouvait encore absorber podcasts et formations, tandis que le rédacteur ne
+recevait pas les titres des sources. Le planificateur doit désormais conserver
+chaque type de livrable explicite comme axe principal distinct. Le dossier de
+prompt inclut le titre validé associé à chaque passage, sans URL, pour permettre
+de nommer les ressources tout en conservant la résolution des liens dans le
+code.
+
+Les cinq essais réels autorisés ont été consommés. Le dernier, après
+normalisation conservatrice et augmentation de la sortie d'audit à 4 096
+tokens, a terminé rédaction, révision et deux audits sans erreur : cinq sources,
+aucune unité factuelle rejetée et trois axes couverts sur cinq. La réponse a
+nommé un podcast et une formation, mais est restée honnêtement `partial` parce
+que les preuves disponibles ne reliaient pas les bonnes pratiques à chaque
+ressource. Cette limite relève maintenant de la qualité de récupération et non
+d'un rejet global du JSON.

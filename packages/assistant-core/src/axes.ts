@@ -38,7 +38,7 @@ export function fallbackAnswerPlan(question: string): AnswerPlan {
         id: 'A1',
         label: 'Réponse principale',
         question: normalized,
-        importance: 'required',
+        role: 'primary',
         query: normalized,
       },
     ],
@@ -123,8 +123,7 @@ export function mergeRedundantAxes(
     duplicate.passageIds = [
       ...new Set([...duplicate.passageIds, ...candidate.passageIds]),
     ].slice(0, 4);
-    if (candidate.axis.importance === 'required')
-      duplicate.axis.importance = 'required';
+    if (candidate.axis.role === 'primary') duplicate.axis.role = 'primary';
   }
   return merged;
 }

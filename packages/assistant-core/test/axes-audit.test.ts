@@ -22,7 +22,7 @@ describe('answer axes and recoverable audits', () => {
           id: `A${(index + 1).toString()}`,
           label: `Axe ${(index + 1).toString()}`,
           question: `Quelle est la dimension ${(index + 1).toString()} ?`,
-          importance: index < 2 ? 'required' : 'useful',
+          role: index < 2 ? 'primary' : 'cross_cutting',
           query: `requête distincte ${(index + 1).toString()}`,
         })),
       }),
@@ -102,20 +102,27 @@ describe('answer axes and recoverable audits', () => {
         id: 'A1' as const,
         label: 'Mesure',
         question: 'Quelle mesure ?',
-        importance: 'required' as const,
+        role: 'primary' as const,
         query: 'mesure',
       },
       {
         id: 'A2' as const,
         label: 'Limites',
         question: 'Quelles limites ?',
-        importance: 'required' as const,
+        role: 'primary' as const,
         query: 'limites',
       },
     ];
     const audit = deriveAnswerAudit(
       {
-        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
+        units: [
+          {
+            unitId: 'U1',
+            verdict: 'supported',
+            passageIds: ['P1'],
+            addressedAxisIds: ['A1'],
+          },
+        ],
       },
       axes,
       [
@@ -147,7 +154,7 @@ describe('answer axes and recoverable audits', () => {
       id: 'A1' as const,
       label: 'Limites',
       question: 'Quelles limites ?',
-      importance: 'required' as const,
+      role: 'primary' as const,
       query: 'limites',
     };
     const audit = deriveAnswerAudit(
@@ -168,18 +175,176 @@ describe('answer axes and recoverable audits', () => {
     ).toBe('research');
   });
 
-  it('rejects incomplete or invented model audit identifiers', () => {
+  it('requires a cross-cutting axis to be integrated with a primary axis', () => {
+    const axes = [
+      {
+        id: 'A1' as const,
+        label: 'Podcasts',
+        question: 'Quels podcasts écouter ?',
+        role: 'primary' as const,
+        query: 'podcasts agentiques',
+      },
+      {
+        id: 'A2' as const,
+        label: 'Bonnes pratiques',
+        question: 'Quelles bonnes pratiques sont enseignées ?',
+        role: 'cross_cutting' as const,
+        query: 'bonnes pratiques agents IA',
+      },
+    ];
+    const assignments = [
+      { axis: axes[0]!, passageIds: ['P1' as const] },
+      { axis: axes[1]!, passageIds: ['P2' as const] },
+    ];
+    const isolated = deriveAnswerAudit(
+      {
+        units: [
+          {
+            unitId: 'U1',
+            verdict: 'supported',
+            passageIds: ['P1'],
+            addressedAxisIds: ['A1'],
+          },
+          {
+            unitId: 'U2',
+            verdict: 'supported',
+            passageIds: ['P2'],
+            addressedAxisIds: ['A2'],
+          },
+        ],
+      },
+      axes,
+      assignments,
+    );
+    expect(isolated.axes[1]).toMatchObject({
+      axisId: 'A2',
+      coverage: 'partial',
+      passageIds: ['P2'],
+    });
+    expect(
+      decideEvaluation(isolated, {
+        revisionUsed: false,
+        researchUsed: false,
+        finalAudit: false,
+        requiredAxisIds: ['A1', 'A2'],
+      }),
+    ).toBe('revise');
+
+    const integrated = deriveAnswerAudit(
+      {
+        units: [
+          {
+            unitId: 'U1',
+            verdict: 'supported',
+            passageIds: ['P1', 'P2'],
+            addressedAxisIds: ['A1', 'A2'],
+          },
+        ],
+      },
+      axes,
+      assignments,
+    );
+    expect(
+      integrated.axes.every(({ coverage }) => coverage === 'covered'),
+    ).toBe(true);
+  });
+
+  it('ignores unknown and duplicate axis ids without weakening factual checks', () => {
+    const units = splitAuditSegments('Un fait confirmé [P1].').map(
+      ({ unit }) => unit,
+    );
+    const axis = {
+      id: 'A1' as const,
+      label: 'Fait',
+      question: 'Quel fait ?',
+      role: 'primary' as const,
+      query: 'fait',
+    };
+    expect(
+      validateUnitAuditReferences(
+        {
+          units: [
+            {
+              unitId: 'U1',
+              verdict: 'supported',
+              passageIds: ['P1'],
+              addressedAxisIds: ['A1', 'A1', 'A99'],
+            },
+          ],
+        },
+        units,
+        [{ id: 'P1', sourceId: 'S1', text: 'Preuve.' }],
+        [axis],
+      ).units[0]?.addressedAxisIds,
+    ).toEqual(['A1']);
+  });
+
+  it('conservatively normalizes incomplete or invented model audit identifiers', () => {
     const units = splitAuditSegments(
       'Premier fait [P1]. Second fait [P1].',
     ).map(({ unit }) => unit);
-    expect(() =>
+    expect(
       validateUnitAuditReferences(
         {
           units: [{ unitId: 'U99', verdict: 'supported', passageIds: ['P1'] }],
         },
         units,
         [{ id: 'P1', sourceId: 'S1', text: 'Preuve.' }],
-      ),
-    ).toThrow('AUDIT_UNKNOWN_UNIT');
+      ).units,
+    ).toEqual([
+      {
+        unitId: 'U1',
+        verdict: 'unsupported',
+        passageIds: [],
+        addressedAxisIds: [],
+      },
+      {
+        unitId: 'U2',
+        verdict: 'unsupported',
+        passageIds: [],
+        addressedAxisIds: [],
+      },
+    ]);
+  });
+
+  it('downgrades invalid factual support without discarding a sound audit', () => {
+    const units = splitAuditSegments('Premier fait. Second fait [P1].').map(
+      ({ unit }) => unit,
+    );
+    expect(
+      validateUnitAuditReferences(
+        {
+          units: [
+            {
+              unitId: 'U1',
+              verdict: 'supported',
+              passageIds: ['P99'],
+              addressedAxisIds: [],
+            },
+            {
+              unitId: 'U2',
+              verdict: 'supported',
+              passageIds: ['P1', 'P1'],
+              addressedAxisIds: [],
+            },
+          ],
+        },
+        units,
+        [{ id: 'P1', sourceId: 'S1', text: 'Second fait.' }],
+      ).units,
+    ).toEqual([
+      {
+        unitId: 'U1',
+        verdict: 'unsupported',
+        passageIds: [],
+        addressedAxisIds: [],
+      },
+      {
+        unitId: 'U2',
+        verdict: 'supported',
+        passageIds: ['P1'],
+        addressedAxisIds: [],
+      },
+    ]);
   });
 });

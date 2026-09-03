@@ -23,6 +23,7 @@ import {
   parseAnswerPlan,
   validateUnitAuditReferences,
   type AnswerAudit,
+  type AnswerPlan,
   type AuditUnit,
   type AxisEvidence,
   type ChatEvalCase,
@@ -137,6 +138,7 @@ function parseAudit(
   raw: string,
   units: AuditUnit[],
   passages: EvidencePassage[],
+  axes: AnswerPlan['axes'] = [],
 ): UnitAuditOutput {
   let json: unknown;
   try {
@@ -148,6 +150,7 @@ function parseAudit(
     UnitAuditOutputSchema.parse(json),
     units,
     passages,
+    axes,
   );
 }
 
@@ -259,6 +262,7 @@ export class EvaluationRunner {
             question: evalCase.question,
             priorTurns: evalCase.priorTurns,
             passages: evidence.passages,
+            sources: evidence.sources,
             ...(this.options.axesEnabled
               ? { plan, axisPassages: assignments }
               : {}),
@@ -279,6 +283,8 @@ export class EvaluationRunner {
         question: evalCase.question,
         units,
         passages: evidence.passages,
+        sources: evidence.sources,
+        axes: this.options.axesEnabled ? plan.axes : [],
       };
       const prompt = auditorPrompt(promptInput);
       let failureCode = 'AUDIT_VALIDATION_FAILED';
@@ -289,14 +295,19 @@ export class EvaluationRunner {
             ? prompt
             : auditorRetryPrompt({ ...promptInput, failureCode }),
           UnitAuditJsonSchema,
-          1_500,
+          4_096,
           0,
         );
         try {
           return {
             units,
             audit: deriveAnswerAudit(
-              parseAudit(raw, units, evidence.passages),
+              parseAudit(
+                raw,
+                units,
+                evidence.passages,
+                this.options.axesEnabled ? plan.axes : [],
+              ),
               this.options.axesEnabled ? plan.axes : [],
               this.options.axesEnabled ? assignments : [],
             ),
@@ -340,9 +351,7 @@ export class EvaluationRunner {
           finalAudit: false,
           ...(this.options.axesEnabled
             ? {
-                requiredAxisIds: plan.axes
-                  .filter(({ importance }) => importance === 'required')
-                  .map(({ id }) => id),
+                requiredAxisIds: plan.axes.map(({ id }) => id),
               }
             : {}),
         });
@@ -384,9 +393,7 @@ export class EvaluationRunner {
               finalAudit: true,
               ...(this.options.axesEnabled
                 ? {
-                    requiredAxisIds: plan.axes
-                      .filter(({ importance }) => importance === 'required')
-                      .map(({ id }) => id),
+                    requiredAxisIds: plan.axes.map(({ id }) => id),
                   }
                 : {}),
             });
@@ -403,7 +410,10 @@ export class EvaluationRunner {
             answer,
             audit: audited.audit,
             passages: dossier.passages,
-            ...(this.options.axesEnabled ? { axes: plan.axes } : {}),
+            sources: dossier.sources,
+            ...(this.options.axesEnabled
+              ? { axes: plan.axes, axisPassages: assignments }
+              : {}),
           }),
           undefined,
           1_500,
@@ -420,9 +430,7 @@ export class EvaluationRunner {
             finalAudit: true,
             ...(this.options.axesEnabled
               ? {
-                  requiredAxisIds: plan.axes
-                    .filter(({ importance }) => importance === 'required')
-                    .map(({ id }) => id),
+                  requiredAxisIds: plan.axes.map(({ id }) => id),
                 }
               : {}),
           });
@@ -490,17 +498,12 @@ export class EvaluationRunner {
             ).length / referenceEvidence.length,
       elapsedMs: Math.round(performance.now() - startedAt),
       plannedAxisCount: this.options.axesEnabled ? plan.axes.length : 0,
-      requiredAxisCount: this.options.axesEnabled
-        ? plan.axes.filter(({ importance }) => importance === 'required').length
-        : 0,
+      requiredAxisCount: this.options.axesEnabled ? plan.axes.length : 0,
       coveredAxisCount: this.options.axesEnabled
         ? audited.audit.axes.filter(
             ({ axisId, coverage }) =>
               coverage === 'covered' &&
-              plan.axes.some(
-                ({ id, importance }) =>
-                  id === axisId && importance === 'required',
-              ),
+              plan.axes.some(({ id }) => id === axisId),
           ).length
         : 0,
       promptVersions: PROMPT_VERSIONS,

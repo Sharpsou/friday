@@ -23,6 +23,14 @@ describe('normalizeGeneratedMarkdown', () => {
       'Version [P1] [P3] [P8].',
     );
   });
+
+  it('retire les rubriques qui exposent la hiérarchie interne des axes', () => {
+    expect(
+      normalizeGeneratedMarkdown(
+        '### Axes Requise\n\nPodcast utile.\n\n**Axes Useful**\n\nBonnes pratiques.',
+      ),
+    ).toBe('Podcast utile.\n\n\nBonnes pratiques.');
+  });
 });
 
 describe('routeForcedByMode', () => {
@@ -80,11 +88,63 @@ const plan = JSON.stringify({
       id: 'A1',
       label: 'Autonomie mesurée',
       question: 'Quelle autonomie a été mesurée ?',
-      importance: 'required',
+      role: 'primary',
       query: 'autonomie mesurée protocole',
     },
   ],
 });
+
+const compositionPlan = JSON.stringify({
+  intent: 'recommend',
+  axes: [
+    {
+      id: 'A1',
+      label: 'Podcast agentique',
+      question: 'Quel podcast agentique écouter ?',
+      role: 'primary',
+      query: 'podcast agentique',
+    },
+    {
+      id: 'A2',
+      label: 'Bonnes pratiques',
+      question: 'Quelles bonnes pratiques agentiques sont enseignées ?',
+      role: 'cross_cutting',
+      query: 'bonnes pratiques agentiques',
+    },
+  ],
+});
+
+function compositionEngine(responses: string[]) {
+  return new VerifiedChatEngine({
+    axesEnabled: true,
+    ollama: {
+      generate: async () => ({
+        response: responses.shift()!,
+        durationMs: 1,
+      }),
+      embed: async ({ input }: { input: string[] }) => input.map(() => [1, 0]),
+    } as never,
+    search: {
+      search: async () => ({
+        creditsUsed: 2,
+        evidence: [
+          {
+            title: 'Podcast agentique et pratiques',
+            url: 'https://example.com/podcast-agentique',
+            content: '',
+            publishedAt: '2026-08-31T00:00:00.000Z',
+          },
+        ],
+      }),
+    } as never,
+    pageReader: {
+      fetchArticleDocument: async () => ({
+        text: 'Ce podcast agentique présente des applications concrètes et enseigne les bonnes pratiques agentiques de supervision.',
+        publishedAt: '2026-08-31T00:00:00.000Z',
+      }),
+    } as never,
+  });
+}
 
 describe('axis verified pipeline', () => {
   it('uses six deep queries and refills unreadable pages before keeping eight', async () => {
@@ -191,14 +251,21 @@ describe('axis verified pipeline', () => {
             label: 'Découvertes 2026',
             question:
               'Quelles découvertes de James Webb ont été publiées en 2026 ?',
-            importance: 'required',
+            role: 'primary',
             query: 'James Webb découvertes 2026',
           },
         ],
       }),
       'Une découverte de James Webb a été publiée en 2026 [P1].',
       JSON.stringify({
-        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
+        units: [
+          {
+            unitId: 'U1',
+            verdict: 'supported',
+            passageIds: ['P1'],
+            addressedAxisIds: ['A1'],
+          },
+        ],
       }),
     ];
     const engine = new VerifiedChatEngine({
@@ -263,7 +330,14 @@ describe('axis verified pipeline', () => {
       plan,
       'Le protocole mesure dix heures [P1].',
       JSON.stringify({
-        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
+        units: [
+          {
+            unitId: 'U1',
+            verdict: 'supported',
+            passageIds: ['P1'],
+            addressedAxisIds: ['A1'],
+          },
+        ],
       }),
     ]);
     const stages: string[] = [];
@@ -284,6 +358,131 @@ describe('axis verified pipeline', () => {
     expect(result.markdown).not.toMatch(/\[P\d+/u);
     expect(result.sources).toHaveLength(1);
     expect(stages).toContain('auditing');
+  });
+
+  it('revises an isolated cross-cutting section into the primary resource', async () => {
+    const isolatedAudit = JSON.stringify({
+      units: [
+        {
+          unitId: 'U1',
+          verdict: 'not_factual',
+          passageIds: [],
+          addressedAxisIds: ['A1'],
+        },
+        {
+          unitId: 'U2',
+          verdict: 'supported',
+          passageIds: ['P1'],
+          addressedAxisIds: ['A1'],
+        },
+        {
+          unitId: 'U3',
+          verdict: 'not_factual',
+          passageIds: [],
+          addressedAxisIds: ['A2'],
+        },
+        {
+          unitId: 'U4',
+          verdict: 'supported',
+          passageIds: ['P1'],
+          addressedAxisIds: ['A2'],
+        },
+      ],
+    });
+    const engine = compositionEngine([
+      compositionPlan,
+      '### Podcast\nLe podcast présente des applications [P1].\n### Bonnes pratiques\nIl recommande une supervision [P1].',
+      isolatedAudit,
+      '### Podcast recommandé\nCe podcast présente des applications et enseigne les bonnes pratiques de supervision [P1].',
+      JSON.stringify({
+        units: [
+          {
+            unitId: 'U1',
+            verdict: 'not_factual',
+            passageIds: [],
+            addressedAxisIds: ['A1'],
+          },
+          {
+            unitId: 'U2',
+            verdict: 'supported',
+            passageIds: ['P1'],
+            addressedAxisIds: ['A1', 'A2'],
+          },
+        ],
+      }),
+    ]);
+    const result = await engine.answer({
+      content: 'Trouve un podcast sur l’agentique et ses bonnes pratiques.',
+      mode: 'web',
+      priorTurns: [],
+      signal: new AbortController().signal,
+      updateStage: () => undefined,
+    });
+    expect(result).toMatchObject({
+      status: 'verified',
+      modelCalls: 5,
+      axisCount: 2,
+      requiredAxisCount: 2,
+      coveredAxisCount: 2,
+    });
+    expect(result.markdown).toContain('enseigne les bonnes pratiques');
+    expect(result.markdown).not.toMatch(/axes?\s+(?:requis|utile)/iu);
+  });
+
+  it('keeps supported content partial instead of masking it when composition stays isolated', async () => {
+    const isolatedAnswer =
+      '### Podcast\nLe podcast présente des applications [P1].\n### Bonnes pratiques\nIl recommande une supervision [P1].';
+    const isolatedAudit = JSON.stringify({
+      units: [
+        {
+          unitId: 'U1',
+          verdict: 'not_factual',
+          passageIds: [],
+          addressedAxisIds: ['A1'],
+        },
+        {
+          unitId: 'U2',
+          verdict: 'supported',
+          passageIds: ['P1'],
+          addressedAxisIds: ['A1'],
+        },
+        {
+          unitId: 'U3',
+          verdict: 'not_factual',
+          passageIds: [],
+          addressedAxisIds: ['A2'],
+        },
+        {
+          unitId: 'U4',
+          verdict: 'supported',
+          passageIds: ['P1'],
+          addressedAxisIds: ['A2'],
+        },
+      ],
+    });
+    const engine = compositionEngine([
+      compositionPlan,
+      isolatedAnswer,
+      isolatedAudit,
+      isolatedAnswer,
+      isolatedAudit,
+    ]);
+    const result = await engine.answer({
+      content: 'Trouve un podcast sur l’agentique et ses bonnes pratiques.',
+      mode: 'web',
+      priorTurns: [],
+      signal: new AbortController().signal,
+      updateStage: () => undefined,
+    });
+    expect(result).toMatchObject({
+      status: 'partial',
+      fallbackCode: 'PARTIAL_AUDIT',
+      rejectedUnitCount: 0,
+    });
+    expect(result.markdown).toContain('podcast présente des applications');
+    expect(result.markdown).toContain('certains besoins restent incomplets');
+    expect(result.markdown).not.toContain('brouillon a été masqué');
+    expect(result.markdown).not.toMatch(/A[1-5]/u);
   });
 
   it('masks a fully rejected draft and shows only a sourced doubt dossier', async () => {

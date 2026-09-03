@@ -1,6 +1,6 @@
 # État canonique Friday — application et robot
 
-Date de mise à jour : 1er septembre 2026
+Date de mise à jour : 3 septembre 2026
 Statut : **source de vérité d’implémentation**
 
 ## Application
@@ -31,6 +31,10 @@ uniquement un verdict et des passages pour chaque unité. Le code valide les
 identifiants, dérive la couverture des axes et décide recherche, révision ou
 publication ; une unique correction de forme reste autorisée et un second
 échec continue d'échouer fermé.
+Une sortie JSON bien formée mais contenant une unité ou un passage inconnu est
+désormais récupérée de façon conservatrice : les références invalides sont
+retirées et tout verdict qui perd sa preuve devient `unsupported`. Cette
+normalisation ne peut jamais promouvoir une affirmation.
 Les relances affichent leur progression directement au bas du fil. Le run
 actif de la conversation est relu depuis le Hub après remontage ou
 rafraîchissement ; son accès reste strictement borné au profil authentifié.
@@ -42,8 +46,16 @@ Le pipeline par un à cinq axes est actif avec
 compile les citations depuis les passages approuvés par l'auditeur et masque
 le brouillon lorsqu'aucune unité factuelle ne survit. Dans ce cas exceptionnel,
 seuls des extraits de sources bornés et explicitement douteux sont affichés.
-La vérification complète candidate passe avec 27 tests Robot, 38 tests du banc,
-25 contrats, 15 domaine, 124 Hub, 105 PWA et 26 scénarios Playwright.
+Les axes sont désormais tous obligatoires, sans hiérarchie `required|useful` :
+`primary` désigne les résultats principaux et `cross_cutting` les dimensions à
+intégrer à ces résultats. Le plan n'est plus un plan éditorial visible. La
+couverture exige à la fois une preuve affectée, une unité soutenue qui traite
+l'axe et, pour un axe transversal, son association à un axe principal. Une
+faiblesse de composition seule rend la réponse partielle sans masquer les faits
+soutenus.
+La vérification complète candidate passe avec 27 tests Robot, 18 tests du cœur
+Assistant, 40 tests du banc, 25 contrats, 15 domaine, 132 Hub, 105 PWA et 28
+scénarios Playwright.
 
 Les migrations Assistant jusqu'à 40 et les données existantes restent en place
 pour préserver l'historique et la compatibilité SQLite ; elles sont désormais

@@ -17,31 +17,50 @@ export function validateUnitAuditReferences(
   output: UnitAuditOutput,
   units: AuditUnit[],
   passages: EvidencePassage[],
+  axes: AnswerAxis[] = [],
 ): UnitAuditOutput {
   const unitIds = new Set(units.map(({ id }) => id));
   const passageIds = new Set(passages.map(({ id }) => id));
-  const seen = new Set<string>();
+  const axisIds = new Set(axes.map(({ id }) => id));
+  const normalized = new Map<
+    AuditUnit['id'],
+    UnitAuditOutput['units'][number]
+  >();
   for (const unit of output.units) {
-    if (!unitIds.has(unit.unitId)) throw new Error('AUDIT_UNKNOWN_UNIT');
-    if (seen.has(unit.unitId)) throw new Error('AUDIT_DUPLICATE_UNIT');
-    seen.add(unit.unitId);
-    if (new Set(unit.passageIds).size !== unit.passageIds.length)
-      throw new Error('AUDIT_DUPLICATE_PASSAGE');
-    if (unit.passageIds.some((id) => !passageIds.has(id)))
-      throw new Error('AUDIT_UNKNOWN_PASSAGE');
-    if (unit.verdict === 'supported' && unit.passageIds.length === 0)
-      throw new Error('AUDIT_SUPPORTED_WITHOUT_PASSAGE');
-    if (unit.verdict === 'contradicted' && unit.passageIds.length === 0)
-      throw new Error('AUDIT_CONTRADICTION_WITHOUT_PASSAGE');
-    if (unit.verdict === 'not_factual' && unit.passageIds.length !== 0)
-      throw new Error('AUDIT_NON_FACTUAL_WITH_PASSAGE');
+    if (!unitIds.has(unit.unitId) || normalized.has(unit.unitId)) continue;
+    let validPassageIds = [
+      ...new Set(unit.passageIds.filter((id) => passageIds.has(id))),
+    ];
+    let verdict = unit.verdict;
+    if (verdict === 'not_factual') validPassageIds = [];
+    if (
+      (verdict === 'supported' || verdict === 'contradicted') &&
+      validPassageIds.length === 0
+    )
+      verdict = 'unsupported';
+    normalized.set(unit.unitId, {
+      ...unit,
+      verdict,
+      passageIds: validPassageIds,
+      addressedAxisIds: [
+        ...new Set(
+          (unit.addressedAxisIds ?? []).filter((axisId) => axisIds.has(axisId)),
+        ),
+      ],
+    });
   }
-  if (output.units.length !== units.length)
-    throw new Error('AUDIT_INCOMPLETE_UNITS');
-  const byId = new Map(output.units.map((unit) => [unit.unitId, unit]));
-  if (units.some(({ id }) => !byId.has(id)))
-    throw new Error('AUDIT_INCOMPLETE_UNITS');
-  return { units: units.map(({ id }) => byId.get(id)!) };
+  return {
+    units: units.map(({ id }) => {
+      return (
+        normalized.get(id) ?? {
+          unitId: id,
+          verdict: 'unsupported',
+          passageIds: [],
+          addressedAxisIds: [],
+        }
+      );
+    }),
+  };
 }
 
 export function deriveAnswerAudit(
@@ -49,26 +68,45 @@ export function deriveAnswerAudit(
   axes: AnswerAxis[] = [],
   assignments: AxisEvidence[] = [],
 ): AnswerAudit {
-  const supportedPassages = new Set(
-    output.units
-      .filter(({ verdict }) => verdict === 'supported')
-      .flatMap(({ passageIds }) => passageIds),
+  const supportedUnits = output.units.filter(
+    ({ verdict }) => verdict === 'supported',
   );
   const assignedByAxis = new Map(
     assignments.map(({ axis, passageIds }) => [axis.id, passageIds]),
   );
+  const primaryAxisIds = new Set(
+    axes.filter(({ role }) => role === 'primary').map(({ id }) => id),
+  );
   const auditAxes = axes.map((axis) => {
-    const passageIds = (assignedByAxis.get(axis.id) ?? []).filter((id) =>
-      supportedPassages.has(id),
+    const assigned = new Set(assignedByAxis.get(axis.id) ?? []);
+    const addressingUnits = supportedUnits.filter(({ addressedAxisIds }) =>
+      addressedAxisIds?.includes(axis.id),
     );
+    const passageIds = [
+      ...new Set(
+        addressingUnits
+          .flatMap(({ passageIds: ids }) => ids)
+          .filter((id) => assigned.has(id)),
+      ),
+    ];
+    const integrated =
+      axis.role === 'primary' ||
+      primaryAxisIds.size === 0 ||
+      addressingUnits.some(({ addressedAxisIds }) =>
+        addressedAxisIds?.some((id) => primaryAxisIds.has(id)),
+      );
     return {
       axisId: axis.id,
-      coverage: passageIds.length ? ('covered' as const) : ('missing' as const),
+      coverage:
+        passageIds.length === 0
+          ? ('missing' as const)
+          : integrated
+            ? ('covered' as const)
+            : ('partial' as const),
       passageIds,
     };
   });
-  const required = axes.filter(({ importance }) => importance === 'required');
-  const missing = required.filter(
+  const missing = axes.filter(
     ({ id }) =>
       auditAxes.find(({ axisId }) => axisId === id)?.coverage !== 'covered',
   );
@@ -222,11 +260,19 @@ export function compileAuditedAnswer(
     );
   }
   const rejectedUnitCount = segments.length - retained.length;
-  const missingAxes = audit.axes
-    .filter(({ coverage }) => coverage !== 'covered')
-    .map(({ axisId }) => axisId);
+  const missingAxisCount = audit.axes.filter(
+    ({ coverage }) => coverage !== 'covered',
+  ).length;
+  const partialDetails = [
+    ...(rejectedUnitCount
+      ? [
+          `${rejectedUnitCount.toString()} élément(s) insuffisamment étayé(s) ont été retirés`,
+        ]
+      : []),
+    ...(missingAxisCount ? ['certains besoins restent incomplets'] : []),
+  ];
   const notice = partial
-    ? `_Réponse partielle : ${rejectedUnitCount.toString()} élément(s) insuffisamment étayé(s) ont été retirés${missingAxes.length ? ` ; axes encore incomplets : ${missingAxes.join(', ')}` : ''}._`
+    ? `_Réponse partielle${partialDetails.length ? ` : ${partialDetails.join(' ; ')}` : ''}._`
     : '';
   return {
     markdown: [...retained, ...(notice ? [notice] : [])].join('\n\n'),
@@ -245,9 +291,7 @@ export function requiredAxesCovered(
       .filter(({ coverage }) => coverage === 'covered')
       .map(({ axisId }) => axisId),
   );
-  return axes.filter(
-    ({ importance, id }) => importance === 'required' && covered.has(id),
-  ).length;
+  return axes.filter(({ id }) => covered.has(id)).length;
 }
 
 export function suppressUnsupportedUnits(

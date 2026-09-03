@@ -48,7 +48,7 @@ export const AnswerAxisSchema = z.strictObject({
     .min(3)
     .max(300)
     .refine((value) => !/https?:\/\//iu.test(value), 'URL forbidden'),
-  importance: z.enum(['required', 'useful']),
+  role: z.enum(['primary', 'cross_cutting']),
   query: z
     .string()
     .trim()
@@ -87,6 +87,7 @@ export const AnswerAuditSchema = z
             'not_factual',
           ]),
           passageIds: z.array(PassageIdSchema).max(12),
+          addressedAxisIds: z.array(AxisIdSchema).max(5).optional(),
           reason: z.string().trim().min(1).max(500).optional(),
         }),
       )
@@ -266,6 +267,14 @@ export const UnitAuditOutputSchema = z.strictObject({
           'not_factual',
         ]),
         passageIds: z.array(PassageIdSchema).max(12),
+        // Deliberately accept arbitrary short strings here. Unknown and
+        // duplicate axis identifiers are discarded after generation so a
+        // composition mistake cannot invalidate an otherwise sound factual
+        // audit.
+        addressedAxisIds: z
+          .array(z.string().trim().min(1).max(16))
+          .max(10)
+          .optional(),
       }),
     )
     .max(100),
@@ -344,8 +353,9 @@ export const UnitAuditJsonSchema = {
             enum: ['supported', 'unsupported', 'contradicted', 'not_factual'],
           },
           passageIds: { type: 'array', items: { type: 'string' } },
+          addressedAxisIds: { type: 'array', items: { type: 'string' } },
         },
-        required: ['unitId', 'verdict', 'passageIds'],
+        required: ['unitId', 'verdict', 'passageIds', 'addressedAxisIds'],
         additionalProperties: false,
       },
     },

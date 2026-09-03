@@ -1,6 +1,6 @@
 # Runbook Chat — runtime vérifié sous gate
 
-Date : 31 août 2026
+Date : 3 septembre 2026
 Statut : runtime activé sur A17 par décision utilisateur, archive historique
 active, gate qualitative v2 encore ouverte
 
@@ -153,9 +153,12 @@ uniquement chaque unité face aux passages. Le code dérive la couverture des
 axes, l'utilité et la suffisance des preuves, puis retire toutes les citations du
 rédacteur et reconstruit uniquement celles approuvées par l'auditeur.
 
-Une unité omise, dupliquée, inconnue, `supported` sans passage ou une référence
-à un passage inconnu rendent l'audit invalide et déclenchent son unique
-correction de forme. La couverture d'un axe est calculée seulement lorsqu'une
+Après validation de la forme JSON, une unité omise ou une référence inconnue ne
+fait plus tomber toute la réponse : le code ignore les entrées étrangères,
+retire et déduplique les passages invalides, puis rétrograde en `unsupported`
+tout soutien ou contradiction qui n'a plus de preuve. Cette normalisation est
+à sens unique et ne peut jamais promouvoir un verdict. La couverture d'un axe
+est calculée seulement lorsqu'une
 unité soutenue utilise un passage qui lui avait été affecté. Après deux audits
 invalides, ou si un audit valide rejette tout, le brouillon reste masqué : la
 PWA affiche des extraits bornés des pages originales avec leurs sources et le
@@ -165,3 +168,23 @@ Le banc utilise ce chemin avec `--pipeline=axes` par défaut. Pour établir une
 base comparative seulement, `--pipeline=legacy` conserve l'ancien exécuteur.
 Le flag runtime a été activé par décision utilisateur ; la gate qualitative
 reste ouverte et l'activation ne vaut pas validation humaine.
+
+Depuis le 3 septembre, les axes ne portent plus la hiérarchie
+`required|useful`. Ils sont tous obligatoires et indiquent uniquement leur rôle
+de composition : `primary` pour le résultat principal, `cross_cutting` pour une
+dimension à intégrer aux résultats pertinents. Ce plan reste privé : le
+rédacteur choisit une structure naturelle et ne doit jamais afficher les
+catégories internes.
+
+L'audit factuel compact conserve ses quatre verdicts et ajoute seulement les
+identifiants d'axes réellement traités par chaque unité. Le code ignore les
+identifiants d'axes inconnus ou répétés. Les références U/P erronées sont
+normalisées uniquement vers un résultat plus prudent ; les verdicts factuels
+ne sont jamais renforcés. Un axe transversal n'est couvert que lorsqu'une unité
+soutenue le relie à un axe principal et cite un passage qui lui était affecté.
+Un défaut de composition déclenche l'unique révision puis produit au pire une
+réponse `partial` lisible ; il ne masque pas les unités factuelles soutenues.
+Les types de livrables explicitement demandés, par exemple podcasts et
+formations, doivent rester deux axes principaux distincts. Les titres validés
+des sources sont transmis avec les passages afin que Gemma puisse nommer une
+ressource sans inventer d'URL ; l'URL reste résolue exclusivement par le code.

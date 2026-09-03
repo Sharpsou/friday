@@ -43,14 +43,21 @@ describe('EvaluationRunner', () => {
             id: 'A1',
             label: 'Mesure',
             question: 'Quelle autonomie a été mesurée ?',
-            importance: 'required',
+            role: 'primary',
             query: 'autonomie mesurée protocole',
           },
         ],
       }),
       'L’autonomie mesurée est de dix heures [P1].',
       JSON.stringify({
-        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P1'] }],
+        units: [
+          {
+            unitId: 'U1',
+            verdict: 'supported',
+            passageIds: ['P1'],
+            addressedAxisIds: ['A1'],
+          },
+        ],
       }),
     ];
     const runner = new EvaluationRunner({
@@ -204,18 +211,32 @@ describe('EvaluationRunner', () => {
             id: 'A1',
             label: 'Température ambiante',
             question: 'Quelle température ambiante encadrait le test ?',
-            importance: 'required',
+            role: 'primary',
             query: 'température ambiante test',
           },
         ],
       }),
       'La preuve initiale est insuffisante.',
       JSON.stringify({
-        units: [{ unitId: 'U1', verdict: 'unsupported', passageIds: [] }],
+        units: [
+          {
+            unitId: 'U1',
+            verdict: 'unsupported',
+            passageIds: [],
+            addressedAxisIds: ['A1'],
+          },
+        ],
       }),
       'Le test a été réalisé à vingt degrés [P2].',
       JSON.stringify({
-        units: [{ unitId: 'U1', verdict: 'supported', passageIds: ['P2'] }],
+        units: [
+          {
+            unitId: 'U1',
+            verdict: 'supported',
+            passageIds: ['P2'],
+            addressedAxisIds: ['A1'],
+          },
+        ],
       }),
     ];
     let searches = 0;
