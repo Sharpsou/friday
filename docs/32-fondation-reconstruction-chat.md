@@ -616,3 +616,13 @@ porté par erreur à seize passages a heurté la contrainte SQLite historique
 travaillé 151 secondes mais aucune réponse n'a pu être persistée. Le moteur est
 réaligné à douze passages et un test verrouille cette limite ; aucune migration
 supplémentaire ni modification rétroactive du run échoué n'est nécessaire.
+
+Une conversation réelle sur les podcasts a ensuite révélé un autre cas limite :
+`En français les podcast` n'était reconnu ni comme question autonome ni comme
+relance elliptique. La recherche a donc interprété la phrase comme une demande
+de podcasts pour apprendre le français, en perdant Deezer et l'agentique. Les
+raffinements courts de langue, plateforme et format déclenchent désormais la
+résolution contextuelle. Une reformulation modèle doit conserver plusieurs
+termes distinctifs de la dernière demande utilisateur ; sinon le code utilise
+un assemblage borné des demandes utilisateur, sans transformer les anciennes
+réponses de Friday en preuves.

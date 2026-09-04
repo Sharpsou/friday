@@ -1314,7 +1314,7 @@ export class VerifiedChatEngine implements ChatEngine {
       });
       return {
         ...input,
-        content: parseContextResolution(raw, input.content),
+        content: parseContextResolution(raw, input.content, input.priorTurns),
       };
     } catch (error) {
       if (input.signal.aborted) throw error;

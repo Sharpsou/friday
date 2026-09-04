@@ -18,6 +18,11 @@ Les relances courtes sont désormais résolues en question autonome à partir de
 trois échanges récents au maximum avant le routage. La même question résolue
 est utilisée par la recherche et l'audit ; les réponses antérieures restent du
 contexte non fiable et ne deviennent jamais des preuves.
+Les raffinements courts de langue, plateforme ou format (`En français`,
+`uniquement sur Deezer`, `sans vidéo`) déclenchent eux aussi cette résolution.
+Le code rejette une reformulation qui ne conserve pas assez de termes
+distinctifs de la dernière demande utilisateur et retombe alors sur les seules
+demandes utilisateur récentes.
 La recherche Web retrouve le budget de l'ancien mode approfondi avec six
 requêtes Tavily au plus. Elle peut essayer seize pages originales protégées
 pour remplir le dossier final, toujours limité à huit sources et douze

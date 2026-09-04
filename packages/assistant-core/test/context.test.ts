@@ -32,6 +32,48 @@ describe('conversation context resolution', () => {
         history,
       ),
     ).toBe(false);
+    expect(
+      needsConversationResolution('En français les podcasts', [
+        {
+          role: 'user',
+          content: 'Je veux des podcasts sur Deezer à propos de l’agentique.',
+        },
+      ]),
+    ).toBe(true);
+  });
+
+  it('rejects a follow-up rewrite that changes the conversation topic', () => {
+    const podcastHistory = [
+      {
+        role: 'user' as const,
+        content:
+          'Je veux des podcasts sur Deezer à propos de l’agentique et de ses bonnes pratiques.',
+      },
+      {
+        role: 'assistant' as const,
+        content: 'Voici quelques pistes de podcasts techniques.',
+      },
+    ];
+    expect(() =>
+      parseContextResolution(
+        JSON.stringify({
+          standaloneQuestion:
+            'Quels podcasts permettent d’apprendre la langue française ?',
+        }),
+        'En français les podcasts',
+        podcastHistory,
+      ),
+    ).toThrow('CONTEXT_TOPIC_DRIFT');
+    expect(
+      parseContextResolution(
+        JSON.stringify({
+          standaloneQuestion:
+            'Quels podcasts francophones sur Deezer traitent de l’IA agentique et de ses bonnes pratiques ?',
+        }),
+        'En français les podcasts',
+        podcastHistory,
+      ),
+    ).toContain('agentique');
   });
 
   it('accepts a strict standalone question and rejects generated URLs', () => {

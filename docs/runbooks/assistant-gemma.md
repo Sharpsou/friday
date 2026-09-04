@@ -11,14 +11,17 @@ léger/approfondi : toute recherche Web est approfondie.
 Le runtime ne possède aucun outil Maison, Budget ou Robot.
 
 Les relances elliptiques d'une conversation (`Et en 2026 ?`, `la deuxième`,
-`développe`) passent avant tout routage par une résolution contextuelle bornée.
+`développe`, `En français`, `uniquement sur Deezer`) passent avant tout routage
+par une résolution contextuelle bornée.
 Elle consulte au plus les trois échanges précédents et produit uniquement une
 question autonome validée. Cette question unique alimente ensuite plan,
 recherche, sélection, rédaction et audit. Les anciennes réponses sont marquées
 non fiables : elles permettent de retrouver le sujet, jamais d'établir un fait.
-En cas de sortie contextuelle invalide, le code retombe sur les seules demandes
-utilisateur récentes ; aucune URL nouvellement produite par le modèle n'est
-acceptée.
+Le validateur exige que la reformulation conserve les termes distinctifs de la
+dernière demande utilisateur, après normalisation simple du singulier et du
+pluriel. En cas de dérive ou de sortie invalide, le code retombe sur les seules
+demandes utilisateur récentes ; aucune URL nouvellement produite par le modèle
+n'est acceptée.
 
 ## Configuration
 
