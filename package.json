@@ -9,6 +9,7 @@
     "pnpm": ">=11.16.0 <12"
   },
   "scripts": {
+    "architecture": "node --test scripts/architecture.test.mjs && node scripts/architecture.mjs",
     "build": "pnpm --filter @friday/contracts build && pnpm --filter @friday/domain build && pnpm --filter @friday/assistant-core build && pnpm --filter @friday/chat-eval build && pnpm --filter @friday/web build && pnpm --filter @friday/hub build",
     "dev": "concurrently -k -n HUB,WEB -c blue,green \"pnpm --filter @friday/hub dev\" \"pnpm --filter @friday/web dev\"",
     "format": "prettier --write .",
@@ -18,8 +19,8 @@
     "test": "pnpm test:robot && pnpm -r --if-present --workspace-concurrency=1 test",
     "test:robot": "python -m unittest discover -s robot/tests -p \"test_*.py\"",
     "test:e2e": "playwright test",
-    "typecheck": "pnpm -r typecheck",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e"
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.e2e.json --noEmit",
+    "verify": "node scripts/verify.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

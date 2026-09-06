@@ -74,6 +74,7 @@ function usefulParagraph(value: string): boolean {
   const text = normalized(value);
   return (
     text.length >= 15 &&
+    /[.!?:;=]/u.test(text) &&
     !/^(copier le lien|lien copi[ée]|voir aussi|en savoir plus|accueil|menu|navigation)$/iu.test(
       text,
     )
@@ -114,25 +115,72 @@ interface Candidate {
   paragraphKeys: string[];
 }
 
+function paragraphChunks(text: string): string[] {
+  const sentences = [
+    ...new Intl.Segmenter('fr', { granularity: 'sentence' }).segment(text),
+  ].map(({ segment }) => segment.trim());
+  const chunks: string[] = [];
+  let chunk = '';
+  for (let sentence of sentences) {
+    while (sentence.length > 4_000) {
+      if (chunk) {
+        chunks.push(chunk);
+        chunk = '';
+      }
+      const boundary = sentence.lastIndexOf(' ', 4_000);
+      const cut = boundary > 1_000 ? boundary : 4_000;
+      chunks.push(sentence.slice(0, cut));
+      sentence = sentence.slice(cut).trim();
+    }
+    if (chunk.length + sentence.length + 1 > 4_000) {
+      chunks.push(chunk);
+      chunk = '';
+    }
+    chunk = chunk ? `${chunk} ${sentence}` : sentence;
+  }
+  if (chunk) chunks.push(chunk);
+  return chunks;
+}
+
 function candidatesFromPages(pages: FrozenPage[]): Candidate[] {
   const result: Candidate[] = [];
   const seen = new Set<string>();
   let order = 0;
   for (const page of pages) {
     for (const [sectionIndex, section] of page.sections.entries()) {
-      const paragraphs = section.paragraphs
-        .map(normalized)
-        .filter(usefulParagraph);
-      for (let start = 0; start < paragraphs.length; start += 1) {
+      const paragraphs = section.paragraphs.flatMap((value, paragraphIndex) => {
+        const text = normalized(value);
+        return usefulParagraph(text)
+          ? paragraphChunks(text).map((text) => ({ text, paragraphIndex }))
+          : [];
+      });
+      // A short logical section stays whole, including its exceptions and steps.
+      const wholeSection =
+        paragraphs.map((p) => p.text).join('\n').length <= 4000;
+      for (
+        let selectedStart = 0;
+        selectedStart <
+        (wholeSection ? Math.min(1, paragraphs.length) : paragraphs.length);
+        selectedStart += 1
+      ) {
+        const start =
+          selectedStart > 0 &&
+          paragraphs[selectedStart - 1]!.text.length +
+            paragraphs[selectedStart]!.text.length +
+            1 <=
+            8000
+            ? selectedStart - 1
+            : selectedStart;
         let text = '';
         for (
           let size = 1;
-          size <= 3 && start + size <= paragraphs.length;
+          size <= (wholeSection ? paragraphs.length : 3) &&
+          start + size <= paragraphs.length;
           size += 1
         ) {
-          const next = paragraphs[start + size - 1]!;
+          const next = paragraphs[start + size - 1]!.text;
           const joined = text ? `${text}\n${next}` : next;
-          if (joined.length > 2_000) break;
+          if (joined.length > 8_000) break;
           text = joined;
         }
         if (!text || seen.has(`${page.source.id}\0${text}`)) continue;
@@ -149,11 +197,16 @@ function candidatesFromPages(pages: FrozenPage[]): Candidate[] {
           order: order++,
           tokenCounts: counts,
           length: [...counts.values()].reduce((sum, count) => sum + count, 0),
-          paragraphKeys: Array.from(
-            { length: text.split('\n').length },
-            (_, index) =>
-              `${page.source.id}:${sectionIndex.toString()}:${(start + index).toString()}`,
-          ),
+          paragraphKeys: [
+            ...new Set(
+              paragraphs
+                .slice(start, start + text.split('\n').length)
+                .map(
+                  ({ paragraphIndex }) =>
+                    `${page.source.id}:${sectionIndex.toString()}:${paragraphIndex.toString()}`,
+                ),
+            ),
+          ],
         });
       }
     }
@@ -261,16 +314,18 @@ function buildDossier(
     if (selected.includes(index) || selected.length >= limits.maxPassages)
       return;
     const candidate = candidates[index]!;
-    const candidateTokens = new Set(candidate.tokenCounts.keys());
     const nearDuplicate = selected.some((selectedIndex) => {
       const previous = candidates[selectedIndex]!;
       if (previous.source.id !== candidate.source.id) return false;
-      const previousTokens = new Set(previous.tokenCounts.keys());
-      const intersection = [...candidateTokens].filter((token) =>
-        previousTokens.has(token),
-      ).length;
-      const union = new Set([...candidateTokens, ...previousTokens]).size;
-      return union > 0 && intersection / union >= 0.8;
+      const shorter =
+        candidate.text.length < previous.text.length
+          ? candidate.text
+          : previous.text;
+      const longer =
+        candidate.text.length < previous.text.length
+          ? previous.text
+          : candidate.text;
+      return longer.includes(shorter) && shorter.length / longer.length >= 0.8;
     });
     if (nearDuplicate) return;
     const sourceCount = sourceCounts.get(candidate.source.id) ?? 0;
@@ -291,6 +346,7 @@ function buildDossier(
       sourceId: candidate.source.id,
       ...(candidate.heading ? { heading: candidate.heading } : {}),
       text: candidate.text,
+      paragraphKeys: candidate.paragraphKeys,
     };
   });
   const sourceIds = new Set(passages.map(({ sourceId }) => sourceId));
@@ -326,16 +382,20 @@ function buildDossier(
           }),
         ),
       ],
-      queryPassageIds: queries.map((_, queryIndex) => [
-        ...new Set(
-          [
-            ...(lexicalRankings[queryIndex] ?? []),
-            ...(semanticRankings[queryIndex] ?? []),
-          ]
-            .map((candidateIndex) => passageIdByCandidate.get(candidateIndex))
-            .filter((id): id is EvidencePassage['id'] => id !== undefined),
-        ),
-      ]),
+      queryPassageIds: queries.map((_, queryIndex) =>
+        [
+          ...reciprocalRanks([
+            lexicalRankings[queryIndex] ?? [],
+            semanticRankings[queryIndex] ?? [],
+          ]).entries(),
+        ]
+          .sort(
+            (a, b) =>
+              b[1] - a[1] || candidates[a[0]]!.order - candidates[b[0]]!.order,
+          )
+          .map(([candidateIndex]) => passageIdByCandidate.get(candidateIndex))
+          .filter((id): id is EvidencePassage['id'] => id !== undefined),
+      ),
       queries,
     },
   };
@@ -347,7 +407,7 @@ export function normalizeRetrievalQueries(
 ): string[] {
   const values = [question, ...additional]
     .map(normalized)
-    .filter((value) => value.length >= 2 && value.length <= 300);
+    .filter((value) => value.length >= 2 && value.length <= 4_000);
   return [...new Set(values)].slice(0, 6);
 }
 
@@ -363,6 +423,15 @@ async function embedInBatches(
     const next = await provider.embed(batch, signal);
     if (next.length !== batch.length)
       throw new Error('EMBEDDING_COUNT_MISMATCH');
+    if (
+      next.some(
+        (v) =>
+          !v.length ||
+          v.length !== (vectors[0]?.length ?? next[0]?.length) ||
+          v.some((n) => !Number.isFinite(n)),
+      )
+    )
+      throw new Error('EMBEDDING_DIMENSION_MISMATCH');
     vectors.push(...next);
   }
   return vectors;
@@ -409,7 +478,10 @@ export async function selectEvidencePassagesHybrid(input: {
     const vectors = await embedInBatches(
       input.embeddings,
       [
-        ...queries,
+        ...queries.map(
+          (query) =>
+            `Instruct: Retrieve passages that answer the question, preserving conditions and exceptions.\nQuery: ${query}`,
+        ),
         ...candidates.map(
           ({ source, heading, text }) =>
             `${source.title}\n${heading ?? ''}\n${text}`,

@@ -10,9 +10,9 @@ import {
   RobotVisualGraphSchema,
   RobotVisualMemoryPurgeResponseSchema,
   type RobotActuatorsRequest,
-  type RobotCameraLookRequest,
   type RobotCameraBandwidthProfile,
   type RobotCameraBandwidthStatus,
+  type RobotCameraLookRequest,
   type RobotControlPreferences,
   type RobotDirection,
   type RobotDisplayPreferences,
@@ -238,10 +238,6 @@ async function autonomyMutation(path: string) {
   );
 }
 
-export function stopRobotAutonomy() {
-  return autonomyMutation('/api/robot/autonomy/stop');
-}
-
 export function startRobotHumanRecovery() {
   return autonomyMutation('/api/robot/autonomy/recovery/start');
 }
@@ -307,13 +303,6 @@ export async function deleteRobotVisualObject(
       method: 'DELETE',
     }),
   );
-}
-
-export function armRobot(durationMs = 60_000): Promise<RobotState> {
-  return robotRequest('/api/robot/arm', {
-    method: 'POST',
-    body: JSON.stringify({ durationMs }),
-  });
 }
 
 export function driveRobot(

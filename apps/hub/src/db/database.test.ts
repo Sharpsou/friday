@@ -99,7 +99,7 @@ describe('hub database migrations', () => {
       { name: 'grounding_verifier_used', dflt_value: '0' },
       { name: 'grounding_version', dflt_value: null },
     ]);
-    expect(latest.version).toBe(44);
+    expect(latest.version).toBe(47);
     expect(processingTable).toEqual({ name: 'assistant_processing_attempts' });
     expect(answerAuditTable).toEqual({ name: 'assistant_answer_audits' });
   });
@@ -211,6 +211,9 @@ describe('hub database migrations', () => {
       { version: 42 },
       { version: 43 },
       { version: 44 },
+      { version: 45 },
+      { version: 46 },
+      { version: 47 },
     ]);
     expect(memberColumns.map((column) => column.name)).toContain(
       'login_identifier',
@@ -240,7 +243,7 @@ describe('hub database migrations', () => {
         'deleted_at',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 44 });
+    expect(migrations.at(-1)).toEqual({ version: 47 });
   });
 
   it('adds persistent grocery classification jobs and shared results', () => {
@@ -276,7 +279,7 @@ describe('hub database migrations', () => {
         'revision',
       ]),
     );
-    expect(migrations.at(-1)).toEqual({ version: 44 });
+    expect(migrations.at(-1)).toEqual({ version: 47 });
   });
 
   it('adds the five budget stores and the idempotent seed marker', () => {
@@ -730,7 +733,7 @@ describe('hub database migrations', () => {
       'robot_visual_ports',
       'robot_visual_transitions',
     ]);
-    expect(migration).toEqual({ version: 44 });
+    expect(migration).toEqual({ version: 47 });
   });
 
   it('extends the panorama pulse range without losing the global trim', () => {
@@ -801,7 +804,7 @@ describe('hub database migrations', () => {
       evidence_group_representative_source_id: null,
       evidence_origin_key: null,
     });
-    expect(migration).toEqual({ version: 44 });
+    expect(migration).toEqual({ version: 47 });
   });
 
   it('preserves processing diagnostics and accepts the Web editorial stage', () => {
@@ -857,6 +860,7 @@ describe('hub database migrations', () => {
     expect(chatTables).toEqual([
       { name: 'chat_conversations' },
       { name: 'chat_messages' },
+      { name: 'chat_research_memory' },
       { name: 'chat_runs' },
       { name: 'chat_sources' },
     ]);

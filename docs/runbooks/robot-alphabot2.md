@@ -358,3 +358,27 @@ Le helper Windows
 `infra/windows/Invoke-FridayPiStandbyInstall.ps1` ouvre une session dédiée pour
 la seule saisie interactive du mot de passe `sudo`; aucun mot de passe n’est
 stocké. La recette physique veille/réveil ci-dessus reste à effectuer.
+
+## Maintenance du 6 septembre 2026
+
+La topologie garde sa sérialisation dans `robot-visual-topology.ts`. Son dépôt
+SQL est dans `visual-topology/repository.ts`, ses règles et types dans `policy.ts`
+et `records.ts`. Les routes HTTP sont dans `http/robot-routes.ts` et les contrôles
+UI dans `web/src/robot/RobotControls.tsx`. Aucun seuil de perception, mouvement,
+commande expirante ou protocole matériel n'est modifié. Les tests sont simulés ;
+aucune recette physique n'est déclarée pour ce lot.
+
+Voir le [bilan de modularisation](../audits/2026-09-06-implementation-qualite-et-modularisation.md).
+
+## Complément du 6 septembre 2026 — 12 h 04
+
+La topologie utilise une file unique et un état d'observation partagé entre
+mutations, observations, panoramas, transitions et objets. L'autonomie conserve
+ses timers et modes, avec commandes, décisions, mouvement, routes et récupération
+séparés. Des epochs empêchent les continuations interrompues de relancer une
+commande ou de modifier l'état arrêté ; le panorama protège aussi sa préparation
+et sa capture en vol. Cinq échecs antérieurs sont reproduits puis corrigés sur
+simulateur. Aucun mouvement, réveil ou déploiement Python n'a été réalisé ; le
+Pi ne répondait pas au GET d'état. La recette physique reste ouverte.
+
+Voir le [bilan de livraison](../audits/2026-09-06-complement-cinq-modules.md).

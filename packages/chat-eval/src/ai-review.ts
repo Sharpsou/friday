@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { z } from 'zod';
 
 import { loadFrozenCorpus, privateCorpusRoot } from './corpus.js';
+import type { EvaluationResult } from './evaluation-types.js';
 import { OllamaClient } from './ollama.js';
-import type { EvaluationResult } from './runner.js';
 
 const CandidateReviewSchema = z.strictObject({
   label: z.enum(['A', 'B']),

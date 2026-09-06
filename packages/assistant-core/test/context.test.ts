@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { routeDeterministically } from '../src/routing.js';
 
 import {
   boundedConversationTurns,
@@ -117,5 +118,48 @@ describe('conversation context resolution', () => {
     const fallback = fallbackContextualQuestion('Et en 2026 ?', history);
     expect(fallback).toContain('télescope James Webb');
     expect(fallback).not.toContain('résultats astronomiques');
+  });
+});
+
+it('keeps current constraints verbatim even when the model omits them or history is long', () => {
+  const current = 'Uniquement en français sur Deezer, sans vidéo';
+  expect(
+    fallbackContextualQuestion(current, [
+      { role: 'user', content: 'ancien sujet '.repeat(600) },
+    ]),
+  ).toContain(current);
+  const resolved = parseContextResolution(
+    JSON.stringify({ standaloneQuestion: 'Quels podcasts sur agentique ?' }),
+    current,
+    [{ role: 'user', content: 'Quels podcasts sur agentique ?' }],
+  );
+  expect(resolved).toContain(current);
+  expect(resolved.length).toBeLessThanOrEqual(2000);
+});
+
+it('never cuts the final constraint from a long current message', () => {
+  const current =
+    'Une précision de contexte. '.repeat(110) +
+    'Sans connexion externe et uniquement en français.';
+  expect(
+    fallbackContextualQuestion(current, [
+      { role: 'user', content: 'Quel service utiliser ?' },
+    ]),
+  ).toContain(current);
+  expect(fallbackContextualQuestion(current, [])).toBe(current);
+});
+
+describe('context metadata and automatic routing', () => {
+  it('does not turn a stable follow-up into current Web information because of its internal label', () => {
+    const contextual = fallbackContextualQuestion('En français', [
+      { role: 'user', content: 'Explique la gravité simplement.' },
+    ]);
+    expect(routeDeterministically(contextual)?.route).toBe('local');
+  });
+  it('still recognizes current information requested by the user', () => {
+    const contextual = fallbackContextualQuestion('Et la météo actuelle ?', [
+      { role: 'user', content: 'Nous parlons de Paris.' },
+    ]);
+    expect(routeDeterministically(contextual)?.route).toBe('web');
   });
 });

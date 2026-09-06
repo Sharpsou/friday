@@ -6,8 +6,8 @@ import {
 } from '@friday/contracts';
 
 import { decryptJson, encryptJson } from '../crypto/vault.js';
+import { getDeviceContext } from './device-context.js';
 import { fridayDb } from './friday-db.js';
-import { getDeviceContext } from './task-repository.js';
 
 const conversationAad = (id: string, deviceId: string) =>
   `assistant-conversation:${id}:${deviceId}`;

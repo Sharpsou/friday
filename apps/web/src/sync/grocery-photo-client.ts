@@ -6,7 +6,6 @@ import {
 
 const MAX_IMAGE_BYTES = 300_000;
 const MAX_IMAGE_DIMENSION = 1600;
-const REQUEST_TIMEOUT_MS = 135_000;
 
 async function loadImage(file: File): Promise<{
   image: HTMLImageElement;
@@ -102,10 +101,9 @@ export async function transcribeGroceryPhoto(
     imageBase64: prepared.imageBase64,
     mediaType: 'image/jpeg',
   });
-  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const signal = options.signal
-    ? AbortSignal.any([options.signal, timeoutSignal])
-    : timeoutSignal;
+  // The Hub starts its bounded inference timeout after the shared queue lease.
+  // Cancellation remains available while waiting, without timing out behind another job.
+  const signal = options.signal ?? new AbortController().signal;
   const response = await fetch('/api/groceries/photo-transcription', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

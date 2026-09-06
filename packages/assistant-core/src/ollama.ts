@@ -1,3 +1,6 @@
+// Keep the bounded evidence dossier, answer units and output in the same context.
+export const OLLAMA_CONTEXT_TOKENS = 32_768;
+
 export interface OllamaClientOptions {
   baseUrl?: string;
   timeoutMs?: number;
@@ -15,6 +18,13 @@ export interface GenerateRequest {
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
+  system?: string;
+  contextTokens?: number;
+  think?: boolean;
+  topP?: number;
+  topK?: number;
+  repeatPenalty?: number;
+  presencePenalty?: number;
 }
 
 export interface GenerateResult {
@@ -22,6 +32,8 @@ export interface GenerateResult {
   durationMs: number;
   promptTokens?: number;
   outputTokens?: number;
+  doneReason?: string;
+  loadDurationMs?: number;
 }
 
 export interface EmbedRequest {
@@ -32,28 +44,50 @@ export interface EmbedRequest {
 
 class BoundedGate {
   private active = 0;
-  private readonly waiting: Array<() => void> = [];
+  private readonly waiting: Array<{
+    resolve(): void;
+    reject(error: unknown): void;
+    signal?: AbortSignal;
+    abort(): void;
+  }> = [];
   constructor(
     private readonly concurrency: number,
     private readonly maxQueueSize: number,
   ) {}
-  private async acquire(): Promise<void> {
+  private async acquire(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     if (this.active < this.concurrency) {
       this.active += 1;
       return;
     }
     if (this.waiting.length >= this.maxQueueSize)
       throw new Error('OLLAMA_QUEUE_FULL');
-    await new Promise<void>((resolve) => this.waiting.push(resolve));
+    await new Promise<void>((resolve, reject) => {
+      const ticket = {
+        resolve,
+        reject,
+        ...(signal ? { signal } : {}),
+        abort: () => {
+          const index = this.waiting.indexOf(ticket);
+          if (index >= 0) this.waiting.splice(index, 1);
+          reject(signal?.reason ?? new Error('OLLAMA_CANCELLED'));
+        },
+      };
+      this.waiting.push(ticket);
+      signal?.addEventListener('abort', ticket.abort, { once: true });
+    });
   }
   private release(): void {
     const next = this.waiting.shift();
-    if (next) next();
-    else this.active -= 1;
+    if (next) {
+      next.signal?.removeEventListener('abort', next.abort);
+      next.resolve();
+    } else this.active -= 1;
   }
-  async run<T>(operation: () => Promise<T>): Promise<T> {
-    await this.acquire();
+  async run<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    await this.acquire(signal);
     try {
+      signal?.throwIfAborted();
       return await operation();
     } finally {
       this.release();
@@ -160,10 +194,10 @@ export class OllamaClient {
     body: unknown,
     signal?: AbortSignal,
   ): Promise<{ raw: string; durationMs: number }> {
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(this.timeoutMs)])
+      : AbortSignal.timeout(this.timeoutMs);
     return this.gate.run(async () => {
-      const combinedSignal = signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(this.timeoutMs)])
-        : AbortSignal.timeout(this.timeoutMs);
       const startedAt = performance.now();
       let response: Response;
       try {
@@ -185,7 +219,7 @@ export class OllamaClient {
       if (!response.ok)
         throw new Error(`OLLAMA_HTTP_${response.status.toString()}`);
       return { raw, durationMs: Math.round(performance.now() - startedAt) };
-    });
+    }, combinedSignal);
   }
 
   async generate(request: GenerateRequest): Promise<GenerateResult> {
@@ -199,18 +233,38 @@ export class OllamaClient {
       16_384,
       'INVALID_TOKEN_LIMIT',
     );
+    const contextTokens = request.contextTokens ?? OLLAMA_CONTEXT_TOKENS;
+    // UTF-8 byte count is a conservative upper bound, including template margin.
+    if (
+      new TextEncoder().encode(request.prompt + (request.system ?? '')).length +
+        maxTokens +
+        512 >
+      contextTokens
+    )
+      throw new Error('OLLAMA_CONTEXT_BUDGET_EXCEEDED');
     const result = await this.post(
       '/api/generate',
       {
         model: request.model,
         prompt: request.prompt,
         stream: false,
-        think: false,
+        think: request.think ?? false,
+        ...(request.system ? { system: request.system } : {}),
         ...(request.format === undefined ? {} : { format: request.format }),
         options: {
           seed: request.seed,
           temperature: request.temperature ?? 0,
           num_predict: maxTokens,
+          num_ctx: positiveInteger(
+            request.contextTokens ?? OLLAMA_CONTEXT_TOKENS,
+            4096,
+            32768,
+            'INVALID_CONTEXT_LIMIT',
+          ),
+          top_p: request.topP ?? 0.95,
+          top_k: request.topK ?? 40,
+          repeat_penalty: request.repeatPenalty ?? 1,
+          presence_penalty: request.presencePenalty ?? 0,
         },
       },
       request.signal,
@@ -228,7 +282,18 @@ export class OllamaClient {
       typeof payload.response !== 'string'
     )
       throw new Error('OLLAMA_INVALID_ENVELOPE');
+    if ('done' in payload && payload.done !== true)
+      throw new Error('OLLAMA_INCOMPLETE_RESPONSE');
+    if ('done_reason' in payload && payload.done_reason === 'length')
+      throw new Error('OLLAMA_OUTPUT_TRUNCATED');
     return {
+      ...('done_reason' in payload && typeof payload.done_reason === 'string'
+        ? { doneReason: payload.done_reason }
+        : {}),
+      ...('load_duration' in payload &&
+      typeof payload.load_duration === 'number'
+        ? { loadDurationMs: payload.load_duration / 1e6 }
+        : {}),
       response: payload.response,
       durationMs: result.durationMs,
       ...('prompt_eval_count' in payload &&
@@ -247,12 +312,12 @@ export class OllamaClient {
     if (
       request.input.length < 1 ||
       request.input.length > 100 ||
-      request.input.some((value) => value.length < 1 || value.length > 8_000)
+      request.input.some((value) => value.length < 1 || value.length > 12_000)
     )
       throw new Error('INVALID_EMBED_INPUT');
     const result = await this.post(
       '/api/embed',
-      { model: request.model, input: request.input, truncate: true },
+      { model: request.model, input: request.input, truncate: false },
       request.signal,
     );
     let payload: unknown;
@@ -275,6 +340,7 @@ export class OllamaClient {
         (vector) =>
           !Array.isArray(vector) ||
           vector.length === 0 ||
+          vector.length !== (embeddings[0] as unknown[]).length ||
           vector.some(
             (value) => typeof value !== 'number' || !Number.isFinite(value),
           ),

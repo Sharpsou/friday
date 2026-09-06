@@ -12,6 +12,17 @@ Statut : **référence produit active**. Ce document remplace les choix Flutter/
 
 ## Décision
 
+Extension confirmée le 5 septembre 2026 : **Maison** remplace la destination
+Courses, avec **Courses** ouvert par défaut, **Menus** et **Réserve**.
+Le catalogue partagé, les préparations, repas midi/soir et restes alimentent les
+courses existantes. Les menus sont affichés dans l’Agenda sans devenir des
+tâches. Le suivi de réserve est facultativement quantifié dès V1, et les achats
+se rangent par un bilan explicite. L’IA propose des brouillons privés via le
+moteur et l’ordonnanceur internes ; elle n’écrit aucune donnée métier.
+La recette Maison inclut désormais les deux téléphones, sans changement de
+technologie PWA ni connexion Google Calendar. Voir le
+[runbook Maison](runbooks/maison-menus-reserve.md) pour les règles et la livraison.
+
 Friday sera une Progressive Web App installable, servie par le PC familial sur le réseau local et capable de fonctionner hors ligne grâce à un cache applicatif et une base locale dans le navigateur.
 
 La mise au point et la recette du MVP utilisent uniquement :

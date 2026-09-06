@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@friday/contracts": "workspace:*"
+  },
   "exports": {
     ".": "./src/index.ts"
   },

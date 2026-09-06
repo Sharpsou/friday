@@ -4,6 +4,7 @@ import {
   decideEvaluation,
   splitAuditUnits,
   suppressUnsupportedUnits,
+  stripPassageCitations,
 } from '../src/audit.js';
 import { validateAuditReferences, type AnswerAudit } from '../src/contracts.js';
 
@@ -19,6 +20,12 @@ const audit: AnswerAudit = {
 };
 
 describe('audit decisions', () => {
+  it('removes separators between citations while preserving punctuation between clauses', () => {
+    expect(stripPassageCitations('Fait [P1], [P2]; [P3].')).toBe('Fait.');
+    expect(stripPassageCitations('Fait [P1], puis autre fait [P2].')).toBe(
+      'Fait, puis autre fait.',
+    );
+  });
   it('splits and numbers units after drafting without inventing citations', () => {
     expect(splitAuditUnits('Fait un [P1]. Fait deux [P2] [P2].')).toEqual([
       { id: 'U1', text: 'Fait un [P1].', citedPassageIds: ['P1'] },

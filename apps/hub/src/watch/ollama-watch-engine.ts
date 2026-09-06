@@ -1,5 +1,6 @@
 import { Agent, fetch as undiciFetch } from 'undici';
 import { z } from 'zod';
+import type { InferenceScheduler } from '../inference/inference-scheduler.js';
 
 import type { InferenceStatus } from '@friday/contracts';
 
@@ -69,6 +70,7 @@ export interface WatchLanguageEngine {
 }
 
 interface OllamaWatchEngineOptions {
+  scheduler?: InferenceScheduler;
   baseUrl?: string;
   fetch?: typeof fetch;
   model?: string;
@@ -181,6 +183,7 @@ function extractJson(input: string): string {
 }
 
 export class OllamaWatchEngine implements WatchLanguageEngine {
+  private readonly scheduler: InferenceScheduler | undefined;
   private readonly baseUrl: string;
   private readonly dispatcher: Agent | null;
   private readonly fetcher: typeof fetch;
@@ -189,6 +192,7 @@ export class OllamaWatchEngine implements WatchLanguageEngine {
   private activeStartedAt: string | null = null;
 
   constructor(options: OllamaWatchEngineOptions = {}) {
+    this.scheduler = options.scheduler;
     this.baseUrl = (options.baseUrl ?? 'http://127.0.0.1:11434').replace(
       /\/$/u,
       '',
@@ -420,6 +424,34 @@ export class OllamaWatchEngine implements WatchLanguageEngine {
   }
 
   private async chat(
+    messages: Array<{ role: string; content: string }>,
+    signal: AbortSignal,
+    temperature: number,
+    numPredict: number,
+    format: Record<string, unknown>,
+    numContext: number,
+  ): Promise<string> {
+    return this.scheduler
+      ? this.scheduler.run('watch', signal, () =>
+          this.chatUnscheduled(
+            messages,
+            signal,
+            temperature,
+            numPredict,
+            format,
+            numContext,
+          ),
+        )
+      : this.chatUnscheduled(
+          messages,
+          signal,
+          temperature,
+          numPredict,
+          format,
+          numContext,
+        );
+  }
+  private async chatUnscheduled(
     messages: Array<{ role: string; content: string }>,
     signal: AbortSignal,
     temperature: number,

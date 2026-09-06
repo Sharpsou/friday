@@ -42,3 +42,12 @@ applicables.
 8. Redémarrer deux fois avant l'heure prévue et confirmer qu'aucune nouvelle
    analyse n'apparait.
 9. Faire manquer une échéance, relancer le hub et confirmer un seul rattrapage.
+
+## Maintenance du 6 septembre 2026
+
+Le service compose désormais `watch-repository.ts`, `watch-topic-repository.ts`,
+`watch-digest.ts`, `watch-schedule.ts` et `watch-policy.ts`. Les routes sont dans
+`http/watch-routes.ts` ; l'UI dans `web/src/watch/`. Les décisions de collecte,
+de rapprochement et de publication restent celles de la référence testée.
+
+Voir le [bilan de modularisation](../audits/2026-09-06-implementation-qualite-et-modularisation.md).

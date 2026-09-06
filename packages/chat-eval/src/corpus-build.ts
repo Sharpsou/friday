@@ -1,3 +1,4 @@
+import { extractStructuredDocument } from '@friday/assistant-core';
 import { createHash } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -41,21 +42,23 @@ const CaseSpecSchema = z.strictObject({
     'context_followup',
   ]),
   question: z.string().trim().min(3).max(2_000),
-  priorTurns: z.array(PriorTurnSchema).max(2).default([]),
+  priorTurns: z.array(PriorTurnSchema).max(6).default([]),
   criteria: HumanCriteriaSchema,
   sources: z.array(SourceSpecSchema).min(1).max(8),
 });
 
 export const CorpusSpecSchema = z
   .strictObject({
-    version: z.literal('chat-foundation-v1'),
+    version: z.enum(['chat-foundation-v1', 'chat-foundation-v3']),
     cases: z.array(CaseSpecSchema).length(20),
   })
   .refine(
-    ({ cases }) =>
+    ({ version, cases }) =>
       new Set(cases.map(({ id }) => id)).size === cases.length &&
-      cases.filter(({ split }) => split === 'development').length === 10 &&
-      cases.filter(({ split }) => split === 'validation').length === 10,
+      (version === 'chat-foundation-v3'
+        ? cases.every(({ split }) => split === 'validation')
+        : cases.filter(({ split }) => split === 'development').length === 10 &&
+          cases.filter(({ split }) => split === 'validation').length === 10),
     'Corpus spec requires unique ids and a 10/10 split',
   );
 
@@ -215,40 +218,10 @@ function normalizedText(value: string | null | undefined): string {
 }
 
 export function extractFrozenSections(html: string): FrozenPage['sections'] {
-  const dom = new JSDOM(html);
-  const document = dom.window.document;
-  document
-    .querySelectorAll(
-      'script,style,noscript,svg,form,nav,footer,iframe,template',
-    )
-    .forEach((element) => element.remove());
-  const root =
-    document.querySelector('main,article,[role="main"]') ?? document.body;
-  const sections: FrozenPage['sections'] = [];
-  let heading: string | undefined;
-  for (const element of [...root.querySelectorAll('h1,h2,h3,h4,p,li')].slice(
-    0,
-    1_000,
-  )) {
-    const text = normalizedText(element.textContent).slice(0, 12_000);
-    if (text.length < 20) continue;
-    if (/^H[1-4]$/u.test(element.tagName)) {
-      heading = text.slice(0, 500);
-      continue;
-    }
-    const previous = sections.at(-1);
-    if (
-      !previous ||
-      previous.heading !== heading ||
-      previous.paragraphs.length >= 50
-    ) {
-      sections.push({ ...(heading ? { heading } : {}), paragraphs: [text] });
-    } else {
-      previous.paragraphs.push(text);
-    }
-    if (sections.length >= 200) break;
-  }
-  if (sections.length === 0) throw new Error('SOURCE_NO_EXTRACTABLE_TEXT');
+  const { sections } = extractStructuredDocument(
+    new JSDOM(html).window.document,
+  );
+  if (!sections.length) throw new Error('SOURCE_NO_EXTRACTABLE_TEXT');
   return sections;
 }
 

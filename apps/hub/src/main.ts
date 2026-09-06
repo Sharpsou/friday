@@ -31,7 +31,9 @@ const defaultDataDirectory = process.env.LOCALAPPDATA
 const databasePath =
   process.env.FRIDAY_DATABASE_PATH ??
   resolve(process.env.FRIDAY_DATA_DIR ?? defaultDataDirectory, 'friday.sqlite');
-const webRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
+const webRoot = process.env.FRIDAY_WEB_ROOT
+  ? resolve(process.env.FRIDAY_WEB_ROOT)
+  : fileURLToPath(new URL('../../web/dist', import.meta.url));
 
 const certPath = process.env.FRIDAY_TLS_CERT_PATH;
 const keyPath = process.env.FRIDAY_TLS_KEY_PATH;

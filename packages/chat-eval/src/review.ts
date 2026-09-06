@@ -2,11 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { loadFrozenCorpus, privateCorpusRoot } from './corpus.js';
-import {
-  blindLabel,
-  CANDIDATE_MODEL_PAIRS,
-  type EvaluationResult,
-} from './runner.js';
+import { type EvaluationResult } from './evaluation-types.js';
+import { blindLabel, CANDIDATE_MODEL_PAIRS } from './runner.js';
 
 interface StoredCampaign {
   results: Array<EvaluationResult | { error: string }>;

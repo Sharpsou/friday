@@ -74,9 +74,6 @@ export function deriveAnswerAudit(
   const assignedByAxis = new Map(
     assignments.map(({ axis, passageIds }) => [axis.id, passageIds]),
   );
-  const primaryAxisIds = new Set(
-    axes.filter(({ role }) => role === 'primary').map(({ id }) => id),
-  );
   const auditAxes = axes.map((axis) => {
     const assigned = new Set(assignedByAxis.get(axis.id) ?? []);
     const addressingUnits = supportedUnits.filter(({ addressedAxisIds }) =>
@@ -89,20 +86,10 @@ export function deriveAnswerAudit(
           .filter((id) => assigned.has(id)),
       ),
     ];
-    const integrated =
-      axis.role === 'primary' ||
-      primaryAxisIds.size === 0 ||
-      addressingUnits.some(({ addressedAxisIds }) =>
-        addressedAxisIds?.some((id) => primaryAxisIds.has(id)),
-      );
     return {
       axisId: axis.id,
       coverage:
-        passageIds.length === 0
-          ? ('missing' as const)
-          : integrated
-            ? ('covered' as const)
-            : ('partial' as const),
+        passageIds.length === 0 ? ('missing' as const) : ('covered' as const),
       passageIds,
     };
   });
@@ -140,6 +127,7 @@ export function citedPassageIds(markdown: string): EvidencePassage['id'][] {
 
 export function stripPassageCitations(markdown: string): string {
   return markdown
+    .replace(/(\[P[1-9]\d*\])\s*[,;]\s*(?=\[P[1-9]\d*\])/gu, '$1 ')
     .replace(PASSAGE_GROUP, '')
     .replace(/\s+([,.;:!?])/gu, '$1')
     .replace(/[ \t]{2,}/gu, ' ')
@@ -149,38 +137,49 @@ export function stripPassageCitations(markdown: string): string {
 export interface AuditSegment {
   unit: AuditUnit;
   prefix: string;
+  blockIndex?: number;
+  separatorBefore?: string;
 }
 
 function splitIndependentClauses(value: string): string[] {
   return value
-    .split(/(?<=[.!?])\s+|\s*[;]\s+(?=[A-ZÀ-ÖØ-Þ0-9])/u)
+    .split(
+      /(?<=[.!?])\s+(?!\[P[1-9])|(?<=\])\s+(?=[A-ZÀ-ÖØ-Þ])|\s*[;]\s+(?=[A-ZÀ-ÖØ-Þ0-9])/u,
+    )
     .map((text) => text.trim())
     .filter(Boolean);
 }
 
 export function splitAuditSegments(markdown: string): AuditSegment[] {
-  const blocks = markdown
-    .trim()
-    .split(/\n+/u)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const pending = blocks.flatMap((block) => {
+  const lines = [...markdown.trim().matchAll(/([^\n]+)(\n*)/gu)];
+  const pending = lines.flatMap((match, blockIndex) => {
+    const block = match[1]!.trim();
     const prefix = block.match(/^(#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/u)?.[0] ?? '';
     const normalized = block.slice(prefix.length).trim();
     if (!normalized) return [];
     const clauses = prefix.startsWith('#')
       ? [normalized]
       : splitIndependentClauses(normalized);
-    return clauses.map((text) => ({ prefix, text }));
-  });
-  return pending.slice(0, 100).map(({ prefix, text }, index) => ({
-    prefix,
-    unit: {
-      id: `U${(index + 1).toString()}` as AuditUnit['id'],
+    return clauses.map((text) => ({
+      prefix,
       text,
-      citedPassageIds: citedPassageIds(text),
-    },
-  }));
+      blockIndex,
+      separatorBefore: blockIndex ? lines[blockIndex - 1]![2] || '\n' : '',
+    }));
+  });
+  if (pending.length > 100) throw new Error('MODEL_ANSWER_TOO_MANY_UNITS');
+  return pending.map(
+    ({ prefix, text, blockIndex, separatorBefore }, index) => ({
+      prefix,
+      blockIndex,
+      separatorBefore,
+      unit: {
+        id: `U${(index + 1).toString()}` as AuditUnit['id'],
+        text,
+        citedPassageIds: citedPassageIds(text),
+      },
+    }),
+  );
 }
 
 export function splitAuditUnits(markdown: string): AuditUnit[] {
@@ -233,6 +232,7 @@ export interface CompiledAuditAnswer {
   markdown: string;
   passageIds: EvidencePassage['id'][];
   retainedUnitCount: number;
+  units: AuditUnit[];
   rejectedUnitCount: number;
 }
 
@@ -240,11 +240,33 @@ export function compileAuditedAnswer(
   segments: AuditSegment[],
   audit: AnswerAudit,
   partial: boolean,
+  wholeParagraphs = false,
 ): CompiledAuditAnswer {
   const verdicts = new Map(audit.units.map((unit) => [unit.unitId, unit]));
-  const passageIds: EvidencePassage['id'][] = [];
-  const retained: string[] = [];
+  const units: AuditUnit[] = [];
+  const unitBlocks = new Map<string, number>();
+  const blocks = new Map<
+    number,
+    { prefix: string; separator: string; texts: string[] }
+  >();
+  const rejectedBlocks = new Set(
+    segments
+      .filter(
+        (s) =>
+          !['supported', 'not_factual'].includes(
+            verdicts.get(s.unit.id)?.verdict ?? '',
+          ),
+      )
+      .map((s) => s.blockIndex)
+      .filter((id) => id !== undefined),
+  );
   for (const segment of segments) {
+    if (
+      wholeParagraphs &&
+      segment.blockIndex !== undefined &&
+      rejectedBlocks.has(segment.blockIndex)
+    )
+      continue;
     const result = verdicts.get(segment.unit.id);
     if (!result || !['supported', 'not_factual'].includes(result.verdict))
       continue;
@@ -254,12 +276,42 @@ export function compileAuditedAnswer(
       result.verdict === 'supported'
         ? result.passageIds.map((id) => `[${id}]`).join(' ')
         : '';
-    passageIds.push(...result.passageIds);
-    retained.push(
-      `${segment.prefix}${text}${citations ? ` ${citations}` : ''}`,
-    );
+    const rendered = `${text}${citations ? ` ${citations}` : ''}`;
+    units.push({
+      ...segment.unit,
+      text: rendered,
+      citedPassageIds: result.verdict === 'supported' ? result.passageIds : [],
+    });
+    const blockId = segment.blockIndex ?? blocks.size;
+    unitBlocks.set(segment.unit.id, blockId);
+    let block = blocks.get(blockId);
+    if (!block) {
+      block = {
+        prefix: segment.prefix,
+        separator: segment.separatorBefore ?? '\n\n',
+        texts: [],
+      };
+      blocks.set(blockId, block);
+    }
+    block.texts.push(rendered);
   }
-  const rejectedUnitCount = segments.length - retained.length;
+  const visibleEntries = [...blocks.entries()].filter(
+    ([, block], index, all) =>
+      !block.prefix.startsWith('#') ||
+      (all[index + 1] && !all[index + 1]![1].prefix.startsWith('#')),
+  );
+  const visibleIds = new Set(visibleEntries.map(([id]) => id));
+  const publishedUnits = units.filter((unit) =>
+    visibleIds.has(unitBlocks.get(unit.id)!),
+  );
+  const visibleBlocks = visibleEntries.map(([, block]) => block);
+  const body = visibleBlocks
+    .map(
+      (block, index) =>
+        `${index ? block.separator : ''}${block.prefix}${block.texts.join(' ')}`,
+    )
+    .join('');
+  const rejectedUnitCount = segments.length - publishedUnits.length;
   const missingAxisCount = audit.axes.filter(
     ({ coverage }) => coverage !== 'covered',
   ).length;
@@ -275,9 +327,12 @@ export function compileAuditedAnswer(
     ? `_Réponse partielle${partialDetails.length ? ` : ${partialDetails.join(' ; ')}` : ''}._`
     : '';
   return {
-    markdown: [...retained, ...(notice ? [notice] : [])].join('\n\n'),
-    passageIds: [...new Set(passageIds)],
-    retainedUnitCount: retained.length,
+    markdown: body + (notice ? `\n\n${notice}` : ''),
+    passageIds: [
+      ...new Set(publishedUnits.flatMap((unit) => unit.citedPassageIds)),
+    ],
+    retainedUnitCount: publishedUnits.length,
+    units: publishedUnits,
     rejectedUnitCount,
   };
 }

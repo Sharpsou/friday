@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
-import { Readability } from '@mozilla/readability';
+import {
+  extractStructuredDocument,
+  type DocumentSection,
+} from '@friday/assistant-core';
 import { XMLParser } from 'fast-xml-parser';
 import { JSDOM, VirtualConsole } from 'jsdom';
 
@@ -35,6 +38,10 @@ export interface ValidatedFeed {
 }
 
 export interface ArticleDocument {
+  sections?: DocumentSection[];
+  fingerprint?: string;
+  extractionVersion?: string;
+  truncated?: boolean;
   text: string;
   publishedAt: string | null;
 }
@@ -152,7 +159,7 @@ export class SecureFeedClient {
   }
 
   async fetchArticleText(url: string, signal: AbortSignal): Promise<string> {
-    return (await this.fetchArticleDocument(url, signal)).text;
+    return (await this.fetchArticleDocument(url, signal)).text.slice(0, 20_000);
   }
 
   async fetchArticleDocument(
@@ -170,14 +177,10 @@ export class SecureFeedClient {
       virtualConsole: quietVirtualConsole(),
     });
     const publishedAt = articlePublishedAt(dom.window.document);
-    const article = new Readability(dom.window.document, {
-      maxElemsToParse: 50_000,
-    }).parse();
+    const structured = extractStructuredDocument(dom.window.document);
     return {
-      text: structuredArticleText(
-        article?.content ?? dom.window.document.body.innerHTML,
-        response.url,
-      ),
+      ...structured,
+      extractionVersion: structured.version,
       publishedAt,
     };
   }
@@ -267,36 +270,12 @@ export class SecureFeedClient {
 }
 
 export function structuredArticleText(html: string, url: string): string {
-  const document = new JSDOM(html, {
-    runScripts: undefined,
-    url,
-    virtualConsole: quietVirtualConsole(),
-  }).window.document;
-  const blocks = [
-    ...document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,tr,blockquote'),
-  ]
-    .filter(
-      (element) =>
-        !element.parentElement?.closest('li,tr') || element.matches('li,tr'),
-    )
-    .map((element) => {
-      if (element.matches('tr'))
-        return [...element.querySelectorAll('th,td')]
-          .map((cell) => cell.textContent?.replace(/\s+/gu, ' ').trim() ?? '')
-          .filter(Boolean)
-          .join(' | ');
-      return element.textContent?.replace(/\s+/gu, ' ').trim() ?? '';
-    })
-    .filter(Boolean);
-  const distinct = blocks.filter(
-    (block, index) => index === 0 || block !== blocks[index - 1],
-  );
-  const structured = distinct.join('\n\n').trim();
-  return (structured || document.body.textContent || '')
-    .replace(/[ \t]+/gu, ' ')
-    .replace(/\n{3,}/gu, '\n\n')
-    .trim()
-    .slice(0, 20_000);
+  return extractStructuredDocument(
+    new JSDOM(html, {
+      url,
+      virtualConsole: quietVirtualConsole(),
+    }).window.document,
+  ).text;
 }
 
 function quietVirtualConsole(): VirtualConsole {

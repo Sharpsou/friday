@@ -15,12 +15,38 @@ const readableAgenticArticle = [
   'Le podcast associé examine des retours d’expérience, la validation des sorties, la limitation des outils et les bonnes pratiques nécessaires pour conserver un contrôle humain.',
 ].join('\n\n');
 
+function auditFixture(raw: string, prompt: string) {
+  if (!prompt.startsWith('VERIFICATION=') || !raw.startsWith('{"units"'))
+    return raw;
+  const docs = JSON.parse(prompt.split('ORIGINAUX=')[1]!) as Array<{
+    id: string;
+    excerpts: Array<{ id: string; text: string }>;
+  }>;
+  return JSON.stringify({
+    units: JSON.parse(raw).units.map(
+      (u: {
+        unitId: string;
+        verdict: string;
+        addressedAxisIds?: string[];
+      }) => ({
+        unitId: u.unitId,
+        verdict: u.verdict,
+        addressedAxisIds: u.addressedAxisIds ?? ['A1'],
+        evidence: [
+          { passageId: docs[0]!.id, quoteId: docs[0]!.excerpts[0]!.id },
+        ],
+        reason: 'Support examiné.',
+      }),
+    ),
+  });
+}
+
 function unifiedEngine(responses: string[], searchFails = false) {
   return new VerifiedChatEngine({
     pipeline: 'unified',
     ollama: {
-      generate: async () => ({
-        response: responses.shift()!,
+      generate: async ({ prompt }: { prompt: string }) => ({
+        response: auditFixture(responses.shift()!, prompt),
         durationMs: 1,
       }),
       embed: async ({ input }: { input: string[] }) => input.map(() => [1, 0]),
@@ -122,6 +148,16 @@ describe('unified evidence pipeline', () => {
     ).toHaveLength(2);
   });
 
+  it.each(['cookies', 'navigation', 'confidentialité'])(
+    'does not discard substantive documentation because its subject is %s',
+    (subject) => {
+      const paragraph = `Cette documentation explique la ${subject} et ses conditions de fonctionnement. Elle décrit les limites du mécanisme et les précautions nécessaires pour comprendre son comportement.`;
+      expect(extractReadableParagraphs(paragraph, [subject])).toEqual([
+        paragraph,
+      ]);
+    },
+  );
+
   it('preserves each explicitly requested resource type before model topics', () => {
     expect(
       explicitResourceSearchQueries(
@@ -130,7 +166,7 @@ describe('unified evidence pipeline', () => {
     ).toEqual(['podcast', 'formation']);
   });
 
-  it('publishes the sourced draft and separates unreadable discoveries when audit JSON fails', async () => {
+  it('abstains without publishing excerpts when audit JSON fails', async () => {
     const engine = unifiedEngine([
       plan,
       'Le podcast et la formation présentent des pratiques de supervision [P1].',
@@ -146,22 +182,21 @@ describe('unified evidence pipeline', () => {
       updateStage: () => undefined,
     });
     expect(result).toMatchObject({
-      status: 'partial',
-      fallbackCode: 'AUDIT_INCOMPLETE_PUBLISHED',
+      status: 'abstained',
+      fallbackCode: 'SYNTHESIS_INVALID_AUDIT',
       readablePageCount: 1,
       rejectedPageCount: 1,
-      leadCount: 1,
+      leadCount: 0,
     });
-    expect(result.markdown).toContain('podcast et la formation');
-    expect(result.markdown).toContain('Vérification automatique incomplète');
+    expect(result.markdown).not.toContain(
+      'Le podcast et la formation présentent des pratiques de supervision',
+    );
+    expect(result.markdown).toContain('vérification');
     expect(result.markdown).not.toContain('Axes');
-    expect(result.sources.map(({ evidenceLevel }) => evidenceLevel)).toEqual([
-      'readable',
-      'discovery_only',
-    ]);
+    expect(result.sources).toEqual([]);
   });
 
-  it('uses an extractive sourced answer instead of an error when every drafted fact is rejected', async () => {
+  it('abstains when every drafted fact is rejected', async () => {
     const rejected = JSON.stringify({
       units: [
         {
@@ -178,6 +213,7 @@ describe('unified evidence pipeline', () => {
       rejected,
       'Affirmation encore trop large [P1].',
       rejected,
+      'Affirmation encore trop large [P1].',
     ]);
     const result = await engine.answer({
       content: 'Trouve des podcasts et formations sur l’agentique',
@@ -186,16 +222,16 @@ describe('unified evidence pipeline', () => {
       signal: new AbortController().signal,
       updateStage: () => undefined,
     });
-    expect(result.status).toBe('partial');
-    expect(result.fallbackCode).toBe('AUDIT_REJECTED_TO_EXTRACTIVE');
-    expect(result.markdown).toContain('Les sources consultées');
+    expect(result.status).toBe('abstained');
+    expect(result.fallbackCode).toBe('SYNTHESIS_NOT_VERIFIED');
+    expect(result.markdown).toContain('vérification');
     expect(result.markdown).not.toContain('Affirmation encore');
     expect(
       result.sources.some(({ evidenceLevel }) => evidenceLevel === 'readable'),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it('falls back visibly to a local unverified answer when Web search fails', async () => {
+  it('does not substitute model knowledge when required Web evidence fails', async () => {
     const engine = unifiedEngine(
       [plan, 'Voici une réponse locale prudente.'],
       true,
@@ -208,11 +244,11 @@ describe('unified evidence pipeline', () => {
       updateStage: () => undefined,
     });
     expect(result).toMatchObject({
-      status: 'unverified',
-      route: 'local_unverified',
+      status: 'abstained',
+      route: 'web_verified',
       fallbackCode: 'WEB_SEARCH_UNAVAILABLE',
     });
-    expect(result.markdown).toContain('recherche Web');
+    expect(result.markdown).toContain('recherche');
   });
 
   it('keeps a professional warning visible for an AVC question', () => {
@@ -248,10 +284,18 @@ describe('unified evidence pipeline', () => {
       '{broken',
       '{broken-again',
     ];
+    const titles: string[] = [];
     const engine = new VerifiedChatEngine({
+      observe: (event) => {
+        if (event.dossier)
+          titles.push(...event.dossier.sources.map((s) => s.title));
+      },
       pipeline: 'unified',
       ollama: {
-        generate: async () => ({ response: responses.shift()!, durationMs: 1 }),
+        generate: async ({ prompt }: { prompt: string }) => ({
+          response: auditFixture(responses.shift()!, prompt),
+          durationMs: 1,
+        }),
         embed: async ({ input }: { input: string[] }) =>
           input.map(() => [1, 0]),
       } as never,
@@ -275,19 +319,15 @@ describe('unified evidence pipeline', () => {
         }),
       } as never,
     });
-    const result = await engine.answer({
+    await engine.answer({
       content: 'Trouve des podcasts et des formations sur l’agentique',
       mode: 'web',
       priorTurns: [],
       signal: new AbortController().signal,
       updateStage: () => undefined,
     });
-    expect(
-      result.sources.some(({ title }) => title.startsWith('Podcast')),
-    ).toBe(true);
-    expect(
-      result.sources.some(({ title }) => title.startsWith('Formation')),
-    ).toBe(true);
+    expect(titles.some((title) => title.startsWith('Podcast'))).toBe(true);
+    expect(titles.some((title) => title.startsWith('Formation'))).toBe(true);
   });
 
   it('revises once when an explicitly requested resource available in evidence was omitted', async () => {
@@ -304,7 +344,10 @@ describe('unified evidence pipeline', () => {
     const responses = [
       plan,
       'La formation propose des applications et des pratiques concrètes [P1].',
-      supported,
+      supported.replace(
+        '"passageIds":["P1"]',
+        '"passageIds":["P1"],"addressedAxisIds":[]',
+      ),
       'Le podcast et la formation proposent des applications et des pratiques concrètes [P1].',
       supported,
     ];
@@ -313,7 +356,10 @@ describe('unified evidence pipeline', () => {
       ollama: {
         generate: async ({ prompt }: { prompt: string }) => {
           prompts.push(prompt);
-          return { response: responses.shift()!, durationMs: 1 };
+          return {
+            response: auditFixture(responses.shift()!, prompt),
+            durationMs: 1,
+          };
         },
         embed: async ({ input }: { input: string[] }) =>
           input.map(() => [1, 0]),
@@ -347,11 +393,7 @@ describe('unified evidence pipeline', () => {
     });
     expect(result.status).toBe('verified');
     expect(result.markdown).toContain('podcast');
-    expect(
-      prompts.some((prompt) =>
-        prompt.includes('LIVRABLES_EXPLICITES_MANQUANTS=["podcast"]'),
-      ),
-    ).toBe(true);
+    expect(prompts.some((prompt) => prompt.includes('BESOINS='))).toBe(true);
   });
 });
 
@@ -627,7 +669,7 @@ describe('axis verified pipeline', () => {
     });
     expect(result.status).toBe('verified');
     expect(result.modelCalls).toBe(4);
-    expect(searched[0]).toBe(
+    expect(searched[0]).toContain(
       'Quelles découvertes le télescope James Webb a-t-il faites en 2026 ?',
     );
     expect(
@@ -670,7 +712,7 @@ describe('axis verified pipeline', () => {
     expect(stages).toContain('auditing');
   });
 
-  it('revises an isolated cross-cutting section into the primary resource', async () => {
+  it('accepts sourced composition across sections without an unnecessary revision', async () => {
     const isolatedAudit = JSON.stringify({
       units: [
         {
@@ -703,23 +745,6 @@ describe('axis verified pipeline', () => {
       compositionPlan,
       '### Podcast\nLe podcast présente des applications [P1].\n### Bonnes pratiques\nIl recommande une supervision [P1].',
       isolatedAudit,
-      '### Podcast recommandé\nCe podcast présente des applications et enseigne les bonnes pratiques de supervision [P1].',
-      JSON.stringify({
-        units: [
-          {
-            unitId: 'U1',
-            verdict: 'not_factual',
-            passageIds: [],
-            addressedAxisIds: ['A1'],
-          },
-          {
-            unitId: 'U2',
-            verdict: 'supported',
-            passageIds: ['P1'],
-            addressedAxisIds: ['A1', 'A2'],
-          },
-        ],
-      }),
     ]);
     const result = await engine.answer({
       content: 'Trouve un podcast sur l’agentique et ses bonnes pratiques.',
@@ -730,16 +755,16 @@ describe('axis verified pipeline', () => {
     });
     expect(result).toMatchObject({
       status: 'verified',
-      modelCalls: 5,
+      modelCalls: 3,
       axisCount: 2,
       requiredAxisCount: 2,
       coveredAxisCount: 2,
     });
-    expect(result.markdown).toContain('enseigne les bonnes pratiques');
+    expect(result.markdown).toContain('Il recommande une supervision');
     expect(result.markdown).not.toMatch(/axes?\s+(?:requis|utile)/iu);
   });
 
-  it('keeps supported content partial instead of masking it when composition stays isolated', async () => {
+  it('keeps supported content partial when an audited need remains uncovered', async () => {
     const isolatedAnswer =
       '### Podcast\nLe podcast présente des applications [P1].\n### Bonnes pratiques\nIl recommande une supervision [P1].';
     const isolatedAudit = JSON.stringify({
@@ -766,7 +791,7 @@ describe('axis verified pipeline', () => {
           unitId: 'U4',
           verdict: 'supported',
           passageIds: ['P1'],
-          addressedAxisIds: ['A2'],
+          addressedAxisIds: [],
         },
       ],
     });

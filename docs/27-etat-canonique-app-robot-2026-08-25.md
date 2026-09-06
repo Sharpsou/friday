@@ -1,9 +1,101 @@
 # État canonique Friday — application et robot
 
-Date de mise à jour : 3 septembre 2026
-Statut : **source de vérité d’implémentation**
+## État courant — 6 septembre 2026
+
+Dernière livraison : **6 septembre 2026 à 12 h 04 (Paris)** sur
+`https://192.168.1.14:8443`, **SQLite 47 / Dexie 9**. Les cinq derniers gros
+fichiers sont découpés et le complément est déployé sur demande utilisateur.
+`pnpm verify` passe avec **557 tests**, format, lint, typage, architecture et
+builds. Santé locale/LAN, intégrité SQLite et empreintes des fichiers servis
+sont vérifiées. Voir le [bilan du complément](audits/2026-09-06-complement-cinq-modules.md)
+et le [plan exécuté](audits/2026-09-06-plan-decoupage-cinq-modules.md).
+
+Un correctif distinct empêche les continuations Robot tardives après arrêt ou
+annulation, y compris lors d'un panorama. Les preuves sont simulées ; aucune
+recette physique n'a été effectuée et le Pi n'était pas joignable lors du GET
+d'état. Son runtime Python est inchangé. Les recettes téléphones restent
+ouvertes. La gate qualitative Chat reste refusée ; aucun prompt, modèle,
+numéro de migration ou format chiffré n'est changé. Les mentions historiques
+plus bas décrivent leurs dates respectives.
+
+## Historique des livraisons et états techniques
+
+Les paragraphes suivants conservent les résultats et décisions à leur date.
+Le présent encadré et le rapport de lot prévalent pour reprendre le travail.
 
 ## Application
+
+### Chat — étape historique du harnais avant sa livraison du soir
+
+L'implémentation du plan de fiabilisation reprend dans le workspace. Elle
+conserve la file FIFO Ollama commune Maison/Chat/Veille/classement/photo.
+Le candidat ajoute SQLite 46 et modifie la synthèse, les budgets et la reprise
+des envois ; **il n'est pas déployé**. La production reste dans l'état décrit
+ci-dessous. Les essais réels de développement présentent encore des omissions
+et des erreurs sémantiques ; aucun succès qualitatif n'est établi.
+Le contrôle technique d'une version intermédiaire passe le 5 septembre vers
+20 h 42. La campagne prévue sur 120 réponses est interrompue après quatre
+réponses effectivement relues : les deux modes produisent une erreur importante
+sur le cas Python 3.13. Une préparation ciblée par besoin et des preuves par
+paragraphes passent ensuite `pnpm verify` vers 21 h 20 (506 tests). Une nouvelle
+campagne figée remplace le cas consommé Python par Go 1.24 et conserve les
+19 cas non générés. La qualification reste ouverte, sans déploiement.
+Voir le [rapport du harnais candidat](audits/2026-09-05-harnais-chat-v3.md)
+pour les changements, les limites et les validations restantes.
+
+### Maison — déployé le 5 septembre
+
+L’extension produit regroupe Courses, Menus et Réserve dans Maison, avec Courses
+ouvert par défaut : catalogue versionné, préparations et repas midi/soir,
+portions et restes, réserve souple, rangement des achats, seuils, bilans de
+courses traçables, Agenda/Aujourd’hui, commandes composites dans l’outbox et
+jobs IA privés. L’ordonnanceur Ollama est partagé entre les cinq domaines.
+Voir le [runbook Maison](runbooks/maison-menus-reserve.md) et le
+[rapport de livraison](audits/2026-09-05-livraison-maison.md).
+
+Après l’autorisation utilisateur de terminer la livraison, le candidat combiné
+Maison et Chat du workspace a été déployé avec le lanceur Windows. Cette
+autorisation ne transforme pas la campagne qualitative Chat refusée en succès.
+La base canonique est en **SQLite 45**, la PWA livrée cible **Dexie 9**.
+À 17 h 42 (Paris), health checks local et LAN : `status=ok`, `database=ok` ;
+`integrity_check=ok`, aucune violation de clé étrangère. Le HTML servi correspond
+exactement au build livré ; les nouvelles API refusent les accès anonymes (401).
+
+La sauvegarde online immédiatement préalable et sa restauration migrée sont
+sous `D:\FridayData\backups\maison-migration-BZMsFL` : migration 44 → 45,
+intégrité correcte et données antérieures inchangées. La vérification finale
+`pnpm verify` passe : 27 tests Robot, 25 contrats, 26 cœur Assistant, 27 domaine,
+167 Hub, 130 PWA, 46 banc Chat et 29 scénarios Playwright, soit **477 tests**.
+Format, lint, typage et builds passent également. Le parcours mobile automatisé
+couvre six portions sur deux jours, achats, rangement, préparation, restes et
+catalogue hors connexion.
+
+Deux jobs de recette ont abouti avec Ollama réel, en mode local puis Web
+(cinq sources), sur une base isolée et sans écriture dans le catalogue du foyer.
+Ce contrôle a corrigé une incompatibilité du schéma de génération avec la
+grammaire Ollama ; la validation métier Zod reste complète. Les quantités
+insuffisamment établies restent inconnues. Ce smoke test ne valide pas la
+qualité culinaire. La recette manuelle sur les deux téléphones reste ouverte.
+
+### Chat — lot du 5 septembre, livré avec Maison
+
+Le lot local du 5 septembre partage aussi l’orchestration complète dans
+`assistant-core/runtime.ts`. Il classe les seize pages avant sélection finale,
+conserve les longs paragraphes par découpage et transmet titres, dates et
+sections au rédacteur. La rédaction vise naturellement 250–600 mots, sans
+plancher obligatoire ; le filtrage conserve les paragraphes et les listes.
+Les transactions Dexie démarrent après le chiffrement ; un instantané serveur
+complet purge les conversations supprimées. Une panne du cache n’annule pas
+une mutation déjà acceptée par le Hub. Les runs d’une conversation suivent
+l’ordre des questions et n’intègrent jamais une question future au contexte.
+Les preuves de tests, la campagne et la décision de déploiement sont dans le
+[bilan du lot](audits/2026-09-05-implementation-chat.md).
+Les 120 générations et leur revue par Codex sont terminées. La gate qualitative
+échoue : erreurs de conditions, d’attribution et de couverture malgré une prose
+généralement rédigée. Le déploiement, initialement suspendu, a été effectué
+avec Maison après l’autorisation utilisateur suivante ; la gate qualitative
+reste refusée. La revue locale
+8B a été remplacée à la demande de l’utilisateur, sans validation humaine.
 
 Friday est un monorepo pnpm TypeScript : PWA React/Vite/Workbox offline-first,
 hub Fastify sur Windows, SQLite canonique sous `D:\FridayData`, Dexie chiffré
@@ -33,9 +125,11 @@ sans attendre la fin de l'inférence. Les modes et le bouton restent utilisables
 quand la dernière conversation est supprimée. Pendant un run, la PWA affiche
 immédiatement « Friday travaille » et l'étape courante. L'audit Qwen rend
 uniquement un verdict et des passages pour chaque unité. Le code valide les
-identifiants et décide révision ou publication. Deux échecs de forme ne
-masquent plus un brouillon sûr : celui-ci est publié `partial` après validation
-déterministe, avec un avertissement visible.
+identifiants et décide révision ou publication. Le correctif local du 5 septembre
+interdit de publier un brouillon sans audit. Une panne conserve le dernier
+texte accepté ou des extraits originaux en `partial`, jamais une contradiction
+précédemment rejetée. Ce correctif est livré avec Maison sur autorisation
+utilisateur, malgré la gate qualitative toujours refusée.
 Une sortie JSON bien formée mais contenant une unité ou un passage inconnu est
 désormais récupérée de façon conservatrice : les références invalides sont
 retirées et tout verdict qui perd sa preuve devient `unsupported`. Cette
@@ -54,9 +148,11 @@ citation. Une omission d'un type de ressource explicitement demandé déclenche
 la seule révision autorisée lorsque le dossier contient ce type. Un audit qui
 rejette tout produit un résumé extractif sourcé, jamais un écran vide. Le
 pipeline `axes` reste disponible comme rollback immédiat.
-La vérification complète candidate passe avec 27 tests Robot, 18 tests du cœur
-Assistant, 42 tests du banc, 25 contrats, 15 domaine, 142 Hub, 106 PWA et 28
-scénarios Playwright.
+La vérification complète du candidat du 5 septembre passe avec 27 tests Robot,
+26 tests du cœur Assistant, 46 tests du banc, 25 contrats, 15 domaine,
+150 Hub, 113 PWA et 28 scénarios Playwright, soit 430 tests. Le client Ollama
+fixe explicitement le contexte à 32 768 tokens pour conserver le dossier
+documentaire et les unités de l’audit.
 
 Les migrations Assistant jusqu'à 40 et les données existantes restent en place
 pour préserver l'historique et la compatibilité SQLite ; elles sont désormais
@@ -72,7 +168,8 @@ chiffrés sans outbox d'envoi. Le dossier privé v1 a été
 gelé avec 10 fiches de développement, 10 de validation et 35 pages originales
 contrôlées par empreinte. La campagne `campaign-v2` a produit les 120 résultats
 attendus et 60 paires A/B sur trois graines. Ces résultats v1 ne franchissent
-pas la nouvelle gate. Le brouillon v2, avec références de paragraphes, se trouve
+pas la nouvelle gate. Le corpus v2 est désormais figé avec 20 nouvelles questions et des références
+exactes aux paragraphes des documents historiques ; il se trouve
 sous `D:\FridayData\evaluations\chat-foundation-v2`.
 
 Le candidat v2 activé est déployé sur l'origine A17. Le smoke test Chrome du
@@ -82,7 +179,7 @@ d'inventer la version Python absente des preuves, mais a révélé un rappel de
 passage insuffisant et un format de citations à normaliser. Les URL issues du
 brouillon sont maintenant retirées par le code et les groupes `(P…)` sont
 normalisés avant exposition des seules sources validées. Le health check répond `status=ok`,
-`database=ok`, `ollama=not-required`. La base A17 est en migration 44 avec
+`database=ok`, `ollama=not-required`. La base A17 observée avant Maison était en migration 44 avec
 `integrity_check=ok`, sans violation de clé étrangère, et les quatre tables
 `chat_*` sont présentes. La sauvegarde
 pré-migration 40 intègre est
@@ -94,13 +191,13 @@ La sauvegarde cohérente pré-migration 43 est
 La sauvegarde cohérente pré-migration 44 est
 `D:\FridayData\backups\friday-pre-chat-unified-migration44-20260903-120000.sqlite`.
 
-La navigation comporte Aujourd’hui, Agenda, Courses, Budget, Chat, Veille et
-Robot. Auth fermée et partage à deux sont implantés. Agenda, Courses et Budget
+La navigation comporte Aujourd’hui, Agenda, Maison, Budget, Chat, Veille et
+Robot. Auth fermée et partage à deux sont implantés. Agenda, Maison et Budget
 sont partagés ; Chat et Veille restent privés par profil. Google Calendar n’est pas
 implanté ; Tailscale et les données Budget réelles restent derrière leurs
 portes documentées. Le Chat n’a aucune mutation métier ni commande Robot.
 
-SQLite candidate est en migration **44** et le candidat PWA cible Dexie **8** :
+SQLite canonique est en migration **45** et la PWA livrée cible Dexie **9** :
 
 - 1–19 : Maison, auth, sync, Budget, Chat, recherche et Veille ;
 - 20–25 : ancien prototype Robot, conservé uniquement dans l’historique de
@@ -135,6 +232,8 @@ SQLite candidate est en migration **44** et le candidat PWA cible Dexie **8** :
   ou embedding persisté.
 - 44 : niveau `readable|discovery_only` des sources et compteurs de pages
   découvertes, lisibles, rejetées et pistes, sans persister leur contenu.
+- 45 : objets Maison révisés, jobs Menus privés et identifiant de commande
+  composite dans le journal de synchronisation.
 
 Les migrations 20–25 n’ont pas été réécrites. Les anciennes données Robot ne
 sont pas importées dans le nouveau modèle. Le retour arrière passe par la

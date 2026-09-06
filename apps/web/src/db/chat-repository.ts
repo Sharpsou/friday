@@ -6,8 +6,8 @@ import {
 } from '@friday/contracts';
 
 import { decryptJson, encryptJson } from '../crypto/vault.js';
+import { getDeviceContext } from './device-context.js';
 import { fridayDb } from './friday-db.js';
-import { getDeviceContext } from './task-repository.js';
 
 const conversationAad = (id: string, deviceId: string) =>
   `chat-v2-conversation:${id}:${deviceId}`;
@@ -17,45 +17,62 @@ const messageAad = (id: string, deviceId: string) =>
 export async function cacheChatState(
   conversations: ChatConversation[],
   messages: ChatMessage[] = [],
+  replaceSnapshot = false,
 ): Promise<void> {
   const { deviceId, key, profileId } = await getDeviceContext();
+  const conversationRows = await Promise.all(
+    conversations.map(async (conversation) => ({
+      id: conversation.id,
+      profileId,
+      archivedAt: conversation.archivedAt,
+      updatedAt: conversation.updatedAt,
+      encrypted: await encryptJson(
+        key,
+        conversation,
+        conversationAad(conversation.id, deviceId),
+      ),
+    })),
+  );
+  const messageRows = await Promise.all(
+    messages.map(async (message) => ({
+      id: message.id,
+      profileId,
+      conversationId: message.conversationId,
+      createdAt: message.createdAt,
+      encrypted: await encryptJson(
+        key,
+        message,
+        messageAad(message.id, deviceId),
+      ),
+    })),
+  );
   await fridayDb.transaction(
     'rw',
     fridayDb.chatConversations,
     fridayDb.chatMessages,
+    fridayDb.settings,
     async () => {
-      if (conversations.length)
-        await fridayDb.chatConversations.bulkPut(
-          await Promise.all(
-            conversations.map(async (conversation) => ({
-              id: conversation.id,
-              profileId,
-              archivedAt: conversation.archivedAt,
-              updatedAt: conversation.updatedAt,
-              encrypted: await encryptJson(
-                key,
-                conversation,
-                conversationAad(conversation.id, deviceId),
-              ),
-            })),
-          ),
+      if (replaceSnapshot) {
+        const ids = new Set(conversations.map(({ id }) => id));
+        const removed = (
+          await fridayDb.chatConversations
+            .where('profileId')
+            .equals(profileId)
+            .primaryKeys()
+        ).filter((id) => !ids.has(id));
+        for (const id of removed)
+          await fridayDb.chatMessages
+            .where('[profileId+conversationId]')
+            .equals([profileId, id])
+            .delete();
+        await fridayDb.chatConversations.bulkDelete(removed);
+        await fridayDb.settings.bulkDelete(
+          removed.map((id) => `chat-send:${profileId}:${id}`),
         );
-      if (messages.length)
-        await fridayDb.chatMessages.bulkPut(
-          await Promise.all(
-            messages.map(async (message) => ({
-              id: message.id,
-              profileId,
-              conversationId: message.conversationId,
-              createdAt: message.createdAt,
-              encrypted: await encryptJson(
-                key,
-                message,
-                messageAad(message.id, deviceId),
-              ),
-            })),
-          ),
-        );
+      }
+      if (conversationRows.length)
+        await fridayDb.chatConversations.bulkPut(conversationRows);
+      if (messageRows.length) await fridayDb.chatMessages.bulkPut(messageRows);
     },
   );
 }
@@ -106,6 +123,7 @@ export async function deleteCachedChatConversation(id: string): Promise<void> {
     'rw',
     fridayDb.chatConversations,
     fridayDb.chatMessages,
+    fridayDb.settings,
     async () => {
       const messages = await fridayDb.chatMessages
         .where('[profileId+conversationId]')
@@ -113,6 +131,7 @@ export async function deleteCachedChatConversation(id: string): Promise<void> {
         .primaryKeys();
       await fridayDb.chatMessages.bulkDelete(messages);
       await fridayDb.chatConversations.delete(id);
+      await fridayDb.settings.delete(`chat-send:${profileId}:${id}`);
     },
   );
 }

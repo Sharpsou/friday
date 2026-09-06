@@ -1,0 +1,179 @@
+.maison-content {
+  display: grid;
+  gap: 1rem;
+  font-size: 14px;
+  line-height: 1.5;
+  padding-bottom: 1rem;
+}
+.maison-content button,
+.maison-tabs button,
+.maison-dialog button,
+.maison-meal-summary button {
+  min-height: 44px;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.8rem;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.maison-content button:disabled,
+.maison-dialog button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.maison-dialog form > button:not([type='button']) {
+  background: var(--mint);
+  color: var(--accent-contrast);
+}
+.maison-toolbar,
+.maison-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.maison-tabs {
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface);
+  margin-bottom: 1rem;
+}
+.maison-tabs button {
+  flex: 1;
+  min-height: 44px;
+}
+.maison-tabs button[aria-pressed='true'] {
+  background: var(--mint-deep);
+  color: var(--mint);
+  border-color: var(--mint);
+}
+.maison-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 1rem;
+}
+.maison-card-grid .panel {
+  margin: 0;
+  min-width: 0;
+}
+.maison-card-grid button {
+  margin-top: 0.6rem;
+  margin-right: 0.5rem;
+}
+.maison-content h3,
+.maison-content h4 {
+  margin-top: 0;
+}
+.maison-content pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 20rem;
+  overflow: auto;
+}
+.maison-dialog {
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 1.4rem;
+  padding: 1.5rem;
+  width: min(680px, calc(100vw - 1rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+}
+.maison-dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+.maison-form {
+  display: grid;
+  gap: 1rem;
+}
+.maison-form label,
+.maison-content > label {
+  display: grid;
+  gap: 0.45rem;
+}
+.maison-form input:not([type='checkbox']),
+.maison-form select,
+.maison-form textarea,
+.maison-content > label input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  font-size: 16px;
+  padding: 0.65rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.65rem;
+  color: var(--text);
+  background: var(--surface-raised);
+  box-sizing: border-box;
+}
+.maison-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+.maison-form-row > * {
+  flex: 1 1 130px;
+  min-width: 0;
+}
+.maison-form fieldset {
+  border: 1px solid var(--line-strong);
+  border-radius: 0.8rem;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.maison-form .maison-check,
+.maison-check {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 44px;
+}
+.maison-check input {
+  width: 22px;
+  height: 22px;
+}
+.maison-form p {
+  margin: 0;
+  color: var(--muted);
+}
+.maison-form [role='alert'] {
+  color: var(--danger);
+  white-space: pre-wrap;
+}
+.maison-meal-summary {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.6rem 0;
+}
+.maison-meal-summary button {
+  display: grid;
+  text-align: left;
+  gap: 0.3rem;
+  padding: 0.9rem;
+  border-left: 3px solid var(--amber);
+}
+.maison-meal-summary span,
+.maison-meal-summary small {
+  color: var(--muted);
+}
+.maison-prose {
+  white-space: pre-wrap;
+}
+.calendar-menu-marker {
+  color: var(--amber);
+}
+@media (max-width: 480px) {
+  .maison-dialog {
+    padding: 1rem;
+  }
+  .maison-toolbar > button {
+    flex: 1 1 auto;
+  }
+}

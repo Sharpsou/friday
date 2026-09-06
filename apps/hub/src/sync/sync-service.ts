@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { applyMaisonCommand } from '../maison/maison-sync.js';
 
 import {
   BudgetEntryRecordSchema,
@@ -7,6 +8,7 @@ import {
   BudgetRecurringTemplateRecordSchema,
   BudgetSavingsMonthRecordSchema,
   GroceryItemRecordSchema,
+  MaisonRecordSchema,
   TaskRecordSchema,
   type Change,
   type GroceryItemOperation,
@@ -63,8 +65,9 @@ interface GroceryItemRow {
 }
 
 interface ChangeRow {
+  command_id: string | null;
   sequence: number;
-  entity_type: BudgetEntityType | 'grocery_item' | 'task';
+  entity_type: BudgetEntityType | 'grocery_item' | 'task' | 'maison_record';
   entity_id: string;
   operation: 'upsert';
   payload_json: string;
@@ -122,10 +125,10 @@ export class SyncService {
     return { acks, cursor: this.#currentCursor() };
   }
 
-  pull(after: number): PullResponse {
-    const rows = this.#database
+  pull(after: number, maison = false): PullResponse {
+    let rows = this.#database
       .prepare(
-        `SELECT sequence, entity_type, entity_id, operation, payload_json
+        `SELECT sequence, entity_type, entity_id, operation, payload_json, command_id
          FROM change_log
          WHERE sequence > ?
          ORDER BY sequence ASC
@@ -133,38 +136,60 @@ export class SyncService {
       )
       .all(after) as ChangeRow[];
 
-    const changes: Change[] = rows.map((row) => {
-      const common = {
-        cursor: row.sequence,
-        entityId: row.entity_id,
-        operation: row.operation,
-      } as const;
-      if (row.entity_type === 'grocery_item') {
+    // A composite Maison command must never be split across two pull pages.
+    const last = rows.at(-1);
+    if (
+      last?.command_id &&
+      this.#database
+        .prepare(
+          'SELECT 1 FROM change_log WHERE command_id = ? AND sequence > ? LIMIT 1',
+        )
+        .get(last.command_id, last.sequence)
+    )
+      rows = rows.filter((row) => row.command_id !== last.command_id);
+
+    const changes: Change[] = rows
+      .filter((row) => maison || row.entity_type !== 'maison_record')
+      .map((row) => {
+        const common = {
+          cursor: row.sequence,
+          entityId: row.entity_id,
+          operation: row.operation,
+        } as const;
+        if (row.entity_type === 'maison_record')
+          return {
+            ...common,
+            entityType: 'maison_record',
+            payload: MaisonRecordSchema.parse(JSON.parse(row.payload_json)),
+          };
+        if (row.entity_type === 'grocery_item') {
+          return {
+            ...common,
+            entityType: 'grocery_item',
+            payload: GroceryItemRecordSchema.parse(
+              JSON.parse(row.payload_json),
+            ),
+          };
+        }
+        if (isBudgetEntityType(row.entity_type)) {
+          return {
+            ...common,
+            entityType: row.entity_type,
+            payload: BUDGET_SCHEMAS[row.entity_type].parse(
+              JSON.parse(row.payload_json),
+            ),
+          } as Change;
+        }
         return {
           ...common,
-          entityType: 'grocery_item',
-          payload: GroceryItemRecordSchema.parse(JSON.parse(row.payload_json)),
+          entityType: 'task',
+          payload: TaskRecordSchema.parse(JSON.parse(row.payload_json)),
         };
-      }
-      if (isBudgetEntityType(row.entity_type)) {
-        return {
-          ...common,
-          entityType: row.entity_type,
-          payload: BUDGET_SCHEMAS[row.entity_type].parse(
-            JSON.parse(row.payload_json),
-          ),
-        } as Change;
-      }
-      return {
-        ...common,
-        entityType: 'task',
-        payload: TaskRecordSchema.parse(JSON.parse(row.payload_json)),
-      };
-    });
+      });
 
     return {
       changes,
-      cursor: changes.at(-1)?.cursor ?? after,
+      cursor: rows.at(-1)?.sequence ?? after,
     };
   }
 
@@ -179,6 +204,11 @@ export class SyncService {
       if (prior) {
         return JSON.parse(prior.result_json) as OperationAck;
       }
+
+      if (operation.entityType === 'maison_command')
+        return applyMaisonCommand(this.#database, operation, (grocery) =>
+          this.#applyGroceryItem(grocery),
+        );
 
       if (operation.entityType === 'grocery_item') {
         return this.#applyGroceryItem(operation);

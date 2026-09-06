@@ -102,7 +102,7 @@ export interface WatchOutboxRow {
   watchId: string;
 }
 
-class FridayDatabase extends Dexie {
+export class FridayDatabase extends Dexie {
   assistantConversations!: EntityTable<AssistantConversationRow, 'id'>;
   assistantMessages!: EntityTable<AssistantMessageRow, 'id'>;
   chatConversations!: EntityTable<ChatConversationRow, 'id'>;
@@ -118,11 +118,16 @@ class FridayDatabase extends Dexie {
   outbox!: EntityTable<OutboxRow, 'operationId'>;
   settings!: EntityTable<SettingRow, 'key'>;
   tasks!: EntityTable<TaskRow, 'id'>;
+  maisonRecords!: EntityTable<TaskRow, 'id'>;
+  maisonConflicts!: EntityTable<
+    { id: string; encrypted: EncryptedEnvelope },
+    'id'
+  >;
   watchOutbox!: EntityTable<WatchOutboxRow, 'operationId'>;
   watchSnapshots!: EntityTable<WatchSnapshotRow, 'profileId'>;
 
-  constructor() {
-    super('friday');
+  constructor(name = 'friday') {
+    super(name);
     this.version(1).stores({
       keys: '&id',
       outbox: '&operationId, entityId, createdAt, state',
@@ -233,6 +238,10 @@ class FridayDatabase extends Dexie {
       tasks: '&id, revision, updatedAt, syncState',
       watchOutbox: '&operationId, profileId, kind, watchId, createdAt',
       watchSnapshots: '&profileId, updatedAt',
+    });
+    this.version(9).stores({
+      maisonRecords: '&id, revision, updatedAt, syncState',
+      maisonConflicts: '&id',
     });
   }
 }

@@ -5,9 +5,9 @@ import {
 } from '@friday/contracts';
 
 import { decryptJson, encryptJson } from '../crypto/vault.js';
-import { fridayDb } from './friday-db.js';
+import { getDeviceContext } from './device-context.js';
 import { groceryClassificationAad } from './encryption-context.js';
-import { getDeviceContext } from './task-repository.js';
+import { fridayDb } from './friday-db.js';
 
 const CURSOR_KEY = 'grocery-classification-cursor';
 const ACTIVE_JOB_KEY = 'grocery-classification-active-job';

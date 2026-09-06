@@ -53,14 +53,21 @@ historiques 01–08 ou les anciens checkpoints Robot pour contredire le document
 
 ## État technique courant
 
-- Navigation : Aujourd’hui, Agenda, Courses, Budget, Chat, Veille, Robot.
-- SQLite 40 ; Dexie 7.
-- Le moteur Chat est retiré : l'onglet est une archive privée en lecture seule
-  pendant sa reconstruction. La reprise est définie par
-  `docs/32-fondation-reconstruction-chat.md`.
-- `pnpm verify` de référence : 27 tests Python, 26 contrats, 15 domaine, 193
-  hub, 105 PWA, 25 Playwright et builds production.
-- Candidat déployé sur l’origine A17 ; health check et intégrité SQLite `ok`.
+- Navigation : Aujourd’hui, Agenda, Maison, Budget, Chat, Veille, Robot.
+- SQLite 47 ; Dexie 9. Maison livré : Courses + Menus + Réserve et
+  ordonnanceur IA commun. Voir `docs/runbooks/maison-menus-reserve.md` et le
+  document 27 ; la recette réelle des deux téléphones reste ouverte.
+- Le Chat v2 est activé par décision utilisateur ; seule l’ancienne API
+  Assistant reste une archive privée en lecture seule. Pipeline actif
+  `unified`, rollback `axes`. La gate qualitative reste ouverte : voir
+  `docs/32-fondation-reconstruction-chat.md` et le runbook `assistant-gemma.md`.
+- Les correctifs du 5 septembre (publication, cache, contexte, synthèse et banc
+  partagé) sont livrés avec Maison après l’autorisation utilisateur suivante.
+  La campagne qualitative reste refusée ; lire son bilan avant toute reprise.
+- Référence des tests et du déploiement : document 27 et rapport de lot ; ne
+  pas recopier ici des compteurs historiques.
+- Maison, Chat et modularisation du 6 septembre déployés sur l’origine A17 ; derniers
+  health check et contrôle d’intégrité SQLite `ok` (preuves dans le document 27).
 - Sauvegardes de référence et retours arrière récents : document 27 et runbooks,
   jamais Git.
 
@@ -74,6 +81,12 @@ tremble et l’AlphaBot2 n’a ni encodeur, IMU, LiDAR ni pince.
 Pour tout travail Robot, lire `docs/runbooks/robot-alphabot2.md`. Observer
 d’abord l’état sans mouvement. Une action physique exige l’utilisateur, une
 zone sûre, un arrêt accessible et une recette explicite.
+
+Le lot de modularisation du 6 septembre est déployé ; voir son rapport dans
+`docs/audits/2026-09-06-deploiement-modularisation.md`.
+La vérification isole la PWA dans `.verification/web` et contrôle les cycles.
+Le complément des cinq gros fichiers et la protection des annulations Robot
+sont aussi déployés ; voir `docs/audits/2026-09-06-complement-cinq-modules.md`.
 
 ## Façon de travailler
 

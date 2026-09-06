@@ -1,0 +1,1 @@
+export const MIGRATION_046 = `CREATE TABLE web_budget_months (month TEXT PRIMARY KEY, baseline INTEGER NOT NULL, ceiling INTEGER NOT NULL); CREATE TABLE web_budget_reservations (id TEXT PRIMARY KEY, month TEXT NOT NULL, credits INTEGER NOT NULL CHECK(credits > 0), state TEXT NOT NULL CHECK(state IN ('reserved','spent')), created_at TEXT NOT NULL);`;

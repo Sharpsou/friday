@@ -38,3 +38,12 @@ pnpm --filter @friday/hub seed:budget D:\FridayData\budget-seed-v1.json D:\Frida
 Le résultat `applied: true` doit contenir les mêmes comptes et totaux que le rapprochement. Relancer exactement la même commande : elle doit retourner `applied: false` et ne créer aucun changement supplémentaire. En cas d'écart, restaurer la sauvegarde avant toute nouvelle tentative.
 
 Après validation, redémarrer Friday, synchroniser un appareil de recette et vérifier les synthèses sans citer de donnée personnelle dans le compte rendu.
+
+## Maintenance du 6 septembre 2026
+
+Les formulaires sont séparés dans `web/src/budget/`, et `budget-view-model.ts`
+compose les calculs de présentation auparavant inclus dans `BudgetView.tsx`.
+Les montants restent en centimes ; règles de récurrence et de clôture inchangées.
+Budget est chargé à la demande et précaché par la PWA pour l'usage offline.
+
+Voir le [bilan de modularisation](../audits/2026-09-06-implementation-qualite-et-modularisation.md).

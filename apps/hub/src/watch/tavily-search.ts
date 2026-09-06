@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { WebBudget } from '../integrations/web/web-budget.js';
 
 const TavilyResponseSchema = z
   .object({
@@ -46,10 +47,12 @@ export interface TavilyUsage {
 export class TavilyUnavailableError extends Error {}
 
 export class TavilySearchClient {
-  private usageCache: { value: TavilyUsage; expiresAt: number } | undefined;
+  private usageCache:
+    { value: TavilyUsage; expiresAt: number; month: string } | undefined;
   constructor(
     private readonly apiKey: string | undefined,
     private readonly fetcher: typeof fetch = fetch,
+    private readonly budget?: WebBudget,
   ) {}
 
   get available(): boolean {
@@ -63,6 +66,10 @@ export class TavilySearchClient {
   ): Promise<TavilySearchResult> {
     if (!this.apiKey)
       throw new TavilyUnavailableError('La clé Tavily n’est pas configurée.');
+    signal.throwIfAborted();
+    if (this.budget) await this.usage(signal);
+    signal.throwIfAborted();
+    const reservation = this.budget?.reserve(depth === 'advanced' ? 2 : 1);
     const response = await this.fetcher('https://api.tavily.com/search', {
       method: 'POST',
       headers: {
@@ -84,6 +91,11 @@ export class TavilySearchClient {
         `Tavily a répondu ${response.status.toString()}.`,
       );
     const payload = TavilyResponseSchema.parse(await response.json());
+    if (reservation)
+      this.budget?.settle(
+        reservation,
+        payload.usage?.credits ?? (depth === 'advanced' ? 2 : 1),
+      );
     this.usageCache = undefined;
     return {
       creditsUsed: payload.usage?.credits ?? (depth === 'advanced' ? 2 : 1),
@@ -99,8 +111,17 @@ export class TavilySearchClient {
   async usage(signal: AbortSignal): Promise<TavilyUsage> {
     if (!this.apiKey)
       throw new TavilyUnavailableError('La clé Tavily n’est pas configurée.');
-    if (this.usageCache && this.usageCache.expiresAt > Date.now())
-      return this.usageCache.value;
+    if (
+      this.usageCache &&
+      this.usageCache.expiresAt > Date.now() &&
+      this.usageCache.month === new Date().toISOString().slice(0, 7)
+    )
+      return (
+        this.budget?.reconcile(
+          this.usageCache.value.creditsUsed,
+          this.usageCache.value.limit,
+        ) ?? this.usageCache.value
+      );
     const response = await this.fetcher('https://api.tavily.com/usage', {
       headers: { authorization: `Bearer ${this.apiKey}` },
       signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
@@ -114,8 +135,12 @@ export class TavilySearchClient {
       creditsUsed: payload.account.plan_usage,
       limit: payload.account.plan_limit,
     };
-    this.usageCache = { value, expiresAt: Date.now() + 5 * 60_000 };
-    return value;
+    this.usageCache = {
+      value,
+      expiresAt: Date.now() + 5 * 60_000,
+      month: new Date().toISOString().slice(0, 7),
+    };
+    return this.budget?.reconcile(value.creditsUsed, value.limit) ?? value;
   }
 }
 

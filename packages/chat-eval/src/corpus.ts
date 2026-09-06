@@ -1,7 +1,10 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 
 import { z } from 'zod';
+import { JSDOM } from 'jsdom';
+import { extractStructuredDocument } from '@friday/assistant-core';
 
 import {
   CorpusSchema,
@@ -31,7 +34,7 @@ const DraftCaseSchema = z.strictObject({
     'context_followup',
   ]),
   question: z.string().trim().min(3).max(2_000),
-  priorTurns: z.array(PriorTurnSchema).max(2),
+  priorTurns: z.array(PriorTurnSchema).max(6),
   criteria: HumanCriteriaSchema,
   pages: z.array(FrozenPageSchema).max(20).default([]),
   frozenAt: z.iso.datetime({ offset: true }).optional(),
@@ -251,7 +254,9 @@ export async function loadFrozenCorpus(
   const payload = JSON.parse(
     await readFile(join(safeRoot, 'corpus.json'), 'utf8'),
   ) as unknown;
-  return CorpusSchema.parse(payload);
+  const corpus = CorpusSchema.parse(payload);
+  await verifyFrozenEvidence(safeRoot, corpus);
+  return corpus;
 }
 
 export async function freezeCorpus(
@@ -272,10 +277,55 @@ export async function freezeCorpus(
       return { ...evalCase, frozenAt: evalCase.frozenAt ?? frozenAt };
     }),
   });
+  await verifyFrozenEvidence(safeRoot, corpus);
   const path = join(safeRoot, 'corpus.json');
   await writeFile(path, `${JSON.stringify(corpus, null, 2)}\n`, {
     encoding: 'utf8',
     flag: 'wx',
   });
   return path;
+}
+
+export async function verifyFrozenEvidence(
+  root: string,
+  corpus: Corpus,
+): Promise<void> {
+  for (const evalCase of corpus.cases) {
+    for (const page of evalCase.pages) {
+      if (!page.snapshot) {
+        if (
+          ['chat-foundation-v2', 'chat-foundation-v3'].includes(corpus.version)
+        )
+          throw new Error('ORIGINAL_SNAPSHOT_REQUIRED');
+        continue;
+      }
+      const raw = await readFile(join(root, page.snapshot.file));
+      if (
+        createHash('sha256').update(raw).digest('hex') !== page.snapshot.sha256
+      )
+        throw new Error('FROZEN_SNAPSHOT_HASH_MISMATCH');
+      if (
+        corpus.version === 'chat-foundation-v3' &&
+        JSON.stringify(
+          extractStructuredDocument(
+            new JSDOM(raw.toString('utf8')).window.document,
+          ).sections,
+        ) !== JSON.stringify(page.sections)
+      )
+        throw new Error('FROZEN_EXTRACTION_DIFFERS_FROM_RUNTIME');
+    }
+    for (const reference of evalCase.criteria.referenceEvidence ?? []) {
+      for (const locator of reference.paragraphs) {
+        const page = evalCase.pages.find(
+          ({ source }) => source.id === locator.sourceId,
+        );
+        if (
+          !page?.sections[locator.sectionIndex]?.paragraphs[
+            locator.paragraphIndex
+          ]
+        )
+          throw new Error('REFERENCE_PARAGRAPH_MISSING');
+      }
+    }
+  }
 }

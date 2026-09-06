@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  build: { outDir: process.env.FRIDAY_WEB_OUT_DIR ?? 'dist' },
   plugins: [
     react(),
     VitePWA({

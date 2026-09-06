@@ -1,14 +1,14 @@
 import {
-  isGroceryClassificationChoice,
   GroceryItemOperationSchema,
   GroceryItemRecordSchema,
+  isGroceryClassificationChoice,
   type GroceryItemRecord,
 } from '@friday/contracts';
 
 import { decryptJson, encryptJson } from '../crypto/vault.js';
-import { fridayDb, type GroceryItemRow } from './friday-db.js';
+import { getDeviceContext } from './device-context.js';
 import { groceryItemAad, outboxAad } from './encryption-context.js';
-import { getDeviceContext } from './task-repository.js';
+import { fridayDb, type GroceryItemRow } from './friday-db.js';
 
 const HOUSEHOLD_ID = '1030b4f6-1e0f-48fa-adab-865750ce597d';
 

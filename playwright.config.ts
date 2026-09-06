@@ -5,6 +5,8 @@ const port = process.env.FRIDAY_E2E_PORT ?? '8443';
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
+  // The authenticated scenarios share one in-memory household Hub.
+  workers: 1,
   forbidOnly: true,
   retries: 0,
   reporter: 'line',

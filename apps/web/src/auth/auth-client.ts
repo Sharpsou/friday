@@ -18,8 +18,12 @@ import {
   type AuthSession,
 } from '@friday/contracts';
 
-import { CURRENT_PROFILE_ID } from '../task-assignee.js';
 import { fridayDb } from '../db/friday-db.js';
+import { getLocalDeviceId } from '../db/device-context.js';
+export {
+  getLocalDeviceId,
+  getCurrentLocalProfileId,
+} from '../db/device-context.js';
 
 const AUTH_SESSION_CACHE_KEY = 'authSessionCache';
 const AUTH_LOGOUT_PENDING_KEY = 'authLogoutPending';
@@ -56,19 +60,6 @@ async function storeSession(session: AuthSession): Promise<void> {
       { key: DEVICE_ID_KEY, value: session.deviceId },
     ]);
   });
-}
-
-export async function getLocalDeviceId(): Promise<string> {
-  const stored = (await fridayDb.settings.get(DEVICE_ID_KEY))?.value;
-  if (typeof stored === 'string') return stored;
-  const deviceId = crypto.randomUUID();
-  await fridayDb.settings.put({ key: DEVICE_ID_KEY, value: deviceId });
-  return deviceId;
-}
-
-export async function getCurrentLocalProfileId(): Promise<string> {
-  const stored = (await fridayDb.settings.get(CURRENT_PROFILE_KEY))?.value;
-  return typeof stored === 'string' ? stored : CURRENT_PROFILE_ID;
 }
 
 export async function loadCachedAuthSession(): Promise<AuthSession | null> {

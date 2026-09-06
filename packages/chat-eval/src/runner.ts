@@ -1,16 +1,14 @@
 import { createHash } from 'node:crypto';
-
 import {
-  decideEvaluation,
   citedPassageIds,
   compileAuditedAnswer,
-  functionalOutcome,
+  decideEvaluation,
   deriveAnswerAudit,
+  functionalOutcome,
   splitAuditSegments,
   splitAuditUnits,
   suppressUnsupportedUnits,
   type EvaluationDecision,
-  type FunctionalOutcome,
 } from './audit.js';
 import {
   AnswerPlanJsonSchema,
@@ -28,17 +26,19 @@ import {
   type AxisEvidence,
   type ChatEvalCase,
   type EvidencePassage,
-  type EvidenceSource,
   type FrozenPage,
   type UnitAuditOutput,
 } from './contracts.js';
-import { computeAutomatedMetrics, type AutomatedMetrics } from './metrics.js';
-import { type OllamaClient } from './ollama.js';
+import type {
+  EvaluationResult,
+  EvaluationRunnerOptions,
+  ModelPair,
+} from './evaluation-types.js';
+import { computeAutomatedMetrics } from './metrics.js';
 import {
   DEFAULT_PASSAGE_LIMITS,
   resolvePassageSources,
   selectEvidencePassagesHybrid,
-  type EmbeddingProvider,
   type EvidenceDossier,
   type PassageSelectionLimits,
 } from './passages.js';
@@ -50,12 +50,7 @@ import {
   revisionPrompt,
   writerPrompt,
 } from './prompts.js';
-
-export interface ModelPair {
-  id: string;
-  writerModel: string;
-  auditorModel: string;
-}
+import { runUnifiedCase } from './unified-runner.js';
 
 export const CANDIDATE_MODEL_PAIRS: ModelPair[] = [
   {
@@ -69,49 +64,6 @@ export const CANDIDATE_MODEL_PAIRS: ModelPair[] = [
     auditorModel: 'gemma4:e4b-it-qat',
   },
 ];
-
-export interface TargetedResearch {
-  (input: {
-    caseId: string;
-    question: string;
-    missingAspects: string[];
-    signal: AbortSignal;
-  }): Promise<FrozenPage[]>;
-}
-
-export interface EvaluationRunnerOptions {
-  ollama: OllamaClient;
-  targetedResearch?: TargetedResearch;
-  passageLimits?: PassageSelectionLimits;
-  maxModelCalls?: number;
-  embeddings?: EmbeddingProvider;
-  axesEnabled?: boolean;
-}
-
-export interface EvaluationResult {
-  caseId: string;
-  pairId: string;
-  seed: number;
-  answer: string;
-  decision: EvaluationDecision;
-  audit: AnswerAudit;
-  metrics: AutomatedMetrics;
-  sourceIds: EvidenceSource['id'][];
-  calls: number;
-  researchUsed: boolean;
-  revisionUsed: boolean;
-  auditFallbacks: number;
-  outcome: FunctionalOutcome;
-  retrievalMode: EvidenceDossier['retrievalMode'];
-  retrievalDiagnostics: EvidenceDossier['diagnostics'];
-  referenceParagraphRecall: number | null;
-  retrievalDimensionCoverage: number | null;
-  elapsedMs: number;
-  plannedAxisCount: number;
-  requiredAxisCount: number;
-  coveredAxisCount: number;
-  promptVersions: typeof PROMPT_VERSIONS;
-}
 
 function validateModelMarkdown(
   answer: string,
@@ -193,6 +145,8 @@ export class EvaluationRunner {
     seed: number,
     signal: AbortSignal = new AbortController().signal,
   ): Promise<EvaluationResult> {
+    if (this.options.pipeline === 'unified')
+      return runUnifiedCase(evalCase, pair, seed, signal, this.options);
     const startedAt = performance.now();
     let calls = 0;
     let researchUsed = false;
@@ -527,3 +481,10 @@ export function blindLabel(
     .digest();
   return (digest[0]! + pairIndex) % 2 === 0 ? 'A' : 'B';
 }
+
+export type {
+  EvaluationResult,
+  EvaluationRunnerOptions,
+  ModelPair,
+  TargetedResearch,
+} from './evaluation-types.js';

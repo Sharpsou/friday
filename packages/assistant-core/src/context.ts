@@ -124,7 +124,7 @@ export function parseContextResolution(
     if (retained.length < Math.min(2, anchors.size))
       throw new Error('CONTEXT_TOPIC_DRIFT');
   }
-  return parsed.standaloneQuestion;
+  return preserveCurrentQuestion(currentQuestion, parsed.standaloneQuestion);
 }
 
 export function fallbackContextualQuestion(
@@ -136,11 +136,18 @@ export function fallbackContextualQuestion(
     .slice(-3)
     .map(({ content }) => content.replace(/https?:\/\/\S+/giu, '').trim())
     .filter(Boolean);
-  if (!previousUserQuestions.length) return question.trim().slice(0, 2_000);
-  return [
+  if (!previousUserQuestions.length) return question.trim();
+  return preserveCurrentQuestion(
+    question,
     `Demandes précédentes : ${previousUserQuestions.join(' | ')}`,
-    `Demande actuelle : ${question.trim()}`,
-  ]
-    .join('\n')
-    .slice(0, 2_000);
+  );
+}
+
+function preserveCurrentQuestion(question: string, context: string): string {
+  const current = `Demande actuelle (prioritaire) : ${question.trim()}`;
+  const prefix = '\nContexte du sujet : ';
+  const remaining = Math.max(0, 2_000 - current.length - prefix.length);
+  return remaining
+    ? `${current}${prefix}${context.slice(0, remaining)}`
+    : current;
 }

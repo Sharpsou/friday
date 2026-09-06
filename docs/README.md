@@ -1,5 +1,7 @@
 # Documentation Friday
 
+Dernier état : [modularisation déployée le 6 septembre à 10 h 33](audits/2026-09-06-deploiement-modularisation.md), SQLite 47 / Dexie 9. Voir le handoff pour les limites et la gate qualitative.
+
 Ce répertoire sépare l’état présent, les décisions, les opérations et
 l’historique. L’audit initial et son ré-audit du 27 août sont consignés dans
 [28-audit-documentation-app-robot-2026-08-25.md](28-audit-documentation-app-robot-2026-08-25.md).
@@ -20,6 +22,9 @@ workspace. En cas d’écart factuel entre un ancien checkpoint et le code, le
 document 27 puis le code testé prévalent.
 
 ## Trouver le bon document
+
+Pour Courses, Menus, Réserve, leurs migrations et la recette commune :
+[runbook Maison](runbooks/maison-menus-reserve.md).
 
 | Besoin                           | Document                                                                                                             |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -73,3 +78,8 @@ Après une évolution structurante :
 
 Ne recopier ni secrets, ni jetons, ni mots de passe, ni contenu de
 `D:\FridayData` dans Git.
+
+## Complément de modularisation — 6 septembre 2026
+
+- [Plan des cinq modules](audits/2026-09-06-plan-decoupage-cinq-modules.md).
+- [Bilan et déploiement du complément](audits/2026-09-06-complement-cinq-modules.md).

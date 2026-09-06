@@ -1,19 +1,6 @@
-import Dexie from 'dexie';
-
 import {
-  BudgetEntryRecordSchema,
-  BudgetEnvelopeRecordSchema,
-  BudgetPlannedExpenseRecordSchema,
-  BudgetRecurringTemplateRecordSchema,
-  BudgetSavingsMonthRecordSchema,
-  GroceryItemRecordSchema,
-  SyncOperationSchema,
   TaskOperationSchema,
   TaskRecordSchema,
-  type Change,
-  type GroceryItemRecord,
-  type OperationAck,
-  type SyncOperation,
   type TaskOperation,
   type TaskRecord,
   type TaskRecurrenceRule,
@@ -24,38 +11,14 @@ import {
   normalizeTaskNote,
   normalizeTaskTitle,
 } from '@friday/domain';
-
-import {
-  decryptJson,
-  encryptJson,
-  generateDeviceKey,
-} from '../crypto/vault.js';
-import {
-  getCurrentLocalProfileId,
-  getLocalDeviceId,
-} from '../auth/auth-client.js';
+import Dexie from 'dexie';
+import { decryptJson, encryptJson } from '../crypto/vault.js';
 import { compareTasksBySchedule } from '../task-sort.js';
-import {
-  budgetAad,
-  groceryItemAad,
-  outboxAad,
-  taskAad,
-} from './encryption-context.js';
-import {
-  fridayDb,
-  type BudgetRow,
-  type GroceryItemRow,
-  type OutboxRow,
-  type TaskRow,
-} from './friday-db.js';
+import { getDeviceContext } from './device-context.js';
+import { outboxAad, taskAad } from './encryption-context.js';
+import { fridayDb, type TaskRow } from './friday-db.js';
 
 const HOUSEHOLD_ID = '1030b4f6-1e0f-48fa-adab-865750ce597d';
-
-interface DeviceContext {
-  deviceId: string;
-  key: CryptoKey;
-  profileId: string;
-}
 
 export type LocalTask = TaskRecord & {
   syncState: TaskRow['syncState'];
@@ -108,21 +71,6 @@ async function deterministicOccurrenceId(
   digest[8] = ((digest[8] ?? 0) & 0x3f) | 0x80;
   const hex = [...digest].map((value) => value.toString(16).padStart(2, '0'));
   return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
-}
-
-export async function getDeviceContext(): Promise<DeviceContext> {
-  const [deviceId, profileId] = await Promise.all([
-    getLocalDeviceId(),
-    getCurrentLocalProfileId(),
-  ]);
-
-  let key = (await fridayDb.keys.get('device-aes-key'))?.value;
-  if (!key) {
-    key = await generateDeviceKey();
-    await fridayDb.keys.put({ id: 'device-aes-key', value: key });
-  }
-
-  return { deviceId, key, profileId };
 }
 
 export async function createLocalTask(
@@ -659,302 +607,15 @@ export async function listTasks(): Promise<LocalTask[]> {
     .toSorted(compareTasksBySchedule);
 }
 
-export async function readPendingOperations(): Promise<SyncOperation[]> {
-  const { deviceId, key } = await getDeviceContext();
-  const rows = await fridayDb.outbox
-    .where('state')
-    .anyOf(['pending', 'sent'])
-    .sortBy('createdAt');
-  return Promise.all(
-    rows.map(async (row) =>
-      SyncOperationSchema.parse(
-        await decryptJson<SyncOperation>(
-          key,
-          row.encryptedPayload,
-          outboxAad(row.operationId, deviceId),
-        ),
-      ),
-    ),
-  );
-}
-
-export async function markOperations(
-  operationIds: readonly string[],
-  state: OutboxRow['state'],
-): Promise<void> {
-  await fridayDb.transaction('rw', fridayDb.outbox, async () => {
-    await Promise.all(
-      operationIds.map(async (operationId) =>
-        fridayDb.outbox.update(operationId, { state }),
-      ),
-    );
-  });
-}
-
-export async function applyAcks(acks: readonly OperationAck[]): Promise<void> {
-  const { deviceId, key } = await getDeviceContext();
-  const entityUpdates = await Promise.all(
-    acks.map(async (ack) => {
-      const [taskRow, groceryRow, ...budgetRows] = await Promise.all([
-        fridayDb.tasks.get(ack.entityId),
-        fridayDb.groceryItems.get(ack.entityId),
-        fridayDb.budgetEntries.get(ack.entityId),
-        fridayDb.budgetEnvelopes.get(ack.entityId),
-        fridayDb.budgetPlannedExpenses.get(ack.entityId),
-        fridayDb.budgetRecurringTemplates.get(ack.entityId),
-        fridayDb.budgetSavingsMonths.get(ack.entityId),
-      ]);
-      const budgetTypes = [
-        'budget_entry',
-        'budget_envelope',
-        'budget_planned_expense',
-        'budget_recurring_template',
-        'budget_savings_month',
-      ] as const;
-      const budgetIndex = budgetRows.findIndex(Boolean);
-      const budgetRow = budgetIndex >= 0 ? budgetRows[budgetIndex] : undefined;
-      const budgetType =
-        budgetIndex >= 0 ? budgetTypes[budgetIndex] : undefined;
-      if (!taskRow && !groceryRow && !budgetRow) return null;
-      if (ack.status === 'conflict') {
-        const existingRow = taskRow ?? groceryRow ?? budgetRow;
-        if (!existingRow) return null;
-        return {
-          entityType: taskRow
-            ? ('task' as const)
-            : groceryRow
-              ? ('grocery_item' as const)
-              : budgetType!,
-          id: ack.entityId,
-          encrypted: existingRow.encrypted,
-          revision: existingRow.revision,
-          syncState: 'conflict' as const,
-        };
-      }
-
-      if (budgetRow && budgetType) {
-        const schema = {
-          budget_entry: BudgetEntryRecordSchema,
-          budget_envelope: BudgetEnvelopeRecordSchema,
-          budget_planned_expense: BudgetPlannedExpenseRecordSchema,
-          budget_recurring_template: BudgetRecurringTemplateRecordSchema,
-          budget_savings_month: BudgetSavingsMonthRecordSchema,
-        }[budgetType];
-        const record = schema.parse(
-          await decryptJson(
-            key,
-            budgetRow.encrypted,
-            budgetAad(budgetType, budgetRow.id, deviceId),
-          ),
-        );
-        const acknowledged = { ...record, revision: ack.serverRevision };
-        return {
-          entityType: budgetType,
-          id: ack.entityId,
-          encrypted: await encryptJson(
-            key,
-            acknowledged,
-            budgetAad(budgetType, budgetRow.id, deviceId),
-          ),
-          revision: ack.serverRevision,
-          syncState: 'acknowledged' as const,
-        };
-      }
-
-      if (taskRow) {
-        const task = TaskRecordSchema.parse(
-          await decryptJson<TaskRecord>(
-            key,
-            taskRow.encrypted,
-            taskAad(taskRow.id, deviceId),
-          ),
-        );
-        const acknowledgedTask = TaskRecordSchema.parse({
-          ...task,
-          revision: ack.serverRevision,
-        });
-        return {
-          entityType: 'task' as const,
-          id: ack.entityId,
-          encrypted: await encryptJson(
-            key,
-            acknowledgedTask,
-            taskAad(taskRow.id, deviceId),
-          ),
-          revision: ack.serverRevision,
-          syncState: 'acknowledged' as const,
-        };
-      }
-
-      if (!groceryRow) return null;
-      const groceryItem = GroceryItemRecordSchema.parse(
-        await decryptJson<GroceryItemRecord>(
-          key,
-          groceryRow.encrypted,
-          groceryItemAad(groceryRow.id, deviceId),
-        ),
-      );
-      const acknowledgedGroceryItem = GroceryItemRecordSchema.parse({
-        ...groceryItem,
-        revision: ack.serverRevision,
-      });
-      return {
-        entityType: 'grocery_item' as const,
-        id: ack.entityId,
-        encrypted: await encryptJson(
-          key,
-          acknowledgedGroceryItem,
-          groceryItemAad(groceryRow.id, deviceId),
-        ),
-        revision: ack.serverRevision,
-        syncState: 'acknowledged' as const,
-      };
-    }),
-  );
-
-  await fridayDb.transaction(
-    'rw',
-    [
-      fridayDb.groceryItems,
-      fridayDb.budgetEntries,
-      fridayDb.budgetEnvelopes,
-      fridayDb.budgetPlannedExpenses,
-      fridayDb.budgetRecurringTemplates,
-      fridayDb.budgetSavingsMonths,
-      fridayDb.outbox,
-      fridayDb.tasks,
-    ],
-    async () => {
-      for (const [index, ack] of acks.entries()) {
-        const syncState =
-          ack.status === 'applied' ? 'acknowledged' : 'conflict';
-        const entityUpdate = entityUpdates[index];
-        await fridayDb.outbox.update(ack.operationId, { state: syncState });
-        if (entityUpdate) {
-          const update = {
-            encrypted: entityUpdate.encrypted,
-            revision: entityUpdate.revision,
-            syncState: entityUpdate.syncState,
-          };
-          if (entityUpdate.entityType === 'task') {
-            await fridayDb.tasks.update(entityUpdate.id, update);
-          } else if (entityUpdate.entityType === 'grocery_item') {
-            await fridayDb.groceryItems.update(entityUpdate.id, update);
-          } else if (entityUpdate.entityType === 'budget_entry') {
-            await fridayDb.budgetEntries.update(entityUpdate.id, update);
-          } else if (entityUpdate.entityType === 'budget_envelope') {
-            await fridayDb.budgetEnvelopes.update(entityUpdate.id, update);
-          } else if (entityUpdate.entityType === 'budget_planned_expense') {
-            await fridayDb.budgetPlannedExpenses.update(
-              entityUpdate.id,
-              update,
-            );
-          } else if (entityUpdate.entityType === 'budget_recurring_template') {
-            await fridayDb.budgetRecurringTemplates.update(
-              entityUpdate.id,
-              update,
-            );
-          } else {
-            await fridayDb.budgetSavingsMonths.update(entityUpdate.id, update);
-          }
-        }
-      }
-    },
-  );
-}
-
-export async function applyChanges(
-  changes: readonly Change[],
-  cursor: number,
-): Promise<void> {
-  const { deviceId, key } = await getDeviceContext();
-  const encryptedChanges = await Promise.all(
-    changes.map(async (change) => {
-      const aad =
-        change.entityType === 'task'
-          ? taskAad(change.entityId, deviceId)
-          : change.entityType === 'grocery_item'
-            ? groceryItemAad(change.entityId, deviceId)
-            : budgetAad(change.entityType, change.entityId, deviceId);
-      return {
-        entityType: change.entityType,
-        row: {
-          encrypted: await encryptJson(key, change.payload, aad),
-          id: change.entityId,
-          revision: change.payload.revision,
-          syncState: 'acknowledged' as const,
-          updatedAt: change.payload.updatedAt,
-        },
-      };
-    }),
-  );
-  const taskRows: TaskRow[] = [];
-  const groceryRows: GroceryItemRow[] = [];
-  const budgetRows = new Map<string, BudgetRow[]>();
-  for (const change of encryptedChanges) {
-    if (change.entityType === 'task') taskRows.push(change.row);
-    else if (change.entityType === 'grocery_item') groceryRows.push(change.row);
-    else {
-      const rows = budgetRows.get(change.entityType) ?? [];
-      rows.push(change.row);
-      budgetRows.set(change.entityType, rows);
-    }
-  }
-
-  await fridayDb.transaction(
-    'rw',
-    [
-      fridayDb.groceryItems,
-      fridayDb.budgetEntries,
-      fridayDb.budgetEnvelopes,
-      fridayDb.budgetPlannedExpenses,
-      fridayDb.budgetRecurringTemplates,
-      fridayDb.budgetSavingsMonths,
-      fridayDb.tasks,
-      fridayDb.settings,
-    ],
-    async () => {
-      if (taskRows.length > 0) await fridayDb.tasks.bulkPut(taskRows);
-      if (groceryRows.length > 0)
-        await fridayDb.groceryItems.bulkPut(groceryRows);
-      await fridayDb.budgetEntries.bulkPut(
-        budgetRows.get('budget_entry') ?? [],
-      );
-      await fridayDb.budgetEnvelopes.bulkPut(
-        budgetRows.get('budget_envelope') ?? [],
-      );
-      await fridayDb.budgetPlannedExpenses.bulkPut(
-        budgetRows.get('budget_planned_expense') ?? [],
-      );
-      await fridayDb.budgetRecurringTemplates.bulkPut(
-        budgetRows.get('budget_recurring_template') ?? [],
-      );
-      await fridayDb.budgetSavingsMonths.bulkPut(
-        budgetRows.get('budget_savings_month') ?? [],
-      );
-      await fridayDb.settings.put({ key: 'cursor', value: cursor });
-    },
-  );
-}
-
-export async function getCursor(): Promise<number> {
-  const value = (await fridayDb.settings.get('cursor'))?.value;
-  return typeof value === 'number' ? value : 0;
-}
-
-export async function getOutboxCounts(): Promise<{
-  conflicts: number;
-  pending: number;
-}> {
-  const [pending, sent, conflicts] = await Promise.all([
-    fridayDb.outbox.where('state').equals('pending').count(),
-    fridayDb.outbox.where('state').equals('sent').count(),
-    fridayDb.outbox.where('state').equals('conflict').count(),
-  ]);
-  return { conflicts, pending: pending + sent };
-}
-
 export async function resetDatabaseForTests(): Promise<void> {
   await fridayDb.delete();
   await Dexie.waitFor(Promise.resolve());
 }
+
+export { getDeviceContext } from './device-context.js';
+export {
+  getOutboxCounts,
+  markOperations,
+  readPendingOperations,
+} from './outbox-repository.js';
+export { applyAcks, applyChanges, getCursor } from './sync-repository.js';

@@ -15,43 +15,16 @@ import {
   type ChatRoute,
   type ChatRun,
   type ChatRunStage,
-  type ChatSource,
   type ChatWebUsage,
 } from '@friday/contracts';
 
-export interface ChatEngineInput {
-  content: string;
-  mode: ChatMode;
-  priorTurns: Array<{ role: 'user' | 'assistant'; content: string }>;
-  signal: AbortSignal;
-  updateStage(stage: ChatRunStage): void;
-}
-
-export interface ChatEngineResult {
-  markdown: string;
-  status: ChatAnswerStatus;
-  route: ChatRoute;
-  retrievalMode: ChatRetrievalMode;
-  sources: ChatSource[];
-  modelCalls: number;
-  passageCount: number;
-  axisCount?: number;
-  requiredAxisCount?: number;
-  coveredAxisCount?: number;
-  rejectedUnitCount?: number;
-  fallbackCode?: string | null;
-  discoveredPageCount?: number;
-  readablePageCount?: number;
-  rejectedPageCount?: number;
-  leadCount?: number;
-}
-
-export interface ChatEngine {
-  answer(input: ChatEngineInput): Promise<ChatEngineResult>;
-  webUsage?(
-    signal: AbortSignal,
-  ): Promise<{ creditsUsed: number; limit: number }>;
-}
+export type {
+  ChatEngineInput,
+  ChatEngineResult,
+  ChatEngine,
+} from '@friday/assistant-core';
+import type { ChatEngine } from '@friday/assistant-core';
+import { ResearchMemorySchema } from '@friday/assistant-core';
 
 interface ConversationRow {
   id: string;
@@ -73,6 +46,7 @@ interface MessageRow {
 }
 
 interface RunRow {
+  answer_status: ChatAnswerStatus | null;
   id: string;
   conversation_id: string;
   status: ChatRun['status'];
@@ -94,6 +68,7 @@ interface RunRow {
 }
 
 interface PendingRunRow {
+  created_at: string;
   id: string;
   profile_id: string;
   conversation_id: string;
@@ -126,6 +101,7 @@ function safeErrorCode(error: unknown): string {
 }
 
 export class ChatService {
+  private expiryTimer: ReturnType<typeof setInterval> | undefined;
   private running = false;
   private stopped = true;
   private activeRun: { id: string; controller: AbortController } | undefined;
@@ -146,11 +122,31 @@ export class ChatService {
 
   start(): void {
     this.stopped = false;
+    this.expireQueued();
+    this.expiryTimer ??= setInterval(() => {
+      if (!this.database.open) {
+        clearInterval(this.expiryTimer);
+        return;
+      }
+      this.expireQueued();
+    }, 1000);
+    this.expiryTimer.unref();
     this.kick();
+  }
+
+  private expireQueued(): void {
+    const cutoff = new Date(Date.now() - 300000).toISOString();
+    this.database
+      .prepare(
+        "UPDATE chat_runs SET status='failed', error_code='CHAT_DEADLINE_EXCEEDED', updated_at=? WHERE status='queued' AND created_at <= ?",
+      )
+      .run(new Date().toISOString(), cutoff);
   }
 
   stop(): void {
     this.stopped = true;
+    clearInterval(this.expiryTimer);
+    this.expiryTimer = undefined;
     this.activeRun?.controller.abort();
   }
 
@@ -283,7 +279,15 @@ export class ChatService {
           WHERE profile_id = ? AND status IN ('queued', 'running')`,
       )
       .get(profileId) as { count: number };
-    if (count.count >= 4) throw new ChatQueueFullError('CHAT_QUEUE_FULL');
+    const menuCount = (
+      this.database
+        .prepare(
+          "SELECT COUNT(*) AS n FROM menu_ai_jobs WHERE profile_id=? AND json_extract(payload_json,'$.status') IN ('queued','running')",
+        )
+        .get(profileId) as { n: number }
+    ).n;
+    if (count.count + menuCount >= 4)
+      throw new ChatQueueFullError('CHAT_QUEUE_FULL');
     const runId = randomUUID();
     const messageId = randomUUID();
     const now = new Date().toISOString();
@@ -340,12 +344,28 @@ export class ChatService {
         `SELECT id, conversation_id, status, stage, route, requested_mode, retrieval_mode,
                 error_code, axis_count, required_axis_count, covered_axis_count,
                 rejected_unit_count, discovered_page_count, readable_page_count,
-                rejected_page_count, lead_count, created_at, updated_at
+                rejected_page_count, lead_count, created_at, updated_at,
+                (SELECT answer_status FROM chat_messages WHERE id = chat_runs.assistant_message_id) AS answer_status
            FROM chat_runs WHERE id = ? AND profile_id = ?`,
       )
       .get(id, profileId) as RunRow | undefined;
     if (!row) throw new ChatNotFoundError('Run introuvable.');
     return ChatRunSchema.parse({
+      outcome:
+        row.status === 'failed' || row.status === 'cancelled'
+          ? 'interrupted'
+          : row.status !== 'completed'
+            ? 'pending'
+            : row.error_code === 'CLARIFICATION_REQUIRED'
+              ? 'clarification'
+              : row.route === 'local_unverified'
+                ? 'unverified'
+                : row.answer_status === 'partial'
+                  ? 'partial'
+                  : row.answer_status === 'abstained' ||
+                      row.answer_status === 'audit_error'
+                    ? 'abstained'
+                    : 'complete',
       id: row.id,
       conversationId: row.conversation_id,
       status: row.status,
@@ -446,10 +466,11 @@ export class ChatService {
     return this.database
       .prepare(
         `SELECT r.id, r.profile_id, r.conversation_id, r.user_message_id,
-                r.requested_mode, m.content
+                r.requested_mode, r.created_at, m.content
            FROM chat_runs r JOIN chat_messages m ON m.id = r.user_message_id
           WHERE r.status = 'queued' AND r.cancel_requested = 0
-          ORDER BY r.created_at, r.id LIMIT 1`,
+          AND NOT EXISTS (SELECT 1 FROM chat_runs earlier JOIN chat_messages em ON em.id = earlier.user_message_id WHERE earlier.conversation_id = r.conversation_id AND earlier.status = 'queued' AND earlier.cancel_requested = 0 AND em.ordinal < m.ordinal)
+          ORDER BY r.created_at, m.ordinal, r.id LIMIT 1`,
       )
       .get() as PendingRunRow | undefined;
   }
@@ -463,8 +484,18 @@ export class ChatService {
   }
 
   private async execute(run: PendingRunRow): Promise<void> {
+    if (Date.now() - Date.parse(run.created_at) >= 300000) {
+      this.expireQueued();
+      return;
+    }
     const controller = new AbortController();
     this.activeRun = { id: run.id, controller };
+    const remaining = Math.max(
+      0,
+      300000 - (Date.now() - Date.parse(run.created_at)),
+    );
+    const deadline = AbortSignal.timeout(remaining);
+    const signal = AbortSignal.any([controller.signal, deadline]);
     const startedAt = performance.now();
     const now = new Date().toISOString();
     this.database
@@ -477,9 +508,12 @@ export class ChatService {
       const priorTurns = (
         this.database
           .prepare(
-            `SELECT role, content FROM chat_messages
-              WHERE profile_id = ? AND conversation_id = ? AND id <> ?
-              ORDER BY ordinal DESC LIMIT 6`,
+            `SELECT history.role, history.content FROM chat_messages history
+              LEFT JOIN chat_runs parent ON parent.assistant_message_id = history.id
+              LEFT JOIN chat_messages question ON question.id = parent.user_message_id
+              WHERE history.profile_id = ? AND history.conversation_id = ?
+                AND COALESCE(question.ordinal, history.ordinal) < (SELECT ordinal FROM chat_messages WHERE id = ?)
+              ORDER BY COALESCE(question.ordinal, history.ordinal) DESC, history.role = 'assistant' DESC LIMIT 6`,
           )
           .all(
             run.profile_id,
@@ -490,11 +524,54 @@ export class ChatService {
           content: string;
         }>
       ).reverse();
+      signal.throwIfAborted();
+      const previous = this.database
+        .prepare(
+          `
+        SELECT m.id, memory.dossier_json FROM chat_messages m
+        JOIN chat_runs parent ON parent.assistant_message_id = m.id
+        JOIN chat_messages question ON question.id = parent.user_message_id
+        LEFT JOIN chat_research_memory memory ON memory.message_id = m.id
+        WHERE m.profile_id = ? AND m.conversation_id = ?
+          AND question.ordinal < (SELECT ordinal FROM chat_messages WHERE id = ?)
+          AND (memory.message_id IS NOT NULL OR EXISTS (SELECT 1 FROM chat_sources s WHERE s.message_id = m.id AND s.evidence_level = 'readable'))
+        ORDER BY question.ordinal DESC LIMIT 1
+      `,
+        )
+        .get(run.profile_id, run.conversation_id, run.user_message_id) as
+        { id: string; dossier_json: string | null } | undefined;
+      let priorResearch;
+      if (previous) {
+        try {
+          const legacy = {
+            sources: this.database
+              .prepare(
+                `SELECT source_id AS id, title, url,
+              published_at AS publishedAt, retrieved_at AS retrievedAt FROM chat_sources
+              WHERE message_id = ? AND evidence_level = 'readable' LIMIT 8`,
+              )
+              .all(previous.id)
+              .map((row) => {
+                const source = row as { publishedAt: string | null };
+                return source.publishedAt === null
+                  ? { ...source, publishedAt: undefined }
+                  : source;
+              }),
+            passages: [],
+          };
+          priorResearch = ResearchMemorySchema.parse(
+            previous.dossier_json ? JSON.parse(previous.dossier_json) : legacy,
+          );
+        } catch {
+          /* A damaged snapshot is not evidence; normal research remains available. */
+        }
+      }
       const result = await this.engine.answer({
         content: run.content,
         mode: run.requested_mode,
         priorTurns,
-        signal: controller.signal,
+        ...(priorResearch ? { priorResearch } : {}),
+        signal,
         updateStage: (stage) => {
           this.database
             .prepare(
@@ -503,8 +580,7 @@ export class ChatService {
             .run(stage, new Date().toISOString(), run.id);
         },
       });
-      if (controller.signal.aborted)
-        throw new DOMException('Cancelled', 'AbortError');
+      signal.throwIfAborted();
       const messageId = randomUUID();
       const completedAt = new Date().toISOString();
       this.database.transaction(() => {
@@ -538,6 +614,14 @@ export class ChatService {
              evidence_level
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         );
+        if (result.researchMemory) {
+          const snapshot = ResearchMemorySchema.parse(result.researchMemory);
+          this.database
+            .prepare(
+              'INSERT INTO chat_research_memory(message_id, dossier_json) VALUES (?, ?)',
+            )
+            .run(messageId, JSON.stringify(snapshot));
+        }
         for (const source of result.sources) {
           insertSource.run(
             messageId,
@@ -595,7 +679,11 @@ export class ChatService {
         )
         .run(
           cancelled ? 'cancelled' : 'failed',
-          cancelled ? 'CANCELLED' : safeErrorCode(error),
+          cancelled
+            ? 'CANCELLED'
+            : deadline.aborted
+              ? 'CHAT_DEADLINE_EXCEEDED'
+              : safeErrorCode(error),
           Math.round(performance.now() - startedAt),
           new Date().toISOString(),
           run.id,

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_PASSAGE_LIMITS,
+  compileAuditedAnswer,
+  splitAuditSegments,
+  deriveAnswerAudit,
   UnitAuditJsonSchema,
   UnifiedUnitAuditJsonSchema,
   auditorPrompt,
@@ -150,5 +153,113 @@ describe('ephemeral evidence selection', () => {
       { id: 'U2', text: 'Première phrase.', citedPassageIds: [] },
       { id: 'U3', text: 'Deuxième phrase.', citedPassageIds: [] },
     ]);
+  });
+});
+
+describe('synthesis evidence regressions', () => {
+  it('keeps a short logical section whole with the last exception and original coordinates', async () => {
+    const paragraphs = [
+      'La restauration nécessite une sauvegarde validée.',
+      'Sélectionnez le fichier à restaurer dans le catalogue.',
+      'La restauration remplace les données de travail.',
+      'Conservez la copie précédente jusqu’à la validation.',
+      'Exception : si la validation échoue, revenez à la copie précédente.',
+    ];
+    const result = await selectEvidencePassagesHybrid({
+      question: 'Comment effectuer une restauration ?',
+      pages: [
+        { ...pages[0]!, sections: [{ heading: 'Restauration', paragraphs }] },
+      ],
+    });
+    expect(result.passages).toHaveLength(1);
+    expect(result.passages[0]?.text).toBe(paragraphs.join('\n'));
+    expect(result.passages[0]?.paragraphKeys).toEqual(
+      paragraphs.map((_, i) => `S1:0:${i}`),
+    );
+  });
+
+  it('keeps long paragraphs and their original coordinates after filtering', async () => {
+    const long =
+      'Le mécanisme utilise des transactions atomiques pour protéger les écritures. '.repeat(
+        45,
+      );
+    const result = await selectEvidencePassagesHybrid({
+      question: 'transactions atomiques',
+      pages: [{ ...pages[0]!, sections: [{ paragraphs: ['Menu', long] }] }],
+    });
+    expect(result.passages.length).toBeGreaterThan(0);
+    expect(result.passages.every((p) => p.text.length <= 8000)).toBe(true);
+    expect(result.diagnostics.selectedParagraphKeys).toContain('S1:0:1');
+    expect(result.diagnostics.selectedParagraphKeys).not.toContain('S1:0:0');
+  });
+
+  it('ranks evidence beyond the eighth read page', async () => {
+    const result = await selectEvidencePassagesHybrid({
+      question: 'zèbre magnétique essentiel',
+      pages: Array.from({ length: 16 }, (_, i) => ({
+        source: {
+          ...pages[0]!.source,
+          id: `S${i + 1}`,
+          url: `https://example.org/${i}`,
+        },
+        sections: [
+          {
+            paragraphs: [
+              i === 15
+                ? 'Le zèbre magnétique essentiel contient la réponse recherchée.'
+                : `Le document ${i} raconte une histoire sans lien avec cette question.`,
+            ],
+          },
+        ],
+      })),
+    });
+    expect(result.passages.some((p) => p.sourceId === 'S16')).toBe(true);
+    expect(result.sources.length).toBeLessThanOrEqual(8);
+  });
+
+  it('retains contradictory negations as distinct evidence', async () => {
+    const result = await selectEvidencePassagesHybrid({
+      question: 'Le cache est partagé entre les profils',
+      pages: [
+        {
+          ...pages[0]!,
+          sections: [
+            {
+              paragraphs: [
+                'Le cache est partagé entre les profils pour conserver les informations de chaque utilisateur.',
+              ],
+            },
+            {
+              paragraphs: [
+                'Le cache n’est pas partagé entre les profils pour conserver les informations de chaque utilisateur.',
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.diagnostics.selectedParagraphKeys).toEqual(
+      expect.arrayContaining(['S1:0:0', 'S1:1:0']),
+    );
+  });
+
+  it('keeps paragraphs, headings, list items and post-sentence citations', () => {
+    const segments = splitAuditSegments(
+      '## Explication\nPremière phrase. [P1] Deuxième phrase [P1].\n\nAutre paragraphe [P1].\n\n- Un point [P1]. Une précision [P1].',
+    );
+    expect(segments[1]!.unit.text).toBe('Première phrase. [P1]');
+    const audit = deriveAnswerAudit({
+      units: segments.map(({ unit, prefix }) => ({
+        unitId: unit.id,
+        verdict: prefix.startsWith('#') ? 'not_factual' : 'supported',
+        passageIds: prefix.startsWith('#') ? [] : ['P1'],
+      })),
+    });
+    const compiled = compileAuditedAnswer(segments, audit, false);
+    expect(compiled.markdown).toContain(
+      '## Explication\nPremière phrase. [P1] Deuxième phrase. [P1]\n\nAutre paragraphe. [P1]',
+    );
+    expect(compiled.markdown.match(/^- /gm)).toHaveLength(1);
+    expect(compiled.markdown).not.toContain('\n\nDeuxième');
   });
 });

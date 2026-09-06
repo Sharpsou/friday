@@ -2,8 +2,8 @@ import {
   WatchAddDiscoveredSourcesRequestSchema,
   WatchAddDiscoveredSourcesResponseSchema,
   WatchArticleSchema,
-  WatchCreateRequestSchema,
   WatchConceptSchema,
+  WatchCreateRequestSchema,
   WatchDiscoveryRequestSchema,
   WatchDiscoverySchema,
   WatchOverviewSchema,
@@ -11,8 +11,8 @@ import {
   WatchUpdateRequestSchema,
   type Watch,
   type WatchArticleStateValue,
-  type WatchCreateRequest,
   type WatchConceptState,
+  type WatchCreateRequest,
   type WatchDiscovery,
   type WatchDiscoveryRequest,
   type WatchOverview,
@@ -21,8 +21,8 @@ import {
 import {
   cacheWatchOverview,
   getCachedWatchOverview,
-  listQueuedWatchStates,
   listQueuedWatchConceptStates,
+  listQueuedWatchStates,
   queueWatchConceptState,
   queueWatchState,
   removeQueuedWatchState,
@@ -122,23 +122,6 @@ export async function validateWatchSource(
   )
     throw new Error('Réponse de source invalide.');
   return { title: value.title, siteUrl: value.siteUrl, feedUrl: value.feedUrl };
-}
-
-export async function suggestWatchSources(
-  query: string,
-): Promise<WatchSourceInput[]> {
-  const response = await fetch('/api/watch/source-suggestions', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ query }),
-  });
-  const payload = (await response.json().catch(() => null)) as {
-    message?: string;
-    sources?: WatchSourceInput[];
-  } | null;
-  if (!response.ok)
-    throw new Error(payload?.message ?? 'Suggestions indisponibles.');
-  return payload?.sources ?? [];
 }
 
 export async function discoverWatchSources(

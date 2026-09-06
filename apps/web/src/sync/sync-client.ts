@@ -5,14 +5,13 @@ import {
   type PushResponse,
 } from '@friday/contracts';
 
+import { bootstrapMaison } from '../db/maison-repository.js';
 import {
-  applyAcks,
-  applyChanges,
-  getCursor,
   getOutboxCounts,
   markOperations,
   readPendingOperations,
-} from '../db/task-repository.js';
+} from '../db/outbox-repository.js';
+import { applyAcks, applyChanges, getCursor } from '../db/sync-repository.js';
 
 export interface SyncResult {
   conflicts: number;
@@ -41,10 +40,12 @@ async function parseJson<T>(
 }
 
 async function runSync(signal: AbortSignal): Promise<SyncResult> {
-  const operations = await readPendingOperations();
-  const operationIds = operations.map((operation) => operation.operationId);
-
-  if (operations.length > 0) {
+  const maisonAvailable = await bootstrapMaison(signal);
+  let operations = (await readPendingOperations())
+    .filter((op) => maisonAvailable || op.entityType !== 'maison_command')
+    .slice(0, 100);
+  while (operations.length > 0) {
+    const operationIds = operations.map((operation) => operation.operationId);
     await markOperations(operationIds, 'sent');
     try {
       const response = await fetch('/api/sync/push', {
@@ -53,11 +54,28 @@ async function runSync(signal: AbortSignal): Promise<SyncResult> {
         body: JSON.stringify({ operations }),
         signal,
       });
+      // An older Hub rejects the new union before applying any operation.
+      // Confirm its missing endpoint; a business validation error must remain
+      // visible. Retry only supported operations with their original IDs.
+      if (
+        response.status === 400 &&
+        operations.some((op) => op.entityType === 'maison_command') &&
+        !(await bootstrapMaison(signal, true))
+      ) {
+        await markOperations(operationIds, 'pending');
+        // Unsupported commands may fill the first page; select supported
+        // operations from the complete queue so they cannot starve behind it.
+        operations = (await readPendingOperations())
+          .filter((op) => op.entityType !== 'maison_command')
+          .slice(0, 100);
+        continue;
+      }
       const payload: PushResponse = await parseJson(
         response,
         PushResponseSchema,
       );
       await applyAcks(payload.acks);
+      break;
     } catch (error) {
       await markOperations(operationIds, 'pending');
       throw error;
@@ -65,9 +83,12 @@ async function runSync(signal: AbortSignal): Promise<SyncResult> {
   }
 
   const cursor = await getCursor();
-  const response = await fetch(`/api/sync/pull?after=${cursor.toString()}`, {
-    signal,
-  });
+  const response = await fetch(
+    `/api/sync/pull?after=${cursor.toString()}&maison=1`,
+    {
+      signal,
+    },
+  );
   const payload: PullResponse = await parseJson(response, PullResponseSchema);
   await applyChanges(payload.changes, payload.cursor);
   const counts = await getOutboxCounts();

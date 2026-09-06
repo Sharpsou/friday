@@ -128,16 +128,6 @@ export function mergeRedundantAxes(
   return merged;
 }
 
-export function retrievalQueriesForPlan(
-  question: string,
-  plan: AnswerPlan,
-): string[] {
-  return [
-    question,
-    ...plan.axes.map(({ question: axisQuestion }) => axisQuestion),
-  ];
-}
-
 export function searchQueriesForPlan(
   question: string,
   plan: AnswerPlan,

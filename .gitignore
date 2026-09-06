@@ -41,3 +41,5 @@ robot/models/*.onnx
 robot/models/*.bin
 robot/models/*.tflite
 robot/models/*.pth
+
+.verification/

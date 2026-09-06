@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { InferenceScheduler } from '../inference/inference-scheduler.js';
 
 import {
   GroceryPhotoTranscriptionResponseSchema,
@@ -15,6 +16,7 @@ export interface GroceryPhotoTranscriptionEngine {
 }
 
 interface OllamaPhotoTranscriptionEngineOptions {
+  scheduler?: InferenceScheduler;
   baseUrl?: string;
   fetch?: typeof fetch;
   model?: string;
@@ -51,12 +53,14 @@ const RawTranscriptionSchema = z
   .strict();
 
 export class OllamaPhotoTranscriptionEngine implements GroceryPhotoTranscriptionEngine {
+  private readonly scheduler: InferenceScheduler | undefined;
   private readonly baseUrl: string;
   private readonly fetcher: typeof fetch;
   private readonly model: string;
   private readonly timeoutMs: number;
 
   constructor(options: OllamaPhotoTranscriptionEngineOptions = {}) {
+    this.scheduler = options.scheduler;
     this.baseUrl = (options.baseUrl ?? 'http://127.0.0.1:11434').replace(
       /\/$/u,
       '',
@@ -67,6 +71,17 @@ export class OllamaPhotoTranscriptionEngine implements GroceryPhotoTranscription
   }
 
   async transcribe(
+    imageBase64: string,
+    mediaType: GroceryPhotoMediaType,
+    signal: AbortSignal,
+  ): Promise<GroceryPhotoTranscriptionResponse> {
+    return this.scheduler
+      ? this.scheduler.run('photo', signal, () =>
+          this.transcribeUnscheduled(imageBase64, mediaType, signal),
+        )
+      : this.transcribeUnscheduled(imageBase64, mediaType, signal);
+  }
+  private async transcribeUnscheduled(
     imageBase64: string,
     _mediaType: GroceryPhotoMediaType,
     signal: AbortSignal,

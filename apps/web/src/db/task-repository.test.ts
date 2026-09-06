@@ -161,9 +161,9 @@ describe('local task repository', () => {
       readPendingOperations(),
       fridayDb.tasks.get(task.id),
     ]);
-    const deletion = operations.find(
-      (operation) => operation.payload.deletedAt !== null,
-    );
+    const deletion = operations
+      .filter((operation) => operation.entityType === 'task')
+      .find((operation) => operation.payload.deletedAt !== null);
 
     expect(tasks).toHaveLength(0);
     expect(operations).toHaveLength(2);

@@ -175,7 +175,7 @@ describe('answer axes and recoverable audits', () => {
     ).toBe('research');
   });
 
-  it('requires a cross-cutting axis to be integrated with a primary axis', () => {
+  it('accepts sourced coverage across separate units without imposing co-located axis labels', () => {
     const axes = [
       {
         id: 'A1' as const,
@@ -218,7 +218,7 @@ describe('answer axes and recoverable audits', () => {
     );
     expect(isolated.axes[1]).toMatchObject({
       axisId: 'A2',
-      coverage: 'partial',
+      coverage: 'covered',
       passageIds: ['P2'],
     });
     expect(
@@ -228,7 +228,7 @@ describe('answer axes and recoverable audits', () => {
         finalAudit: false,
         requiredAxisIds: ['A1', 'A2'],
       }),
-    ).toBe('revise');
+    ).toBe('pass');
 
     const integrated = deriveAnswerAudit(
       {

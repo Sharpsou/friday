@@ -1,3 +1,5 @@
+import type { MaisonRecord } from '@friday/contracts';
+import { MealSummary } from './maison/maison-ui.js';
 import { useMemo, useState } from 'react';
 
 import type { LocalTask } from './db/task-repository.js';
@@ -74,8 +76,12 @@ export function TaskCalendar({
   view,
   onAddForDate,
   assigneeLabels,
+  menuRecords = [],
+  onOpenMeal,
 }: {
   tasks: readonly LocalTask[];
+  menuRecords?: readonly MaisonRecord[];
+  onOpenMeal?: (id: string) => void;
   view: CalendarPeriod;
   onAddForDate: (date: string) => void;
   assigneeLabels: { current: string; other: string };
@@ -174,7 +180,18 @@ export function TaskCalendar({
                     <small>+{dateTasks.length - 2} autre(s)</small>
                   ) : null}
                 </span>
-                <span className="calendar-week-count">{dateTasks.length}</span>
+                <span className="calendar-week-count">
+                  {dateTasks.length}
+                  {menuRecords.some(
+                    (r) =>
+                      r.kind === 'meal' &&
+                      r.date === date &&
+                      !r.deletedAt &&
+                      r.status !== 'cancelled',
+                  ) ? (
+                    <small className="calendar-menu-marker">Menus</small>
+                  ) : null}
+                </span>
               </button>
             );
           })}
@@ -202,6 +219,15 @@ export function TaskCalendar({
                 >
                   <span>{parsedDate.getDate()}</span>
                   {taskCount > 0 ? <small>{taskCount}</small> : null}
+                  {menuRecords.some(
+                    (r) =>
+                      r.kind === 'meal' &&
+                      r.date === date &&
+                      !r.deletedAt &&
+                      r.status !== 'cancelled',
+                  ) ? (
+                    <small className="calendar-menu-marker">Menus</small>
+                  ) : null}
                 </button>
               );
             })}
@@ -210,6 +236,13 @@ export function TaskCalendar({
       )}
 
       <div className="calendar-day-detail">
+        {onOpenMeal ? (
+          <MealSummary
+            records={menuRecords}
+            date={selectedDate}
+            onOpen={onOpenMeal}
+          />
+        ) : null}
         <div className="calendar-day-heading">
           <div>
             <span className="eyebrow">Jour sélectionné</span>

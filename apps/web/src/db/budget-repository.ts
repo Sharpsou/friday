@@ -21,9 +21,9 @@ import {
 import { getBudgetOccurrenceDates } from '@friday/domain';
 
 import { decryptJson, encryptJson } from '../crypto/vault.js';
+import { getDeviceContext } from './device-context.js';
 import { budgetAad, outboxAad } from './encryption-context.js';
 import { fridayDb, type BudgetRow } from './friday-db.js';
-import { getDeviceContext } from './task-repository.js';
 
 const HOUSEHOLD_ID = '1030b4f6-1e0f-48fa-adab-865750ce597d';
 

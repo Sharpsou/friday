@@ -133,6 +133,16 @@ describe('local grocery repository', () => {
 
   it('applies a remote grocery change and advances the shared cursor', async () => {
     const item = await createLocalGroceryItem({ label: 'Café' });
+    const operation = (await readPendingOperations())[0]!;
+    await applyAcks([
+      {
+        operationId: operation.operationId,
+        entityId: item.id,
+        status: 'applied',
+        serverRevision: 1,
+        conflictReason: null,
+      },
+    ]);
 
     await applyChanges(
       [
@@ -160,6 +170,27 @@ describe('local grocery repository', () => {
       syncState: 'acknowledged',
     });
     expect(await getCursor()).toBe(7);
+  });
+
+  it('preserves a local grocery edit while a remote pull is in flight', async () => {
+    const item = await createLocalGroceryItem({ label: 'Café local' });
+    await applyChanges(
+      [
+        {
+          cursor: 3,
+          entityType: 'grocery_item',
+          entityId: item.id,
+          operation: 'upsert',
+          payload: { ...item, label: 'Ancien libellé serveur', revision: 1 },
+        },
+      ],
+      3,
+    );
+    expect((await listGroceryItems())[0]).toMatchObject({
+      label: 'Café local',
+      syncState: 'pending',
+    });
+    expect(await readPendingOperations()).toHaveLength(1);
   });
 
   it('edits the product and manual aisle through the offline outbox', async () => {

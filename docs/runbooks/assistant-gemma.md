@@ -1,8 +1,148 @@
 # Runbook Chat — runtime vérifié sous gate
 
-Date : 3 septembre 2026
+## État courant — 6 septembre 2026
+
+Dernière livraison : **6 septembre 2026 à 12 h 04 (Paris)** sur
+`https://192.168.1.14:8443`, **SQLite 47 / Dexie 9**. Les cinq derniers gros
+fichiers sont découpés et le complément est déployé sur demande utilisateur.
+`pnpm verify` passe avec **557 tests**, format, lint, typage, architecture et
+builds. Santé locale/LAN, intégrité SQLite et empreintes des fichiers servis
+sont vérifiées. Voir le [bilan du complément](../audits/2026-09-06-complement-cinq-modules.md)
+et le [plan exécuté](../audits/2026-09-06-plan-decoupage-cinq-modules.md).
+
+Un correctif distinct empêche les continuations Robot tardives après arrêt ou
+annulation, y compris lors d'un panorama. Les preuves sont simulées ; aucune
+recette physique n'a été effectuée et le Pi n'était pas joignable lors du GET
+d'état. Son runtime Python est inchangé. Les recettes téléphones restent
+ouvertes. La gate qualitative Chat reste refusée ; aucun prompt, modèle,
+numéro de migration ou format chiffré n'est changé. Les mentions historiques
+plus bas décrivent leurs dates respectives.
+
+## Continuité des recherches
+
+Le Hub conserve avec chaque réponse Web un dossier privé borné à huit sources,
+douze passages originaux et 24 000 caractères. SQLite 47 ajoute
+`chat_research_memory`, supprimée en cascade avec le message et sa conversation.
+La lecture est filtrée par profil, conversation et ordre causal ; le dossier
+survit au redémarrage du Hub.
+
+Une demande suivante transmet l'historique et ce dossier à l'orchestrateur.
+Il choisit réutilisation, restitution des liens connus ou recherche complémentaire.
+Les identifiants doivent exister ; une décision invalide revient à la recherche
+normale. La réponse antérieure reste du contexte non fiable. Les liens viennent
+des métadonnées conservées et toute nouvelle rédaction passe l'audit des extraits.
+Les sources gardent les identifiants affichés et leurs dates de collecte ; une
+actualisation nécessite une recherche.
+
+Sans dossier ancien, les sources déjà enregistrées restent disponibles ; une
+précision nécessitant du contenu relit ces URL avec le lecteur sécurisé.
+Les bornes globales restent seize pages, six recherches, douze générations et
+cinq minutes depuis la mise en file, avec jusqu'à trois corrections contrôlées.
+Le mode Local ne recherche pas. Aucun index n'est partagé entre profils ou fils.
+
+## Modules et vérification
+
+`packages/assistant-core/src/runtime.ts` compose les fournisseurs et la continuité.
+`runtime/unified-pipeline.ts`, `withaxes-pipeline.ts` et `legacy-pipeline.ts`
+gardent leurs décisions respectives ; `publication.ts` et `retrieval-policy.ts`
+portent leurs helpers. Les modules documents, synthèse et recherche déjà livrés
+restent communs. Le Hub injecte `inference/inference-scheduler.ts` et
+`integrations/web/web-budget.ts` ; le banc partage les types `evaluation-types.ts`.
+
+Les suites Chat et documents se rejouent avec les commandes du
+[runbook développement](development.md). Le corpus DOM fixe compare Hub et banc
+sans réseau ; cette parité technique n'est pas une qualification sémantique.
+
+## Historique des étapes du 5 septembre
+
+Les résultats ci-dessous décrivent leur date. Ils ne sont pas des instructions
+de relancer une campagne ni une annonce du statut actuel de déploiement.
+
+> **Déploiement confirmé le 5 septembre 2026 à 22 h 55 (Paris).** Sur demande
+> explicite de l’utilisateur, le harnais simplifié et ses trois corrections
+> sont déployés sur l’origine A17. SQLite 46, health checks local/LAN `ok`,
+> intégrité `ok`, aucune violation de clé étrangère ; HTML servi identique au
+> build. Vérification préalable : `pnpm verify`, 525 tests. Les mentions de
+> candidat non déployé ci-dessous décrivent les étapes antérieures. La qualité
+> sémantique reste une limite connue ; aucune nouvelle recette téléphone ni
+> campagne de modèles n’est déclarée.
+>
+> Preuve : `D:\FridayData\evaluations\chat-harness-v3\deployment-three-corrections.json`.
+> Sauvegarde : `D:\FridayData\backups\chat-harness-20260905-225338\before.sqlite`.
+
+Le candidat local inclut aussi les trois corrections d’orchestration décrites
+dans le [bilan de simplification](../audits/2026-09-05-simplification-harnais-chat.md) :
+sélection de la meilleure réponse auditée, répétitions sensibles aux citations
+et diagnostic technique par étape via l’observation `failure`. Une panne sans
+réponse acceptée conserve son code technique dans `fallbackCode` ; une réponse
+partielle déjà acceptée reste disponible. Ce correctif ne vaut pas déploiement.
+
+> **Décision utilisateur du 5 septembre au soir :** campagne longue arrêtée.
+> La reprise active simplifie le dossier transmis au rédacteur, conserve les
+> originaux et autorise jusqu’à trois corrections contrôlées. Au plus cinq
+> essais diagnostiques tracés remplacent la relance de qualification pour ce
+> lot. Voir le [bilan de simplification](../audits/2026-09-05-simplification-harnais-chat.md).
+> Les descriptions et commandes de campagnes ci-dessous sont historiques ;
+> ne pas les relancer automatiquement. Candidat toujours non déployé.
+>
+> La simplification passe `pnpm verify` (**516 tests**). Les cinq cas ont été
+> suivis et relus, avec reprises techniques documentées. Les derniers correctifs
+> d’extraction et de contrôle sont validés automatiquement, sans relance des
+> modèles. Les erreurs qualitatives observées restent consignées au bilan ;
+> aucune nouvelle livraison ni recette physique n’est déclarée.
+
+Date : 5 septembre 2026
 Statut : runtime activé sur A17 par décision utilisateur, archive historique
 active, gate qualitative v2 encore ouverte
+
+> **Candidat local suivant, non déployé :** le workspace implémente le harnais
+> décrit dans le [rapport v3](../audits/2026-09-05-harnais-chat-v3.md).
+> Son pipeline `unified` prépare des faits avec citations exactes, audite les
+> originaux et s'abstient lorsque la synthèse n'est pas vérifiable. Les replis
+> locaux et extraits décrits plus bas concernent la livraison précédente.
+> SQLite 46 reste candidat ; la production est en 45. Maison et Chat gardent
+> le même ordonnanceur FIFO Ollama. Une réussite technique ne vaut pas passage
+> de la gate qualitative ni autorisation implicite de redémarrer la production.
+
+La version resserrée suivante passe `pnpm verify` vers 21 h 20 (506 tests).
+Sa campagne courante est `qualification-focused-2026-09-05`, dans
+`D:\FridayData\evaluations\chat-harness-v3\validation-v3-focused`.
+Elle remplace Python 3.13, déjà consommé, par Go 1.24 et conserve les 19 cas
+non générés. Pour ses commandes, utiliser ce nouveau `--root`, ce nouveau
+`--run` et son propre `profile.json`. Le bilan courant et la filiation sont
+consignés dans le rapport ; aucune réussite qualitative n'est encore acquise.
+
+Pour une version intermédiaire v3, `pnpm verify` passe (preuve dans le rapport). La campagne
+privée `D:\FridayData\evaluations\chat-harness-v3\validation-v3` fige
+20 nouveaux cas, trois graines et les deux modes de sélection. Le profil
+`profile.json` emploie Gemma E4B pour la rédaction et Qwen 9B pour les autres
+rôles, contexte 32k. Il est candidat, pas encore qualifié pour livraison.
+
+**Campagne interrompue et refusée après quatre réponses relues.** Les commandes
+ci-dessous identifient son historique ; ne pas la reprendre avec le nouveau
+code ni la présenter comme une revue complète. Python 3.13 est désormais un
+cas consommé, à remplacer dans toute prochaine qualification indépendante.
+
+Commande de génération de cette version figée, sans juge local :
+
+```powershell
+pnpm --filter @friday/chat-eval campaign:unified --root=D:/FridayData/evaluations/chat-harness-v3/validation-v3 --run=qualification-2026-09-05 --profile=D:/FridayData/evaluations/chat-harness-v3/validation-v3/profile.json --phase=generate --hostile-tests-passed=true
+```
+
+Cette reprise exige le même corpus, les mêmes modèles et le même code. Ne pas
+modifier les sources TypeScript pendant la campagne. Les réponses sont dans
+`results/qualification-2026-09-05/campaign.json`. Après lecture effective des
+120 réponses contre leurs originaux par Codex, renseigner `codex-review.json`
+dans ce même répertoire, puis calculer la gate :
+
+```powershell
+pnpm --filter @friday/chat-eval review:codex --root=D:/FridayData/evaluations/chat-harness-v3/validation-v3 --run=qualification-2026-09-05
+```
+
+Les tests hostiles doivent avoir effectivement passé avant de transmettre
+leur résultat au manifeste. La commande de revue ne fabrique aucune note et
+refuse des réponses ou des empreintes modifiées. Ne jamais assimiler ses
+contrôles structurels à une lecture factuelle.
 
 Le nouveau Chat expose trois choix lisibles : `Friday` laisse le code choisir,
 `Local` force une réponse portant le badge « Non vérifié par des sources » et
@@ -195,7 +335,8 @@ invalides, ou si un audit valide rejette tout, le brouillon reste masqué : la
 PWA affiche des extraits bornés des pages originales avec leurs sources et le
 doute de l'audit. Ces extraits ne portent jamais le statut `verified`.
 
-Le banc utilise ce chemin avec `--pipeline=axes` par défaut. Pour établir une
+Le banc utilise désormais `--pipeline=unified` par défaut, avec la même
+orchestration que le Hub. `--pipeline=axes` sélectionne ce chemin historique. Pour établir une
 base comparative seulement, `--pipeline=legacy` conserve l'ancien exécuteur.
 Le flag runtime a été activé par décision utilisateur ; la gate qualitative
 reste ouverte et l'activation ne vaut pas validation humaine.
@@ -219,3 +360,57 @@ Les types de livrables explicitement demandés, par exemple podcasts et
 formations, doivent rester deux axes principaux distincts. Les titres validés
 des sources sont transmis avec les passages afin que Gemma puisse nommer une
 ressource sans inventer d'URL ; l'URL reste résolue exclusivement par le code.
+
+## Lot local du 5 septembre : publication, cache et campagne
+
+Le code local ne publie plus de brouillon non audité. Une panne garde le dernier
+texte accepté ou des extraits originaux en `partial`. Le rédacteur reçoit les
+métadonnées et les passages originaux ; les paragraphes de sa synthèse sont
+préservés par la compilation. Les plafonds restent six générations, seize
+lectures, huit sources, douze passages et 24 000 caractères. Les réponses
+rédigées disposent de 2 000 tokens ; 250–600 mots est une indication, pas une
+obligation de remplir artificiellement.
+
+Le cache Dexie chiffre avant transaction et réconcilie les suppressions du Hub.
+Si `/api/chat` est désactivé, l’historique local reste lisible et les mutations
+sont désactivées ; l’archive Assistant demeure séparée. Les erreurs 401/403
+exigent de se reconnecter, les 404 purgent l’entrée locale concernée. Une erreur
+d’écriture locale n’invalide pas une mutation réussie sur le serveur. Le retour
+en ligne et le retour à l’onglet visible relancent la lecture depuis le Hub.
+
+Le corpus v2 est figé sous `D:\FridayData\evaluations\chat-foundation-v2`.
+La commande suivante s’utilise après réussite réelle de `pnpm verify` (le flag
+atteste le corpus hostile automatisé, sans prétendre à un essai hostile réel) :
+
+```powershell
+$chatEvaluationRun = 'unified-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+pnpm --filter @friday/chat-eval campaign:unified --run=$chatEvaluationRun --hostile-tests-passed=true
+```
+
+`--phase=generate` limite à la production des 120 réponses ; `--phase=review`
+reprend leur revue IA. Sans ce paramètre, les deux étapes s’enchaînent. La
+reprise est atomique et vérifie les empreintes du corpus, des sources, du code
+et des modèles. Ne pas modifier les sources TypeScript de core ou du banc
+pendant la campagne. Les deux ordres de revue restent conservés séparément.
+Le suivi ne lit que les statuts des runs SQLite, en lecture seule, pour donner
+priorité au Chat réel avant chaque appel modèle.
+
+Lire [le bilan](../audits/2026-09-05-implementation-chat.md) avant de déployer ce
+lot. Les résultats figés n’incluent pas la latence d’une recherche Web réelle.
+Une contradiction importante ou une catastrophe laisse le déploiement suspendu
+et ne déclenche pas une boucle automatique d’optimisation des modèles.
+
+Le lot `unified-synthesis-final-20260905` a terminé ses 120 générations. Sur
+demande utilisateur, Codex a remplacé la revue 8B, arrêtée après six jugements,
+par sa propre revue des 120 réponses. `gate-codex.json` conserve cette origine
+et refuse la livraison. Ce n’est ni une revue humaine ni une double revue
+indépendante. Les corrections techniques passent `pnpm verify`, mais aucune
+recette Windows/redémarrage du Hub n’a suivi. Ne pas reprendre cet identifiant
+avec le code courant : le correctif de routage postérieur possède une autre
+empreinte ; l’archive des sources évaluées et sa portée sont décrites au bilan.
+
+Le client Ollama partagé demande explicitement `num_ctx=32768` : le défaut
+observé de 4096 tokens tronquait potentiellement le dossier documentaire et
+l’audit. Ce contexte est distinct des plafonds de génération (2 000 pour la
+rédaction, 4 096 pour l’audit). Son coût mémoire fait partie des mesures réelles
+de campagne. Vérifier `context_length` via `/api/ps` après chargement.

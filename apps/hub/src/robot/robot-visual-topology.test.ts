@@ -499,3 +499,114 @@ describe('RobotVisualTopologyService', () => {
     expect(hammingDistance('0000000000000000', '000000000000000f')).toBe(4);
   });
 });
+
+describe('visual observation lifecycle', () => {
+  it('invalidates an extraction in flight and drains it before purging', async () => {
+    const db = openDatabase(':memory:');
+    const engine = new MatchingEngine();
+    const started = deferred<void>();
+    const release = deferred<RobotPlaceSignatureFeatures>();
+    engine.extract = async () => {
+      started.resolve();
+      return release.promise;
+    };
+    const topology = new RobotVisualTopologyService(db, HOUSEHOLD, engine);
+    try {
+      insertPlace(db, 'reference');
+      const at = new Date().toISOString();
+      const observation = topology.observe(state(1, at), {
+        frameId: 1,
+        image: Buffer.from('fixture'),
+        observedAt: at,
+      });
+      await started.promise;
+      let purged = false;
+      const purge = topology.purge('all').then((result) => {
+        purged = true;
+        return result;
+      });
+      await Promise.resolve();
+      expect(purged).toBe(false);
+      release.resolve(FEATURES);
+      expect((await observation).stable).toBe(false);
+      expect((await purge).deletedPlaces).toBe(1);
+      expect(topology.snapshot().places).toHaveLength(0);
+    } finally {
+      release.resolve(FEATURES);
+      await topology.close();
+      db.close();
+    }
+  });
+  it('recovers its queue after extraction failure and does not extract a duplicate frame', async () => {
+    const db = openDatabase(':memory:');
+    const engine = new MatchingEngine();
+    let extractions = 0;
+    engine.extract = async () => {
+      extractions++;
+      if (extractions === 1) throw new Error('fixture extraction failure');
+      return FEATURES;
+    };
+    const topology = new RobotVisualTopologyService(db, HOUSEHOLD, engine);
+    try {
+      const at = new Date().toISOString();
+      await expect(
+        topology.observe(state(1, at), {
+          frameId: 1,
+          image: Buffer.from('one'),
+          observedAt: at,
+        }),
+      ).rejects.toThrow('fixture extraction failure');
+      const frame = { frameId: 2, image: Buffer.from('two'), observedAt: at };
+      const observed = await topology.observe(state(2, at), frame);
+      expect(observed.imageUsable).toBe(true);
+      expect(await topology.observe(state(2, at), frame)).toEqual(observed);
+      expect(extractions).toBe(2);
+    } finally {
+      await topology.close();
+      db.close();
+    }
+  });
+  it('closes recognition only after its pending observation completes', async () => {
+    const db = openDatabase(':memory:');
+    const engine = new MatchingEngine();
+    const started = deferred<void>(),
+      release = deferred<RobotPlaceSignatureFeatures>();
+    let closed = false;
+    engine.extract = async () => {
+      started.resolve();
+      return release.promise;
+    };
+    engine.close = async () => {
+      closed = true;
+    };
+    const topology = new RobotVisualTopologyService(db, HOUSEHOLD, engine);
+    try {
+      const at = new Date().toISOString();
+      const observation = topology.observe(state(1, at), {
+        frameId: 1,
+        image: Buffer.from('fixture'),
+        observedAt: at,
+      });
+      await started.promise;
+      const closing = topology.close();
+      await Promise.resolve();
+      expect(closed).toBe(false);
+      release.resolve(FEATURES);
+      await observation;
+      await closing;
+      expect(closed).toBe(true);
+    } finally {
+      release.resolve(FEATURES);
+      await topology.close();
+      db.close();
+    }
+  });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}

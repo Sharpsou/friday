@@ -1,8 +1,63 @@
 # Fondation de la reconstruction du Chat Friday
 
+## État courant — 6 septembre 2026
+
+Dernière livraison : **6 septembre 2026 à 12 h 04 (Paris)** sur
+`https://192.168.1.14:8443`, **SQLite 47 / Dexie 9**. Les cinq derniers gros
+fichiers sont découpés et le complément est déployé sur demande utilisateur.
+`pnpm verify` passe avec **557 tests**, format, lint, typage, architecture et
+builds. Santé locale/LAN, intégrité SQLite et empreintes des fichiers servis
+sont vérifiées. Voir le [bilan du complément](audits/2026-09-06-complement-cinq-modules.md)
+et le [plan exécuté](audits/2026-09-06-plan-decoupage-cinq-modules.md).
+
+Un correctif distinct empêche les continuations Robot tardives après arrêt ou
+annulation, y compris lors d'un panorama. Les preuves sont simulées ; aucune
+recette physique n'a été effectuée et le Pi n'était pas joignable lors du GET
+d'état. Son runtime Python est inchangé. Les recettes téléphones restent
+ouvertes. La gate qualitative Chat reste refusée ; aucun prompt, modèle,
+numéro de migration ou format chiffré n'est changé. Les mentions historiques
+plus bas décrivent leurs dates respectives.
+
+## Historique des livraisons et états techniques
+
+Les paragraphes suivants conservent les résultats et décisions à leur date.
+Le présent encadré et le rapport de lot prévalent pour reprendre le travail.
+
+> **Déploiement confirmé le 5 septembre 2026 à 22 h 55 (Paris).** Sur demande
+> explicite de l’utilisateur, le harnais simplifié et ses trois corrections
+> sont déployés sur l’origine A17. SQLite 46, health checks local/LAN `ok`,
+> intégrité `ok`, aucune violation de clé étrangère ; HTML servi identique au
+> build. Vérification préalable : `pnpm verify`, 525 tests. Les mentions de
+> candidat non déployé ci-dessous décrivent les étapes antérieures. La qualité
+> sémantique reste une limite connue ; aucune nouvelle recette téléphone ni
+> campagne de modèles n’est déclarée.
+>
+> Preuve : `D:\FridayData\evaluations\chat-harness-v3\deployment-three-corrections.json`.
+> Sauvegarde : `D:\FridayData\backups\chat-harness-20260905-225338\before.sqlite`.
+
+> **Décision utilisateur du 5 septembre au soir :** campagne longue arrêtée.
+> La reprise active simplifie le dossier transmis au rédacteur, conserve les
+> originaux et autorise jusqu’à trois corrections contrôlées. Au plus cinq
+> essais diagnostiques tracés remplacent la relance de qualification pour ce
+> lot. Voir le [bilan de simplification](audits/2026-09-05-simplification-harnais-chat.md).
+> Les descriptions et commandes de campagnes ci-dessous sont historiques ;
+> ne pas les relancer automatiquement. Candidat toujours non déployé.
+>
+> La simplification passe `pnpm verify` (**516 tests**). Les cinq cas ont été
+> suivis et relus, avec reprises techniques documentées. Les derniers correctifs
+> d’extraction et de contrôle sont validés automatiquement, sans relance des
+> modèles. Les erreurs qualitatives observées restent consignées au bilan ;
+> aucune nouvelle livraison ni recette physique n’est déclarée.
+
 Date : 31 août 2026
 Statut : **runtime v2 activé par décision utilisateur ; gate qualitative v2 à
 compléter**
+
+> **5 septembre, candidat local suivant :** la reprise du harnais, non
+> déployée, est suivie dans le [rapport v3](audits/2026-09-05-harnais-chat-v3.md).
+> Les résultats de développement ne ferment pas la gate qualitative. Les
+> comportements de la livraison précédente ci-dessous restent à distinguer
+> du code candidat présent dans le workspace.
 
 > **Mise à jour active — sélection éphémère de preuves.** Les sections qui
 > décrivent le seul banc lexical v1 et une future réintégration sont désormais
@@ -40,13 +95,14 @@ compléter**
   dédiés, sans outbox d'envoi, et conserve l'archive historique séparée ;
 - le rédacteur est `gemma4:e4b-it-qat`, l'auditeur
   `qwen3.5:9b-q4_K_M` et l'embedding `qwen3-embedding:0.6b`. L'audit invalide
-  est répété une fois à température zéro, puis devient `audit_error` ;
+  est répété une fois à température zéro ; unified conserve ensuite un texte
+  déjà accepté ou des extraits originaux en `partial`, sans republier le brouillon ;
 - les statuts persistés sont `unverified`, `verified`, `partial`, `abstained`
   et `audit_error`. Le code retire les unités rejetées et résout les citations
   `P → S → URL` ;
-- le dossier v1 reste intact. Le brouillon privé v2 est sous
+- le dossier v1 reste intact. Le corpus privé v2 est figé sous
   `D:\FridayData\evaluations\chat-foundation-v2` et exige une référence de
-  paragraphe pour chaque aspect avant gel ;
+  paragraphe original pour chaque aspect ;
 - l'embedding hybride n'est activable que s'il gagne au moins cinq points de
   rappel sans augmenter le p95 de plus de 25 %. Sans cette preuve, BM25 sera la
   configuration active.
@@ -581,9 +637,12 @@ prometteuse mais illisible devient `discovery_only` : elle est affichée sous
 éphémère et borné à huit sources, douze passages et 24 000 caractères ;
 aucune page, embedding ou consigne externe n'est persisté ou exécuté.
 
-Un audit valide retire toujours les unités `unsupported` ou `contradicted`. Un
-double échec JSON publie toutefois le brouillon après contrôle déterministe des
-citations, URL, HTML et tailles, avec le statut `partial` et un avertissement.
+Un audit valide retire toujours les unités `unsupported` ou `contradicted`.
+Le comportement initial du 3 septembre republiait un brouillon après double
+échec JSON : il est remplacé dans le candidat du 5 septembre par la
+conservation du dernier texte accepté, sinon par des extraits originaux.
+Les contrôles de citations, URL, HTML et tailles ne constituent jamais une
+preuve factuelle.
 Si tout est rejeté, Friday produit un résumé extractif cité. Sans page lisible,
 il affiche les pistes ; sans résultat Web, il produit une réponse locale
 explicitement non vérifiée. Les sujets médicaux, juridiques et financiers
@@ -626,3 +685,60 @@ résolution contextuelle. Une reformulation modèle doit conserver plusieurs
 termes distinctifs de la dernière demande utilisateur ; sinon le code utilise
 un assemblage borné des demandes utilisateur, sans transformer les anciennes
 réponses de Friday en preuves.
+
+## 15. Stabilisation et synthèse — 5 septembre 2026
+
+Le lot est implanté localement ; consulter le bilan pour ses preuves et son
+statut de déploiement. L’audit lexical du 5 septembre sert de point de départ,
+mais seul le comportement ci-dessous définit le nouveau candidat.
+
+- Six générations au maximum ; après quatre appels, deux places restent
+  disponibles pour l’unique révision et son audit final. Une panne de révision
+  ou d’audit final ne réintroduit jamais les unités rejetées. L’annulation
+  conserve sa priorité et ne publie rien.
+- Le rédacteur reçoit un dossier de passages originaux avec titres, dates et
+  sections. Les textes longs sont découpés en phrases, leurs coordonnées
+  originales conservées. La déduplication par recouvrement de mots est remplacée
+  par une comparaison du texte, afin de mieux préserver les variantes négatives ;
+  la sélection reste une heuristique et ne garantit pas toutes les réserves.
+  Seize pages lisibles participent au classement avant les plafonds finaux
+  de huit sources, douze passages et 24 000 caractères.
+- La synthèse doit répondre à la demande en reliant les faits, garder leurs
+  réserves et distinguer désaccords et informations manquantes. La cible
+  indicative est 250–600 mots avec 2 000 tokens de génération. La vérification
+  porte sur les phrases, puis le code recompose les blocs existants ; aucun
+  modèle ne reformule après l’audit final.
+- Le contexte ne contient que les échanges causalement antérieurs : six
+  messages, 8 000 caractères maximum. La demande actuelle reste verbatim et
+  prioritaire dans la question contextualisée de 2 000 caractères maximum.
+- Le cache chiffre hors transaction, réconcilie l’instantané complet et
+  préserve la lecture hors ligne ou lorsque le Chat est désactivé. Une erreur
+  d’authentification n’est jamais masquée comme une panne réseau. Les réponses
+  d’une sélection précédente ne remplacent pas le fil courant.
+- `SharedChatEngine` est l’orchestration unique de production et du banc
+  `--pipeline=unified` désormais par défaut. `axes` et `legacy` restent des
+  chemins explicites de comparaison historique.
+
+Les vingt nouvelles questions v2 sont figées avant génération, avec critères
+et références de paragraphes originaux. Leurs sources historiques proviennent
+du v1 inchangé : cela ne constitue pas une indépendance des documents. La
+campagne compare lexical/hybride, graines 17/29/43, Gemma rédacteur et Qwen
+auditeur : 120 réponses produites. La revue prévue avec `ministral-3:8b` dans
+les deux ordres a été arrêtée après six jugements, sur demande utilisateur.
+Codex a revu les 120 réponses avec les preuves originales : revue IA unique du
+même assistant que l’implémenteur, sans validation humaine ni double revue
+indépendante. Les notes locales restent séparées. Les seuils additionnels sont
+90 % de synthèses et 80 % de réponses à la fois cohérentes et utiles à 4/5.
+Les erreurs sont conservées et comptées, jamais effacées par une reprise.
+Toute modification du code, des modèles ou du corpus invalide la reprise.
+Les appels attendent que le Chat réel soit inactif ; une inférence déjà partie
+peut cependant se terminer avant qu’une nouvelle requête utilisateur débute.
+
+La gate qualitative échoue : 33 réponses sur 120 atteignent simultanément 4/5
+en utilité et rédaction, avec des erreurs importantes documentées. Le
+déploiement serveur est suspendu ; aucune optimisation automatique sur cette
+validation n’est engagée. Le détail et les limites de revue sont dans le
+[bilan du lot](audits/2026-09-05-implementation-chat.md). Une source courte
+réduit la difficulté, mais ni sa taille ni une seconde passe IA ne garantissent
+l’absence d’hallucination. La qualité de rédaction reste une mesure séparée
+de la validité des citations.

@@ -17,6 +17,7 @@ describe('OllamaClient', () => {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       expect(body.prompt).toBe('audit bref');
       expect(body.think).toBe(false);
+      expect(body.options).toMatchObject({ num_ctx: 32_768 });
       expect(body.format).toEqual({ type: 'object' });
       return new Response(
         JSON.stringify({ response: '{"units":[]}', eval_count: 4 }),

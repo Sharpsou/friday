@@ -1,5 +1,5 @@
-import type { AnswerAudit, AuditUnit } from './contracts.js';
 import type { FunctionalOutcome } from './audit.js';
+import type { AnswerAudit, AuditUnit } from './contracts.js';
 
 export interface AutomatedMetrics {
   factualUnitCount: number;
@@ -80,19 +80,6 @@ export function computeAutomatedMetrics(
     emptyAnswer: answer.trim().length === 0,
     outcome,
   };
-}
-
-export function aspectCoverage(review: HumanReview): number {
-  if (
-    !Number.isSafeInteger(review.expectedAspectsCovered) ||
-    !Number.isSafeInteger(review.expectedAspectsTotal) ||
-    review.expectedAspectsCovered < 0 ||
-    review.expectedAspectsTotal < 1 ||
-    review.expectedAspectsCovered > review.expectedAspectsTotal
-  ) {
-    throw new Error('INVALID_HUMAN_REVIEW_COUNTS');
-  }
-  return review.expectedAspectsCovered / review.expectedAspectsTotal;
 }
 
 export function assessReleaseGate(input: {

@@ -22,6 +22,7 @@ export const EvidenceSourceSchema = z.strictObject({
 });
 
 export const EvidencePassageSchema = z.strictObject({
+  paragraphKeys: z.array(z.string().max(100)).max(20).optional(),
   id: PassageIdSchema,
   sourceId: SourceIdSchema,
   heading: z.string().trim().min(1).max(500).optional(),
@@ -59,6 +60,7 @@ export const AnswerAxisSchema = z.strictObject({
 
 export const AnswerPlanSchema = z
   .strictObject({
+    clarification: z.string().trim().max(300).optional(),
     intent: z.enum([
       'explain',
       'compare',
@@ -162,6 +164,7 @@ export const PriorTurnSchema = z.strictObject({
 });
 
 export const HumanCriteriaSchema = z.strictObject({
+  expectedOutcome: z.enum(['answer', 'clarification', 'abstention']).optional(),
   expectedAspects: z.array(z.string().trim().min(1).max(300)).min(1).max(20),
   referenceEvidence: z
     .array(
@@ -205,7 +208,7 @@ export const ChatEvalCaseSchema = z
       'context_followup',
     ]),
     question: z.string().trim().min(3).max(2_000),
-    priorTurns: z.array(PriorTurnSchema).max(2).default([]),
+    priorTurns: z.array(PriorTurnSchema).max(6).default([]),
     pages: z.array(FrozenPageSchema).min(1).max(20),
     criteria: HumanCriteriaSchema,
     frozenAt: UtcInstantSchema,
@@ -226,22 +229,28 @@ export const CorpusSchema = z
     path: ['cases'],
   })
   .refine(
-    ({ cases }) =>
-      cases.filter(({ split }) => split === 'development').length === 10 &&
-      cases.filter(({ split }) => split === 'validation').length === 10,
+    ({ version, cases }) =>
+      version === 'chat-foundation-v3'
+        ? cases.every(({ split }) => split === 'validation')
+        : cases.filter(({ split }) => split === 'development').length === 10 &&
+          cases.filter(({ split }) => split === 'validation').length === 10,
     {
-      message: 'Corpus requires 10 development and 10 validation cases',
+      message:
+        'Corpus requires 10/10 cases, or 20 held-out validation cases for v3',
     },
   )
   .refine(
     ({ version, cases }) =>
-      version !== 'chat-foundation-v2' ||
-      cases.every(({ criteria }) =>
-        criteria.expectedAspects.every((aspect) =>
-          (criteria.referenceEvidence ?? []).some(
-            (reference) => reference.aspect === aspect,
+      !['chat-foundation-v2', 'chat-foundation-v3'].includes(version) ||
+      cases.every(
+        ({ criteria }) =>
+          (criteria.expectedOutcome !== undefined &&
+            criteria.expectedOutcome !== 'answer') ||
+          criteria.expectedAspects.every((aspect) =>
+            (criteria.referenceEvidence ?? []).some(
+              (reference) => reference.aspect === aspect,
+            ),
           ),
-        ),
       ),
     {
       message:

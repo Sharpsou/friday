@@ -1,22 +1,25 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { CampaignProfileSchema } from './campaign-profile.js';
+import { runUnifiedCampaign } from './campaign.js';
+import { reviewCodexCampaign } from './codex-review.js';
 
+import { runBlindAiReview } from './ai-review.js';
+import { buildFrozenCorpus } from './corpus-build.js';
 import {
   DEFAULT_CORPUS_ROOT,
   freezeCorpus,
   initializeCorpusWorkspace,
   loadFrozenCorpus,
 } from './corpus.js';
-import { buildFrozenCorpus } from './corpus-build.js';
+import { type EvaluationResult } from './evaluation-types.js';
 import { OllamaClient } from './ollama.js';
+import { buildReviewArtifacts } from './review.js';
 import {
   blindLabel,
   CANDIDATE_MODEL_PAIRS,
   EvaluationRunner,
-  type EvaluationResult,
 } from './runner.js';
-import { buildReviewArtifacts } from './review.js';
-import { runBlindAiReview } from './ai-review.js';
 
 interface EvaluationFailure {
   caseId: string;
@@ -89,12 +92,13 @@ async function evaluate(): Promise<void> {
   const retrieval = argument('retrieval') ?? 'hybrid';
   if (!['hybrid', 'lexical'].includes(retrieval))
     throw new Error('RETRIEVAL_MUST_BE_HYBRID_OR_LEXICAL');
-  const pipeline = argument('pipeline') ?? 'axes';
-  if (!['legacy', 'axes'].includes(pipeline))
-    throw new Error('PIPELINE_MUST_BE_LEGACY_OR_AXES');
+  const pipeline = argument('pipeline') ?? 'unified';
+  if (!['legacy', 'axes', 'unified'].includes(pipeline))
+    throw new Error('PIPELINE_MUST_BE_UNIFIED_AXES_OR_LEGACY');
   const runner = new EvaluationRunner({
     ollama: client,
     axesEnabled: pipeline === 'axes',
+    pipeline: pipeline as 'unified' | 'axes' | 'legacy',
     ...(retrieval === 'hybrid'
       ? {
           embeddings: {
@@ -109,11 +113,21 @@ async function evaluate(): Promise<void> {
       : {}),
   });
   const previous = await readFile(resultPath, 'utf8')
-    .then((raw) => JSON.parse(raw) as { results?: StoredResult[] })
+    .then(
+      (raw) =>
+        JSON.parse(raw) as {
+          results?: StoredResult[];
+          pipeline?: string;
+          retrieval?: string;
+        },
+    )
     .catch(() => ({ results: [] as StoredResult[] }));
-  const results: StoredResult[] = (previous.results ?? []).filter(
-    (result): result is EvaluationResult => 'answer' in result,
-  );
+  if (
+    'pipeline' in previous &&
+    (previous.pipeline !== pipeline || previous.retrieval !== retrieval)
+  )
+    throw new Error('CAMPAIGN_CONFIGURATION_MISMATCH');
+  const results: StoredResult[] = previous.results ?? [];
   const completed = new Set(
     results.map(
       ({ caseId, pairId, seed }) => `${caseId}\0${pairId}\0${seed.toString()}`,
@@ -248,6 +262,28 @@ async function evaluate(): Promise<void> {
 async function main(): Promise<void> {
   const command = process.argv[2];
   const root = argument('root') ?? DEFAULT_CORPUS_ROOT;
+  if (command === 'review:codex') {
+    const runId = argument('run');
+    if (!runId) throw new Error('REVIEW_RUN_ID_REQUIRED');
+    process.stdout.write(
+      `${JSON.stringify(await reviewCodexCampaign(root, runId))}\n`,
+    );
+    return;
+  }
+  if (command === 'campaign:unified') {
+    const runId = argument('run');
+    if (!runId) throw new Error('CAMPAIGN_RUN_ID_REQUIRED');
+    const profilePath = argument('profile');
+    const pair = profilePath
+      ? CampaignProfileSchema.parse(
+          JSON.parse(await readFile(profilePath, 'utf8')),
+        )
+      : undefined;
+    process.stdout.write(
+      `${await runUnifiedCampaign({ root, runId, ...(pair ? { pair } : {}), databasePath: argument('live-database') ?? 'D:\\FridayData\\friday.sqlite', phase: argument('phase') ?? 'generate', localJudge: argument('local-judge') === 'true', hostileCorpusPassed: argument('hostile-tests-passed') === 'true' })}\n`,
+    );
+    return;
+  }
   if (command === 'corpus:init') {
     const result = await initializeCorpusWorkspace(root);
     process.stdout.write(`${JSON.stringify(result)}\n`);
@@ -287,7 +323,7 @@ async function main(): Promise<void> {
     return;
   }
   throw new Error(
-    'USAGE: corpus:init | corpus:build | corpus:freeze | evaluate | review:build | review:ai',
+    'USAGE: corpus:init | corpus:build | corpus:freeze | evaluate | campaign:unified | review:build | review:ai | review:codex',
   );
 }
 

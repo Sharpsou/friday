@@ -1,7 +1,7 @@
 import { z } from 'zod';
+import { AnswerPlanSchema } from './contracts.js';
 import type { OllamaClient } from './ollama.js';
-import { AnswerPlanSchema, type AnswerPlan } from './contracts.js';
-import { routeAnswerPlanPrompt, routerPrompt } from './prompts.js';
+import { routerPrompt } from './prompts.js';
 
 export const RouteClassifierOutputSchema = z.strictObject({
   route: z.enum(['local', 'web']),
@@ -61,16 +61,17 @@ function decision(
   };
 }
 export function routeDeterministically(question: string): RouteDecision | null {
-  if (SOURCE_REQUIRED.test(question))
+  // Internal context labels must not influence the user's routing intent.
+  const intent = question.replace(/^Demande actuelle \(prioritaire\) : /u, '');
+  if (SOURCE_REQUIRED.test(intent))
     return decision('web', 'source_required', [question]);
-  if (HIGH_RISK.test(question)) return decision('web', 'high_risk', [question]);
-  if (CURRENT.test(question))
+  if (HIGH_RISK.test(intent)) return decision('web', 'high_risk', [question]);
+  if (CURRENT.test(intent))
     return decision('web', 'current_information', [question]);
-  if (RECOMMENDATION.test(question))
+  if (RECOMMENDATION.test(intent))
     return decision('web', 'recommendation', [question]);
-  if (WRITING.test(question))
-    return decision('local', 'writing_or_conversation');
-  if (STABLE.test(question)) return decision('local', 'stable_explanation');
+  if (WRITING.test(intent)) return decision('local', 'writing_or_conversation');
+  if (STABLE.test(intent)) return decision('local', 'stable_explanation');
   return null;
 }
 export function acceptClassifierRoute(input: unknown): RouteDecision {
@@ -91,7 +92,7 @@ export function acceptClassifierRoute(input: unknown): RouteDecision {
 export async function routeQuestion(
   question: string,
   options: {
-    ollama: OllamaClient;
+    ollama: Pick<OllamaClient, 'generate'>;
     model: string;
     seed: number;
     signal?: AbortSignal;
@@ -114,50 +115,4 @@ export async function routeQuestion(
     throw new Error('ROUTER_INVALID_JSON');
   }
   return acceptClassifierRoute(parsed);
-}
-
-export async function routeAndPlanQuestion(
-  question: string,
-  options: {
-    ollama: OllamaClient;
-    model: string;
-    seed: number;
-    signal?: AbortSignal;
-  },
-): Promise<{ decision: RouteDecision; plan: AnswerPlan | null }> {
-  const result = await options.ollama.generate({
-    model: options.model,
-    prompt: routeAnswerPlanPrompt(question, RoutePlanJsonSchema),
-    seed: options.seed,
-    format: RoutePlanJsonSchema,
-    maxTokens: 1_000,
-    temperature: 0,
-    ...(options.signal ? { signal: options.signal } : {}),
-  });
-  let value: unknown;
-  try {
-    value = JSON.parse(result.response);
-  } catch {
-    throw new Error('ROUTER_PLAN_INVALID_JSON');
-  }
-  const parsed = RoutePlanOutputSchema.parse(value);
-  if (parsed.route === 'local' && parsed.plan !== null)
-    throw new Error('LOCAL_ROUTE_MUST_NOT_HAVE_PLAN');
-  if (parsed.route === 'web' && parsed.plan === null)
-    throw new Error('WEB_ROUTE_REQUIRES_PLAN');
-  return {
-    decision: {
-      route: parsed.route,
-      reason: parsed.reason,
-      queries: parsed.plan
-        ? parsed.plan.axes.map(({ query }) => query).slice(0, 3)
-        : [],
-      decidedBy: 'classifier',
-      verificationLabel:
-        parsed.route === 'web'
-          ? 'sources requises'
-          : 'non vérifié par des sources',
-    },
-    plan: parsed.plan,
-  };
 }

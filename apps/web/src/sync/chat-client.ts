@@ -1,3 +1,5 @@
+import { pendingChatSend, acknowledgeChatSend } from '../db/chat-send.js';
+export { acknowledgeChatSend, readPendingChatSend } from '../db/chat-send.js';
 import {
   ChatActiveRunResponseSchema,
   ChatConversationSchema,
@@ -18,6 +20,53 @@ import {
   listCachedChatMessages,
 } from '../db/chat-repository.js';
 
+export interface ChatAvailability {
+  status: 'ready' | 'offline' | 'disabled' | 'auth-required';
+  cacheWarning: boolean;
+}
+let availability: ChatAvailability = { status: 'ready', cacheWarning: false };
+export function getChatAvailability(): ChatAvailability {
+  return availability;
+}
+function announce(update: Partial<ChatAvailability>): void {
+  availability = { ...availability, ...update };
+  if (typeof window !== 'undefined')
+    window.dispatchEvent(new Event('friday-chat-availability'));
+}
+class ChatHttpError extends Error {
+  constructor(
+    readonly status: number,
+    code: string,
+  ) {
+    super(code);
+  }
+}
+function allowsCachedRead(error: unknown): boolean {
+  if (error instanceof ChatHttpError) {
+    if ([401, 403].includes(error.status)) {
+      announce({ status: 'auth-required' });
+      return false;
+    }
+    if (error.message === 'CHAT_DISABLED') {
+      announce({ status: 'disabled' });
+      return true;
+    }
+    if (error.status < 500) return false;
+  } else if (!(error instanceof TypeError)) return false;
+  announce({ status: 'offline' });
+  return true;
+}
+async function cacheWithoutRejecting(
+  operation: () => Promise<void>,
+): Promise<void> {
+  try {
+    await operation();
+    announce({ cacheWarning: false });
+  } catch {
+    announce({ cacheWarning: true });
+  }
+}
+
 async function parse<T>(
   response: Response,
   schema: { parse(input: unknown): T },
@@ -28,8 +77,12 @@ async function parse<T>(
       payload && typeof payload === 'object' && 'error' in payload
         ? String(payload.error)
         : '';
-    if (code === 'chat_disabled') throw new Error('CHAT_DISABLED');
-    throw new Error(code || `CHAT_HTTP_${response.status.toString()}`);
+    throw new ChatHttpError(
+      response.status,
+      code === 'chat_disabled'
+        ? 'CHAT_DISABLED'
+        : code || `CHAT_HTTP_${response.status.toString()}`,
+    );
   }
   return schema.parse(payload);
 }
@@ -40,9 +93,13 @@ export async function listChatConversations(): Promise<ChatConversation[]> {
       await fetch('/api/chat/conversations'),
       ChatConversationsResponseSchema,
     );
-    await cacheChatState(result.conversations);
+    announce({ status: 'ready' });
+    await cacheWithoutRejecting(() =>
+      cacheChatState(result.conversations, [], true),
+    );
     return result.conversations;
   } catch (error) {
+    if (!allowsCachedRead(error)) throw error;
     const cached = await listCachedChatConversations();
     if (cached.length) return cached;
     throw error;
@@ -60,7 +117,7 @@ export async function createChatConversation(
     }),
     ChatConversationSchema,
   );
-  await cacheChatState([result]);
+  await cacheWithoutRejecting(() => cacheChatState([result]));
   return result;
 }
 
@@ -76,7 +133,7 @@ export async function updateChatConversation(
     }),
     ChatConversationSchema,
   );
-  await cacheChatState([result]);
+  await cacheWithoutRejecting(() => cacheChatState([result]));
   return result;
 }
 
@@ -87,7 +144,7 @@ export async function deleteChatConversation(id: string): Promise<void> {
     }),
     ChatDeleteResponseSchema,
   );
-  await deleteCachedChatConversation(id);
+  await cacheWithoutRejecting(() => deleteCachedChatConversation(id));
 }
 
 export async function getChatWebUsage() {
@@ -102,9 +159,15 @@ export async function getChatMessages(conversationId: string) {
       ),
       ChatMessagesResponseSchema,
     );
-    await cacheChatState([result.conversation], result.messages);
+    announce({ status: 'ready' });
+    await cacheWithoutRejecting(() =>
+      cacheChatState([result.conversation], result.messages),
+    );
     return result;
   } catch (error) {
+    if (error instanceof ChatHttpError && error.status === 404)
+      await deleteCachedChatConversation(conversationId);
+    if (!allowsCachedRead(error)) throw error;
     const conversations = await listCachedChatConversations();
     const conversation = conversations.find(({ id }) => id === conversationId);
     if (conversation)
@@ -119,8 +182,9 @@ export async function getChatMessages(conversationId: string) {
 export async function sendChatMessage(
   conversationId: string,
   content: string,
-): Promise<string> {
+): Promise<{ runId: string; clientRequestId: string }> {
   if (!navigator.onLine) throw new Error('CHAT_OFFLINE');
+  const clientRequestId = await pendingChatSend(conversationId, content);
   try {
     const result = await parse(
       await fetch(
@@ -129,15 +193,20 @@ export async function sendChatMessage(
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            clientRequestId: crypto.randomUUID(),
+            clientRequestId,
             content,
           }),
         },
       ),
       ChatEnqueueResponseSchema,
     );
-    return result.runId;
+    return { runId: result.runId, clientRequestId };
   } catch (error) {
+    if (
+      error instanceof ChatHttpError &&
+      [400, 401, 403, 404, 429].includes(error.status)
+    )
+      await acknowledgeChatSend(conversationId, clientRequestId);
     if (!navigator.onLine || error instanceof TypeError)
       throw new Error('CHAT_OFFLINE', { cause: error });
     throw error;

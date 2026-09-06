@@ -30,6 +30,10 @@ export interface RobotPanoramaStatus {
 }
 
 export class RobotPanoramaSurveyController {
+  private epoch = 0;
+  private starting = false;
+  private cancellation: Promise<void> | null = null;
+
   private phase: PanoramaPhase = 'idle';
   private phaseUntil = 0;
   private rotationRenewAt = 0;
@@ -76,36 +80,53 @@ export class RobotPanoramaSurveyController {
   }
 
   async start(state: RobotState): Promise<boolean> {
-    if (this.status().active || !this.topology.panoramaProgress().placeId)
+    if (
+      this.status().active ||
+      this.starting ||
+      this.cancellation !== null ||
+      !this.topology.panoramaProgress().placeId
+    )
       return false;
     if (
       state.telemetry.irLeftClear === false &&
       state.telemetry.irRightClear === false
     )
       return false;
-    this.direction = state.telemetry.irRightClear === false ? 'left' : 'right';
-    this.impulseCount = 0;
-    this.sectorCount = this.topology.panoramaProgress().sectorCount;
-    this.stableFrames = 0;
-    this.rotationRenewAt = 0;
-    this.topology.beginPanoramaSession();
-    await this.robot.stop();
-    this.topology.pauseObservations();
+    const epoch = ++this.epoch;
+    this.starting = true;
     try {
-      await this.robot.look(this.lookCommand(0, 0.2));
+      this.direction =
+        state.telemetry.irRightClear === false ? 'left' : 'right';
+      this.impulseCount = 0;
+      this.sectorCount = this.topology.panoramaProgress().sectorCount;
+      this.stableFrames = 0;
+      this.rotationRenewAt = 0;
+      this.topology.beginPanoramaSession();
+      await this.robot.stop();
+      if (epoch !== this.epoch) return false;
+      this.topology.pauseObservations();
+      try {
+        await this.robot.look(this.lookCommand(0, 0.2));
+        if (epoch !== this.epoch) return false;
+      } finally {
+        if (epoch === this.epoch)
+          this.topology.resumeObservationsAfter(SETTLE_MS);
+      }
+      this.phase = 'stabilizing';
+      this.phaseUntil = Date.now() + SETTLE_MS;
+      this.stabilizationDeadline = this.phaseUntil + UNUSABLE_VIEW_SKIP_MS;
+      return true;
     } finally {
-      this.topology.resumeObservationsAfter(SETTLE_MS);
+      if (epoch === this.epoch) this.starting = false;
     }
-    this.phase = 'stabilizing';
-    this.phaseUntil = Date.now() + SETTLE_MS;
-    this.stabilizationDeadline = this.phaseUntil + UNUSABLE_VIEW_SKIP_MS;
-    return true;
   }
 
   async tick(
     state: RobotState,
     observation: RobotVisualObservation,
   ): Promise<RobotPanoramaStatus> {
+    const epoch = this.epoch;
+
     if (!this.status().active) return this.status();
     if (
       !state.actuators.wheelsEnabled ||
@@ -119,6 +140,7 @@ export class RobotPanoramaSurveyController {
       const now = Date.now();
       if (now >= this.phaseUntil) {
         await this.robot.stop();
+        if (epoch !== this.epoch) return this.status();
         this.topology.resumeObservationsAfter(SETTLE_MS);
         this.phase = 'settling';
         this.phaseUntil = now + SETTLE_MS;
@@ -135,6 +157,7 @@ export class RobotPanoramaSurveyController {
               Math.min(COMMAND_WATCHDOG_MS, remainingMs),
             ),
           );
+        if (epoch !== this.epoch) return this.status();
         this.rotationRenewAt = now + COMMAND_RENEW_MS;
       }
       return this.status();
@@ -153,6 +176,7 @@ export class RobotPanoramaSurveyController {
       return this.status();
     }
     const captured = await this.topology.captureStablePanoramaSector();
+    if (epoch !== this.epoch) return this.status();
     this.sectorCount = captured.sectorCount;
     this.stableFrames = 0;
     if (captured.complete) {
@@ -164,12 +188,23 @@ export class RobotPanoramaSurveyController {
   }
 
   async cancel(): Promise<void> {
-    if (!this.status().active) return;
-    await this.finish(false);
+    if (this.cancellation) return this.cancellation;
+    if (!this.status().active && !this.starting) return;
+    this.epoch++;
+    this.starting = false;
+    this.cancellation = this.finish(false);
+    try {
+      await this.cancellation;
+    } finally {
+      this.cancellation = null;
+    }
   }
 
   private async finish(complete: boolean): Promise<void> {
+    const epoch = this.epoch;
+
     await this.robot.stop();
+    if (epoch !== this.epoch) return;
     this.topology.resumeObservationsAfter(SETTLE_MS);
     if (!complete) this.topology.markPanoramaIncomplete();
     this.phase = complete ? 'complete' : 'incomplete';
@@ -178,6 +213,8 @@ export class RobotPanoramaSurveyController {
   }
 
   private async startRotationPulse(): Promise<void> {
+    const epoch = this.epoch;
+
     this.topology.pauseObservations();
     this.topology.recordDriveCommand(this.direction);
     await this.robot.drive(
@@ -187,6 +224,7 @@ export class RobotPanoramaSurveyController {
         Math.min(COMMAND_WATCHDOG_MS, this.pulseMs),
       ),
     );
+    if (epoch !== this.epoch) return;
     const now = Date.now();
     this.impulseCount += 1;
     this.phase = 'rotating';
