@@ -1,5 +1,9 @@
 # Recette P0 — Galaxy A17
 
+> Cette recette conserve ses observations datées et ses lignes encore ouvertes. Pour le logiciel actuel, consulter le [document 27](../27-etat-canonique-app-robot-2026-08-25.md) ; ne pas déduire une nouvelle validation physique de cette mise à jour documentaire.
+
+Statut documentaire : recette.
+
 Statut : **porte go/no-go validée — contrôles de confiance restants**
 Appareil : Samsung Galaxy A17
 Objectif : prouver NFR-OFF-01, NFR-OFF-02 et NFR-SYNC-01 sur matériel réel.
@@ -85,4 +89,4 @@ Ces contrôles ne bloquent plus le démarrage du Lot 1A :
 2. lors de la prochaine bannière de mise à jour PWA, toucher `Mettre à jour`, vérifier qu’aucune tâche ne disparaît puis renseigner la ligne 8 ;
 3. rejouer ponctuellement un cycle arrêt/redémarrage du hub pendant le développement du Lot 1A.
 
-La prochaine implémentation active est l’état terminé/rouvert d’une tâche, suivie de sa date et de son heure.
+Ces opérations sont désormais implantées. Pour le prochain lot, consulter le document 27 et la décision utilisateur ; cette recette conserve les preuves P0 à leur date.

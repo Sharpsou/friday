@@ -1,5 +1,7 @@
 # Friday — audit actualisé de qualité et plan de modularisation
 
+Statut documentaire : archive.
+
 Rapport du **6 septembre 2026**, sur les évolutions livrées le 5 septembre. Le nom de fichier demandé est conservé. Cet audit produit des constats et des lots proposés ; il n'applique aucune correction runtime.
 
 ## 1. Résultat et décisions proposées
@@ -152,7 +154,7 @@ Après un snapshot Maison réussi, mettre une recette et une tâche dans l'outbo
 
 ### Q05 — P2 — Les services IA communs sont rangés dans leurs anciens domaines
 
-**Confiance élevée.** [inference-scheduler.ts](../../apps/hub/src/maison/inference-scheduler.ts) sert cinq usages ; [web-budget.ts](../../apps/hub/src/watch/web-budget.ts) est partagé via la composition de [app.ts](../../apps/hub/src/app.ts), notamment ligne 258. La mutualisation runtime existe déjà ; le problème est sa propriété et le risque de créer par erreur plusieurs instances pendant l'extraction.
+**Confiance élevée.** `inference-scheduler.ts` (ancien chemin, module déplacé ou retiré) sert cinq usages ; `web-budget.ts` (ancien chemin, module déplacé ou retiré) est partagé via la composition de [app.ts](../../apps/hub/src/app.ts), notamment ligne 258. La mutualisation runtime existe déjà ; le problème est sa propriété et le risque de créer par erreur plusieurs instances pendant l'extraction.
 
 **Correction :** `hub/src/inference/` pour ordonnanceur/interfaces, `hub/src/integrations/web/` pour budget et adaptateurs transversaux ; conserver les services métier dans leurs domaines. Une seule instance injectée au Hub. Ne pas copier la file dans Chat ou Menus.
 
@@ -190,7 +192,7 @@ Après un snapshot Maison réussi, mettre une recette et une tâche dans l'outbo
 
 ### Q10 — P2 — Découpage CSS et suites insuffisamment protégé par le rendu statique
 
-**Confiance élevée.** [styles.css](../../apps/web/src/styles.css), 5 387 lignes ; [offline-task.spec.ts](../../tests/e2e/offline-task.spec.ts), 3 158 lignes. Le CSS conserve des sélecteurs de l'ancienne carte mêlés à des sélecteurs Robot actifs. La grande suite E2E concentre helpers, mocks et scénarios ; sa réussite seule ne prouve pas que chaque futur fichier sera indépendant.
+**Confiance élevée.** [styles.css](../../apps/web/src/styles.css), 5 387 lignes ; `offline-task.spec.ts` (ancien chemin, module déplacé ou retiré), 3 158 lignes. Le CSS conserve des sélecteurs de l'ancienne carte mêlés à des sélecteurs Robot actifs. La grande suite E2E concentre helpers, mocks et scénarios ; sa réussite seule ne prouve pas que chaque futur fichier sera indépendant.
 
 **Correction :** fondations puis composants partagés puis styles par domaine, avec ordre d'import et cascade inchangés. Suites par domaine et fixtures explicites de comptes/stockage/API ; réutiliser `tests/fixtures/maison.ts`. **Tests :** chaque nouvelle suite exécutable seule, nettoyage explicite, ordre aléatoire si compatible, focus/modal/mobile, états offline et comparaison visuelle ciblée. Ne pas remplacer des assertions métier par des snapshots de JSX.
 
@@ -287,7 +289,7 @@ Les tests peuvent être divisés par comportement sans changer leurs assertions.
 | Fichier                                                                                                                    | Lignes | Frontière à examiner                                                |
 | -------------------------------------------------------------------------------------------------------------------------- | -----: | ------------------------------------------------------------------- |
 | [apps/web/src/styles.css](../../apps/web/src/styles.css)                                                                   |   5387 | Fondations, composants, domaines ; cascade.                         |
-| [tests/e2e/offline-task.spec.ts](../../tests/e2e/offline-task.spec.ts)                                                     |   3158 | Suites de domaine et fixtures.                                      |
+| `tests/e2e/offline-task.spec.ts` (ancien chemin, module déplacé ou retiré)                                                 |   3158 | Suites de domaine et fixtures.                                      |
 | [apps/web/src/App.tsx](../../apps/web/src/App.tsx)                                                                         |   2937 | Shell, navigation, session/sync, écrans.                            |
 | [apps/hub/src/watch/watch-service.ts](../../apps/hub/src/watch/watch-service.ts)                                           |   2262 | Planification, collecte, rapprochement, digest, dépôt.              |
 | [apps/hub/src/app.ts](../../apps/hub/src/app.ts)                                                                           |   2133 | Composition, plugins HTTP, préférences.                             |

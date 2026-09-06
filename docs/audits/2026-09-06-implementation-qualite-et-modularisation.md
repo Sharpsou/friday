@@ -1,5 +1,7 @@
 # Friday — corrections et modularisation du 6 septembre 2026
 
+Statut documentaire : archive.
+
 Ce bilan accompagne l'implémentation poursuivie après l'[audit actualisé](2026-09-05-qualite-code-et-modularisation.md). L'audit historique reste intact. Le périmètre est le code et ses protections automatisées : aucun déploiement, campagne de modèles ou mouvement Robot n'a été déclenché.
 
 ## 1. Résultat

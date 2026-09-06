@@ -1,92 +1,89 @@
 # Friday
 
-> Le quotidien familial, au même endroit — même hors connexion.
+Friday est une application familiale auto-hébergée pour deux adultes : agenda,
+courses, menus, réserve alimentaire, budget partagé, Chat privé et veille personnelle.
+Le PC Windows héberge les données canoniques ; la même PWA s'installe sur ordinateur,
+Android et iPhone. Un prototype Robot AlphaBot2 constitue une extension expérimentale.
 
-Friday est une application privée pour organiser la maison à deux : tâches,
-courses, budget, conversations avec l’assistant, veille personnelle et
-expérimentation Robot AlphaBot2.
+Statut documentaire : actif.
 
-Elle s’installe comme une application sur Android, iPhone et ordinateur. Les actions restent disponibles lorsque le PC ou le Wi-Fi ne répond plus, puis se synchronisent automatiquement au retour du hub familial.
+## Choisir son parcours
 
-## Tout ce qui compte, sans bruit
+- **Utiliser Friday** : [guide utilisateur](docs/guides/utilisation-friday.md), puis [Budget](docs/guides/budget-friday.md).
+- **Installer sur un autre PC Windows** : [installation et configuration](docs/guides/installation-windows.md).
+- **Développer ou reprendre une conversation** : [architecture](docs/guides/architecture-developpement.md), [contribution](CONTRIBUTING.md) et [reprise courte](docs/00-reprise-nouveau-chat.md).
+- **Tout retrouver** : [index documentaire](docs/README.md).
 
-| Espace          | Ce qu’on y trouve                                                                                 |
-| --------------- | ------------------------------------------------------------------------------------------------- |
-| **Aujourd’hui** | Les tâches utiles, les courses restantes et l’essentiel du budget                                 |
-| **Agenda**      | Tâches et rendez-vous en liste, semaine ou mois, avec récurrence et responsables                  |
-| **Courses**     | Une liste partagée, organisée par rayon, avec un mode magasin utilisable offline                  |
-| **Budget**      | Réalisé, prévisionnel, enveloppes, provisions, réserve et épargne réelle                          |
-| **Chat**        | Un assistant local privé, avec recherche Web optionnelle et sourcée                               |
-| **Veille**      | Des dossiers personnels qui suivent des sources, regroupent les sujets et produisent une synthèse |
-| **Robot**       | Téléopération, perception, repères visuels, navigation topologique, manette et veille réseau      |
+## Les sept espaces
 
-L’interface reste volontairement courte et calme : une tâche peut se limiter à un titre, une course à un libellé, et les détails restent facultatifs.
+| Espace      | Usage                                                         | Disponibilité sans Hub après une première synchronisation                 |
+| ----------- | ------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Aujourd'hui | Tâches utiles, menus, courses, Budget et Veille               | Lecture des données locales                                               |
+| Agenda      | Tâches, récurrences et menus en liste/semaine/mois            | Lecture et écritures métier locales ; aucun Google Calendar               |
+| Maison      | Courses, Menus et Réserve                                     | Liste, catalogue, planning, bilans et réserve via cache chiffré et outbox |
+| Budget      | Réel, prévisionnel, enveloppes, provisions et épargne         | Lecture, calculs et saisies locales                                       |
+| Chat        | Conversations privées ; modes Friday, Local et Recherche Web  | Historique déjà mis en cache ; envoi et génération exigent le Hub         |
+| Veille      | Dossiers, sources, articles et synthèses privés               | Contenu déjà synchronisé ; collecte et analyse exigent le Hub             |
+| Robot       | Manuel, autonomie visuelle, repères, manette et veille réseau | Aucune commande physique hors connexion                                   |
 
-## Local-first par conception
+Maison et Budget sont partagés. Chat, Veille et brouillons IA sont privés par profil.
+Les écritures Maison utilisent la même voie locale et la même outbox avec ou sans
+réseau. Une panne d'Ollama ne bloque pas Maison, Budget ou leur synchronisation.
+Le classement des courses, la lecture de photos et les propositions IA exigent le Hub
+et les modèles locaux ; les recherches Web exigent aussi Internet et un fournisseur configuré.
 
-- Une modification est enregistrée d’abord sur le téléphone, dans un cache local chiffré.
-- Une outbox conserve les actions réalisées hors ligne jusqu’à leur synchronisation.
-- Le PC familial héberge le hub Friday, SQLite et les modèles Ollama.
-- Agenda, Courses et Budget sont partagés entre les deux adultes.
-- Chat et Veille restent privés pour chaque profil.
-- Ollama n’est jamais nécessaire pour enregistrer une tâche, une course ou une dépense.
-- Les recherches Web sont explicites et bornées ; le mode local ne contacte aucun service extérieur.
+## État et limites
 
-Friday n’est pas un SaaS : les données principales restent dans le foyer et l’application ne dépend pas d’un cloud pour fonctionner au quotidien.
+La livraison du 6 septembre 2026 comprend Maison, la continuité de recherche Chat
+et la modularisation du code. L'[état canonique](docs/27-etat-canonique-app-robot-2026-08-25.md)
+sépare code, vérification automatisée, déploiement et recettes réelles.
 
-## Une seule PWA, sur tous les appareils
+Le Chat est activé dans le foyer de référence mais sa gate qualitative reste refusée :
+une réponse auditée peut encore comporter une erreur ou une omission. Le Chat ne
+modifie aucune donnée métier et ne commande pas le Robot. La recette Maison sur
+les deux téléphones et plusieurs recettes physiques Robot restent ouvertes.
 
-La même Progressive Web App fonctionne sur le PC, Android et iPhone. L’appairage ferme l’accès au foyer, lie chaque appareil à un adulte et permet de révoquer une session si nécessaire.
+Google Calendar, la sauvegarde portable chiffrée et sa restauration ne sont pas
+implantés. Tailscale reste en pause. Les snapshots techniques existants ne remplacent
+pas une solution de sauvegarde utilisateur. Les données financières réelles restent
+soumises à la [porte Budget](docs/runbooks/reprise-budget.md).
 
-La persistance/convergence offline a été validée sur le Galaxy A17. Sur
-l’iPhone, installation, mise à jour, authentification, redémarrage offline et
-convergence à deux appareils ont été confirmés. Les autres recettes A17 restent
-suivies séparément : un test automatisé ne vaut pas une validation téléphone.
+## Démarrer en développement
 
-## Architecture en bref
-
-```mermaid
-flowchart LR
-    A["PWA Android / iPhone\ncache chiffré + outbox"] <-->|"synchronisation locale"| H["Hub Friday\nFastify sur Windows"]
-    H --> D["SQLite\ndonnées canoniques"]
-    H --> O["Ollama\nIA locale"]
-    H -.-> W["RSS · Tavily · Exa\nWeb optionnel"]
-    H <-->|"passerelle bornée"| R["AlphaBot2-Pi\nwatchdog + actionneurs"]
-    H --> V["Vision topologique\nYOLO · ORB · panoramas"]
-```
-
-Le projet est un monorepo TypeScript : React/Vite pour la PWA, Fastify pour le hub, Dexie/IndexedDB sur les appareils et SQLite sur le PC.
-
-## Lancer le projet
-
-Prérequis : Node.js 24, pnpm 11 et Python 3 pour les tests Robot.
+Prérequis : Git, Node.js 24, pnpm 11.16 minimum dans la branche 11, Python 3 et
+Google Chrome pour les E2E. Sans Robot, aucun matériel Raspberry Pi n'est nécessaire.
 
 ```powershell
+git clone https://github.com/Sharpsou/friday.git
+Set-Location friday
 pnpm install --frozen-lockfile
+$env:FRIDAY_PUBLIC_ORIGIN = 'http://127.0.0.1:5173'
 pnpm dev
 ```
 
-Vérification complète :
+Ouvrir `http://127.0.0.1:5173`. Cette boucle HTTP locale ne constitue pas une
+installation PWA LAN. Le [guide Windows](docs/guides/installation-windows.md)
+décrit les données, l'authentification, HTTPS et les services facultatifs.
 
 ```powershell
+pnpm docs:check
 pnpm verify
 ```
 
-Le runtime familial Windows, les certificats HTTPS et les procédures de redémarrage sont décrits dans les runbooks.
+La vérification construit la PWA dans `.verification/web` ; le Hub familial n'est
+pas redémarré. Voir l'[environnement de test](docs/runbooks/development.md).
 
-Le Robot est une verticale expérimentale séparée : ses roues et servos restent
-sous switches explicites, les commandes ne passent jamais par l’outbox et le Pi
-peut désormais être mis en veille réseau puis réveillé depuis l’interface. Une
-validation automatisée ne remplace pas les recettes physiques documentées.
+## Architecture
 
-## Pour aller plus loin
+```mermaid
+flowchart LR
+    P["PWA React · Dexie chiffré · outbox"] <-->|"HTTPS · sync"| H["Hub Fastify Windows"]
+    H --> S["SQLite canonique"]
+    H --> I["Ordonnanceur commun · Ollama localhost"]
+    H --> W["RSS et Tavily optionnels"]
+    H <-->|"commandes expirables"| R["AlphaBot2 · watchdog local"]
+```
 
-- [Guide fonctionnel et technique](docs/guides/guide-complet-fonctionnel-et-technique-friday.md)
-- [Index de la documentation](docs/README.md)
-- [État canonique App + Robot](docs/27-etat-canonique-app-robot-2026-08-25.md)
-- [Décision produit et architecture](docs/09-decision-finale-pwa-mvp.md)
-- [État de reprise du projet](docs/00-reprise-nouveau-chat.md)
-- [Runbooks d’exploitation](docs/runbooks/)
-- [Recettes sur appareils réels](docs/recipes/)
-
-Friday est un projet familial auto-hébergé, construit pour rester simple, privé et utile quand le réseau ne l’est pas.
+Le dépôt ne contient actuellement aucun fichier de licence accordant des droits
+de réutilisation. La publication du code et ce guide d'installation ne constituent
+pas un choix de licence ; cette décision reste au propriétaire.

@@ -1,5 +1,9 @@
 # ADR-014 — Agent physique mobile Friday à roues
 
+Statut documentaire : vision.
+
+> Vision future, pas description de l’AlphaBot2 livré ni autorisation d’achat ou d’extension. Les interdictions actives de reconnaissance faciale, surveillance secrète et mémoire durable des personnes restent applicables. Le document 27 et le runbook Robot décrivent le matériel et les capacités actuels.
+
 Date initiale : 21 août 2026
 
 Révision : 23 août 2026

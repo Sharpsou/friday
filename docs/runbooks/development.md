@@ -1,12 +1,16 @@
 # Développement local de Friday
 
+Statut documentaire : actif.
+
 ## Prérequis
 
 - Node.js 24 ;
-- pnpm 11.16.x ;
+- pnpm 11, au moins 11.16 ;
 - Python 3 pour les tests du runtime Robot et le worker OpenCV ;
 - Windows pour le hub cible ;
 - Google Chrome stable installé localement pour les E2E ; Playwright le lance explicitement avec le canal `chrome`.
+
+Le [guide Windows](../guides/installation-windows.md) donne le parcours complet sur un poste neuf. Les exemples `D:\FridayData` ci-dessous appartiennent au foyer de référence. Les commandes ne chargent pas `.env` automatiquement.
 
 ## Installation reproductible
 
@@ -22,16 +26,20 @@ verrouillées par `pnpm-lock.yaml`.
 ## Boucle de développement
 
 ```powershell
+$env:FRIDAY_PUBLIC_ORIGIN = 'http://127.0.0.1:5173'
 pnpm dev
 ```
 
 - Web Vite : `http://127.0.0.1:5173` ;
 - hub : `http://127.0.0.1:8443` ;
+- origine navigateur en développement : définir `FRIDAY_PUBLIC_ORIGIN=http://127.0.0.1:5173` dans le processus Hub ;
 - Vite relaie `/api` vers le hub, de sorte que le navigateur utilise toujours une URL relative de même origine.
 
 La boucle HTTP est limitée à la machine locale. Le hub refuse une écoute LAN sans certificat et clé TLS.
 
 ## Build de production local
+
+Ces commandes remplacent les artefacts de production. Pour une simple vérification, utiliser `pnpm verify` et sa sortie isolée.
 
 ```powershell
 pnpm build
@@ -110,7 +118,7 @@ packages sont couvertes ; chargements calculés, CSS et Python restent hors de
 cette garde. Aucune exception de cycle n'est autorisée actuellement. Les socles
 d'inférence et de stockage local ne doivent pas dépendre des écrans ou du transport.
 
-Les 29 scénarios navigateur sont répartis par domaine dans `tests/e2e/` avec
+Les scénarios navigateur sont répartis par domaine dans `tests/e2e/` avec
 `fixtures.ts` pour l'authentification. Un seul worker partage le Hub en mémoire ;
 cela ne remplace pas les tests de concurrence dédiés aux services. Après un build
 isolé, une suite se rejoue seule, avec un nouveau Hub :
@@ -122,16 +130,9 @@ pnpm exec playwright test tests/e2e/maison.spec.ts
 
 Chaque test dispose d'un contexte navigateur neuf. Le Hub est neuf pour chaque
 invocation Playwright. Ne pas déplacer des fixtures privées du foyer dans les tests.
-La carte des modules, les exceptions de taille et les preuves sont dans le
+Les mesures historiques de la première modularisation sont dans le
 [bilan d'implémentation](../audits/2026-09-06-implementation-qualite-et-modularisation.md).
 
-## Complément du 6 septembre 2026 — 12 h 04
+## Documentation et reprise du code
 
-Les cinq exceptions de taille de la première modularisation sont traitées.
-La vérification complète passe avec 557 tests et sans cycle d'exécution.
-Les preuves de comparaison, l'environnement isolé, les compatibilités dans les
-deux sens et les sauvegardes sont dans le bilan. Les scripts privés de
-transformation ne sont pas idempotents : ne pas les relancer. Le build initial
-est à 312,29 kB (91,29 kB gzip) ; Budget demeure différé.
-
-Voir le [bilan de livraison](../audits/2026-09-06-complement-cinq-modules.md).
+`pnpm docs:check` contrôle l’inventaire, les statuts, liens et ancres ; il est inclus dans `pnpm verify`. La [carte des modules](../guides/architecture-developpement.md) remplace les anciennes listes de gros fichiers. Le [bilan du complément](../audits/2026-09-06-complement-cinq-modules.md) conserve les preuves de découpage et de compatibilité. Les scripts privés de transformation ne sont pas idempotents : ne pas les relancer.

@@ -1,85 +1,51 @@
 # Documentation Friday
 
-Dernier état : [modularisation déployée le 6 septembre à 10 h 33](audits/2026-09-06-deploiement-modularisation.md), SQLite 47 / Dexie 9. Voir le handoff pour les limites et la gate qualitative.
+Statut documentaire : actif. Révision : 6 septembre 2026.
 
-Ce répertoire sépare l’état présent, les décisions, les opérations et
-l’historique. L’audit initial et son ré-audit du 27 août sont consignés dans
-[28-audit-documentation-app-robot-2026-08-25.md](28-audit-documentation-app-robot-2026-08-25.md).
+## Trois parcours
 
-## Parcours de reprise rapide
+| Besoin                 | Commencer ici                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Utiliser l'application | [Guide utilisateur](guides/utilisation-friday.md) et [Budget](guides/budget-friday.md)                                               |
+| Installer sur Windows  | [Installation](guides/installation-windows.md), puis [configuration](reference/configuration.md)                                     |
+| Développer             | [Contribution](../CONTRIBUTING.md), [architecture](guides/architecture-developpement.md) et [développement](runbooks/development.md) |
 
-Lire dans cet ordre :
+## Reprendre une conversation
 
-1. [00-reprise-nouveau-chat.md](00-reprise-nouveau-chat.md) — handoff court ;
-2. [32-fondation-reconstruction-chat.md](32-fondation-reconstruction-chat.md) pour toute reprise du Chat ;
-3. [27-etat-canonique-app-robot-2026-08-25.md](27-etat-canonique-app-robot-2026-08-25.md) — vérité d’implémentation App + Robot ;
-4. [09-decision-finale-pwa-mvp.md](09-decision-finale-pwa-mvp.md) — décisions produit encore actives ;
-5. [10-feuille-de-route-technique-implementation.md](10-feuille-de-route-technique-implementation.md) — principes d’exécution, tests et gates ;
-6. le runbook du domaine modifié.
+Lire dans l'ordre : [AGENTS](../AGENTS.md), [00](00-reprise-nouveau-chat.md),
+[27](27-etat-canonique-app-robot-2026-08-25.md), [09](09-decision-finale-pwa-mvp.md),
+[10](10-feuille-de-route-technique-implementation.md), puis le runbook du domaine.
+Pour Chat, lire ensuite la [fondation 32](32-fondation-reconstruction-chat.md).
+L'état courant est dans 27 ; les rapports sont des preuves à leurs dates.
 
-`AGENTS.md`, à la racine, reste l’autorité sur la façon de travailler dans le
-workspace. En cas d’écart factuel entre un ancien checkpoint et le code, le
-document 27 puis le code testé prévalent.
+## Domaines et opérations
 
-## Trouver le bon document
+| Domaine                         | Référence                                                                                                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Maison, Courses, Menus, Réserve | [Runbook Maison](runbooks/maison-menus-reserve.md), [classement](runbooks/classement-courses.md), [taxonomie](reference/taxonomie-courses-retail-fr-v1.md) |
+| Budget                          | [Guide](guides/budget-friday.md), [porte des données réelles](runbooks/reprise-budget.md), [ADR](adr/012-budget-partage-enveloppes.md)                     |
+| Chat                            | [Runbook](runbooks/assistant-gemma.md), [fondation](32-fondation-reconstruction-chat.md)                                                                   |
+| Veille                          | [Runbook](runbooks/veille-rss.md)                                                                                                                          |
+| Robot                           | [Runbook](runbooks/robot-alphabot2.md), [autonomie visuelle](30-decision-autonomie-topologique-visuelle.md), [runtime Python](../robot/README.md)          |
+| Windows et HTTPS                | [Exploitation](../infra/windows/README.md), [certificats du foyer](../infra/certificates/README.md)                                                        |
+| Sauvegarde et restauration      | [Procédure cible non implantée](runbooks/sauvegarde-restauration.md)                                                                                       |
+| Sécurité                        | [Frontières et modèle de référence](friday-threat-model.md), [note LAN](11-note-securite-exposition-reseau.md)                                             |
+| Travaux à décider               | [Plan de durcissement réconcilié](31-plan-durcissement-prioritaire.md)                                                                                     |
+| Décisions et recettes           | [ADR](adr/), [recettes datées](recipes/)                                                                                                                   |
 
-Pour Courses, Menus, Réserve, leurs migrations et la recette commune :
-[runbook Maison](runbooks/maison-menus-reserve.md).
+## Inventaire et historique
 
-| Besoin                           | Document                                                                                                             |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| état global App + Robot          | [27 — état canonique](27-etat-canonique-app-robot-2026-08-25.md)                                                     |
-| reconstruire le Chat             | [32 — fondation du nouveau Chat](32-fondation-reconstruction-chat.md)                                                |
-| préparer les urgences techniques | [31 — plan de durcissement prioritaire](31-plan-durcissement-prioritaire.md)                                         |
-| développer ou vérifier           | [runbook développement](runbooks/development.md)                                                                     |
-| exploiter AlphaBot2              | [runbook Robot](runbooks/robot-alphabot2.md) et [checkpoint Récup](29-checkpoint-recuperation-humaine-2026-08-25.md) |
-| comprendre l’autonomie actuelle  | [30 — autonomie topologique visuelle](30-decision-autonomie-topologique-visuelle.md)                                 |
-| vérifier l'archive Chat          | [runbook Chat](runbooks/assistant-gemma.md)                                                                          |
-| exploiter la Veille              | [runbook Veille](runbooks/veille-rss.md)                                                                             |
-| classer les courses              | [runbook classement](runbooks/classement-courses.md)                                                                 |
-| reprendre le Budget              | [runbook Budget](runbooks/reprise-budget.md)                                                                         |
-| sauvegarder/restaurer            | [runbook sauvegarde](runbooks/sauvegarde-restauration.md)                                                            |
-| comprendre toute l’application   | [guide fonctionnel et technique](guides/guide-complet-fonctionnel-et-technique-friday.md)                            |
-| rejouer une validation téléphone | [recettes](recipes/)                                                                                                 |
-| comprendre une décision durable  | [ADR](adr/)                                                                                                          |
+L'[inventaire documentaire complet](reference/inventaire-documentaire.md) classe chaque
+document, son public, sa destination et le traitement effectué. Son registre JSON est
+contrôlé par `pnpm docs:check`, avec liens et ancres. Les [archives](archives/README.md)
+conservent décisions initiales, checkpoints et anciennes versions cumulatives.
 
-## Statut des familles
+Les rapports [Maison](audits/2026-09-05-livraison-maison.md),
+[modularisation](audits/2026-09-06-implementation-qualite-et-modularisation.md) et
+[complément livré](audits/2026-09-06-complement-cinq-modules.md) portent les preuves runtime.
+Le [bilan documentaire](audits/2026-09-06-refonte-documentaire.md) décrit uniquement
+la présente refonte et ses contrôles. Une recette écrite n'est pas une recette réussie.
 
-- **Canoniques** : `00`, `27`, ce fichier et les runbooks.
-- **Décisions actives** : `09`, `10`, les ADR et le modèle de menace. Le
-  document 10 est une feuille de route cumulative, pas un état live.
-- **Plan d’implémentation actif** : `31` ordonne les chantiers urgents, mais ne
-  constitue jamais une preuve que les fonctions décrites sont livrées.
-- **Checkpoints de domaine** : `12`, `13`, `15-checkpoint`, `17`, `18`, `22` à
-  `26` et `29`. Ils expliquent une verticale ou une étape datée ; le document
-  27 tranche l’état global courant.
-- **Décision Robot active** : `30`, complétée par le runbook pour
-  l’exploitation et la veille réseau.
-- **Vision produit Robot** : `19` et ADR-014. Ils décrivent aussi la cible
-  future et ne prouvent pas sa présence sur AlphaBot2.
-- **Historique** : `01` à `08`, `11-prochaines-etapes`, `14`,
-  `15-audit`, `16`, `20` et `21`. Ils restent utiles pour comprendre les
-  décisions, mais ne pilotent pas une reprise.
-- **Recettes** : preuves manuelles à exécuter. Un scénario écrit n’est jamais
-  une validation physique.
-
-## Règle de maintenance
-
-Après une évolution structurante :
-
-1. modifier le code et ses tests ;
-2. mettre à jour le runbook concerné ;
-3. mettre à jour le document 27 et, si nécessaire, `00`/`AGENTS.md` ;
-4. créer un checkpoint daté seulement si une décision ou une preuve mérite un
-   historique autonome ;
-5. marquer explicitement tout document remplacé ;
-6. vérifier les liens relatifs et exécuter `pnpm verify` avant de déclarer le
-   candidat terminé.
-
-Ne recopier ni secrets, ni jetons, ni mots de passe, ni contenu de
-`D:\FridayData` dans Git.
-
-## Complément de modularisation — 6 septembre 2026
-
-- [Plan des cinq modules](audits/2026-09-06-plan-decoupage-cinq-modules.md).
-- [Bilan et déploiement du complément](audits/2026-09-06-complement-cinq-modules.md).
+La [maintenance documentaire](reference/maintenance-documentation.md) précise quoi
+actualiser après un lot. Le [registre de skills](skills-register.md) conserve les décisions
+d'installation ; aucun nouveau skill n'est installé par cette refonte.

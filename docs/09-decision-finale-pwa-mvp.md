@@ -1,425 +1,77 @@
-# Décision finale : MVP PWA local-first
-
-Date : 8 août 2026
-
-Statut : **référence produit active**. Ce document remplace les choix Flutter/native des documents précédents. L’exécution technique et les estimations agentiques sont définies dans [10-feuille-de-route-technique-implementation.md](10-feuille-de-route-technique-implementation.md).
-
-> **Chat — décision remplacée.** Les descriptions du moteur Chat, de ses
-> modèles, modes Web et propositions dans ce document sont historiques. Le
-> moteur a été retiré ; l’onglet est une archive privée en lecture seule. Sa
-> reconstruction et son runtime sous gate sont exclusivement régis par
-> [32-fondation-reconstruction-chat.md](32-fondation-reconstruction-chat.md).
-
-## Décision
-
-Extension confirmée le 5 septembre 2026 : **Maison** remplace la destination
-Courses, avec **Courses** ouvert par défaut, **Menus** et **Réserve**.
-Le catalogue partagé, les préparations, repas midi/soir et restes alimentent les
-courses existantes. Les menus sont affichés dans l’Agenda sans devenir des
-tâches. Le suivi de réserve est facultativement quantifié dès V1, et les achats
-se rangent par un bilan explicite. L’IA propose des brouillons privés via le
-moteur et l’ordonnanceur internes ; elle n’écrit aucune donnée métier.
-La recette Maison inclut désormais les deux téléphones, sans changement de
-technologie PWA ni connexion Google Calendar. Voir le
-[runbook Maison](runbooks/maison-menus-reserve.md) pour les règles et la livraison.
-
-Friday sera une Progressive Web App installable, servie par le PC familial sur le réseau local et capable de fonctionner hors ligne grâce à un cache applicatif et une base locale dans le navigateur.
-
-La mise au point et la recette du MVP utilisent uniquement :
-
-- le PC Windows comme hub, serveur Web, base centrale et hôte Ollama ;
-- le Samsung Galaxy A17 comme appareil client de développement, test UX et validation offline.
-
-L'iPhone 11 Pro Max n'est plus dans le chemin critique du MVP. Il sera testé plus tard avec la même PWA, sans build Xcode ni App Store.
-
-## Conséquences immédiates
-
-- aucun build Flutter Android ou iOS dans le MVP ;
-- aucun abonnement Apple Developer ;
-- aucune exportation Xcode ;
-- une seule application Web responsive pour les téléphones et le navigateur PC ;
-- Home Mind reste une source de concepts métier et de tests, pas la base d'interface à conserver ;
-- le PC reste la copie canonique ;
-- Google Drive sert au backup chiffré, jamais à exécuter Friday ni à synchroniser directement les deux clients.
-
-## Périmètre produit confirmé
-
-### Navigation
-
-Six destinations :
-
-1. **Aujourd'hui** : agenda, tâches dues, état des courses, budget et briefing ;
-2. **Agenda** : tâches, rendez-vous et vues liste/semaine/mois ;
-3. **Courses** : liste partagée et produits déjà achetés ;
-4. **Budget** : réalisé, prévisionnel, enveloppes, provisions et épargne partagés ;
-5. **Chat** : runtime unique privé sous feature gate, avec archive historique séparée, défini par le document 32 ;
-6. **Veille** : digest et thèmes du profil actif.
-
-Un bouton `+` permanent hors Assistant ouvre la saisie rapide.
-
-### Tâches
-
-- titre obligatoire ;
-- date, personne, répétition et note facultatives ;
-- aucune catégorie, priorité ou fiche détaillée obligatoire ;
-- rappels visibles dans Friday ;
-- rappel système totalement offline non garanti dans la PWA.
-
-### Courses
-
-- libellé ;
-- quantité facultative ;
-- case à cocher ;
-- liste commune au foyer.
-- classement facultatif par rayon, déclenché manuellement et confirmé avant application ;
-- traitement Ollama en arrière-plan, arrêtable et sans blocage de la liste.
-
-### Budget partagé
-
-Dépenses :
-
-- frais fixes ;
-- courses ;
-- santé ;
-- loisirs ;
-- extras.
-
-Revenus :
-
-- réguliers ;
-- extra.
-
-Épargne :
-
-- objectif mensuel ;
-- versement réel manuel ou récurrent ;
-- évolution mois par mois ;
-- cumul annuel et taux d'épargne.
-
-Friday distingue toujours l'épargne réellement versée du simple reste disponible.
-
-### Agenda
-
-- calendrier Google « Maison » comme source de vérité ;
-- création et modification dans Google Calendar au MVP ;
-- lecture et cache dans Friday ;
-- dernière copie consultable hors ligne.
-
-### Veille et assistant
-
-- thèmes, mots-clés, sources et fréquence choisis par profil ;
-- collecte RSS/Atom et déduplication sur le PC ;
-- Qwen 3.5 9B Q4 par défaut pour le Chat et Gemma 4 E4B QAT avec thinking natif comme option approfondie par appareil ;
-- conversations et files Chat séparées par profil ;
-- Tavily alimente les modes Web et Exa MCP anonyme complète uniquement `Web approfondi` ; aucun navigateur automatisé, et le mode `Local` garantit zéro appel externe ;
-- aucune dépendance à Ollama pour les tâches, courses, budget ou données offline ;
-- FTS5 avant tout usage d'embeddings ;
-- éventuels embeddings conservés plus tard sur le PC uniquement.
-
-### Agent physique après le MVP
-
-Cette expérimentation ne change pas le MVP et ne déclenche encore aucun achat,
-firmware ou contrôle moteur. La V1 physique est un compagnon à roues
-différentielles asservies, cible 45 cm et maximum 50 cm, avec LiDAR 2D,
-Raspberry Pi autonome et microcontrôleur vital indépendant. Mini Pi et Otto DIY
-restent des inspirations expressives.
-
-Le noyau privilégie évitement fiable, intelligence locale et continuité du
-persona. Il vise 500 à 600 €, avec une estimation prudente de 490 à 650 € et un
-plafond absolu de 700 € livré. Pince, reconnaissance biométrique embarquée,
-accélérateur et politique neuronale restent des lots optionnels.
-
-Le Pi conserve navigation, docking, voix locale, routines, tools bornés et
-persona réduit lorsque le PC est absent. Le hub reste l’autorité de la mémoire
-durable, des consentements et de l’administration, jamais de l’arrêt, de
-l’évitement ou des moteurs. Toute action physique passe par le gateway, l’Action
-Firewall et le contrôleur vital. Une politique transformer/VLA peut seulement
-proposer une trajectoire courte expirable derrière Nav2 ; l’enregistrement
-continu et la surveillance secrète restent exclus.
-
-Le détail fonctionnel, le caractère joueur, la mémoire vocale, la musique, la
-reconnaissance consentie, les tools, la 3D, le budget et les gates sont
-centralisés dans le
-[document fondateur](19-document-fondateur-agent-physique-friday.md). La
-décision durable est enregistrée par
-l’[ADR-014](adr/014-agent-physique-otto-diy-oeil-friday.md).
-
-## Architecture
-
-```mermaid
-flowchart LR
-    subgraph PHONE["Samsung Galaxy A17"]
-        PWA["PWA Friday"]
-        CACHE["Service worker et cache UI"]
-        LOCAL["Données locales chiffrées + outbox"]
-        PWA <--> CACHE
-        PWA <--> LOCAL
-    end
-
-    LOCAL <-->|"sync LAN quand Friday est ouverte"| HUB["Friday Hub - PC Windows"]
-    HUB --> DB["Base canonique"]
-    HUB --> OLLAMA["Ollama"]
-    HUB <-->|"lecture agenda"| CAL["Google Calendar Maison"]
-    HUB -.->|"archives chiffrées"| DRIVE["Google Drive"]
-```
-
-### Hub PC
-
-Responsabilités :
-
-- comptes, profils et appareils ;
-- API de synchronisation ;
-- base canonique ;
-- intégration Calendar ;
-- veille et assistant ;
-- sauvegardes et restauration ;
-- page d'appairage par QR code ;
-- diagnostic et journal technique.
-
-Le hub démarre avec la session Windows ou comme service utilisateur. Un redémarrage du PC ne doit pas nécessiter d'intervention manuelle autre que l'ouverture de session si elle est requise par Windows.
-
-### PWA
-
-Responsabilités :
-
-- interface tactile responsive ;
-- cache versionné de l'application ;
-- copie locale des données utiles ;
-- outbox des mutations offline ;
-- synchronisation au lancement, au retour au premier plan, au retour réseau et périodiquement lorsque l'app reste ouverte ;
-- affichage de la dernière synchronisation et des mutations en attente ;
-- mode dégradé sans Ollama ni hub.
-
-### HTTPS local
-
-Une origine HTTPS stable est obligatoire pour le service worker et les API de sécurité.
-
-Pour le pilote PC + A17 :
-
-- nom local stable pour le hub ;
-- autorité de certification Friday installée sur le PC et le Galaxy A17 ;
-- certificat serveur limité au nom Friday ;
-- aucune exposition du hub à Internet ;
-- procédure de renouvellement documentée.
-
-Un domaine et un certificat automatisé pourront remplacer l'autorité locale après validation du produit.
-
-Une future route Tailscale privée limitée à `192.168.1.14/32` est acceptée par l’[ADR-013](adr/013-acces-exterieur-tailscale-route-privee.md) pour l’accès 5G sans changement d’origine et sans ouverture de box. Sa mise en œuvre est en pause. Elle ne constitue ni une publication du hub sur Internet ni une autorisation d’utiliser Funnel ou une redirection NAT.
-
-## Modèle offline
-
-### Première installation
-
-1. Le Galaxy A17 rejoint le Wi-Fi Maison.
-2. L'utilisateur ouvre l'URL HTTPS Friday.
-3. Il appaire l'appareil par QR code.
-4. Il ajoute Friday à l'écran d'accueil.
-5. La PWA télécharge son interface et le snapshot initial.
-6. Elle demande la persistance du stockage et valide un test d'écriture/lecture.
-
-### Données locales
-
-Conserver uniquement :
-
-- identité technique de l'appareil et profil par défaut ;
-- tâches actives et historique récent ;
-- courses ;
-- budget utile aux vues mensuelles ;
-- fenêtre locale des événements Calendar ;
-- derniers digests ;
-- outbox ;
-- curseur et date de synchronisation.
-
-Les pages Web complètes, embeddings, logs et sauvegardes restent sur le PC.
-
-### Écriture offline
-
-Chaque opération possède :
-
-- identifiant unique généré côté client ;
-- appareil et profil auteur ;
-- horodatage client informatif ;
-- révision connue de l'objet ;
-- type d'opération ;
-- payload validé ;
-- état `pending`, `sent`, `acknowledged` ou `conflict`.
-
-Le hub est idempotent : renvoyer la même opération ne doit jamais créer un doublon.
-
-### Reconnexion
-
-1. pousser l'outbox dans son ordre causal ;
-2. recevoir les accusés et conflits ;
-3. récupérer les événements serveur depuis le dernier curseur ;
-4. mettre à jour la base locale en transaction ;
-5. afficher le nouvel état de synchronisation.
-
-Au MVP, un conflit de modification simultanée conserve les deux versions et demande un choix. Une case cochée et un ajout de course utilisent des règles de fusion déterministes.
-
-## Comptes et sécurité
-
-- un compte par adulte, même si seul le compte principal est utilisé pendant la mise au point ;
-- données Maison partagées ;
-- préférences de veille et d'assistant par profil ;
-- jeton révocable par appareil ;
-- session offline uniquement après un premier appairage réussi ;
-- chiffrement applicatif des données sensibles avant stockage navigateur ;
-- clé locale distincte du mot de passe du compte ;
-- effacement de la copie locale lors d'une déconnexion explicite ;
-- chiffrement du disque PC activé ;
-- sauvegardes Drive chiffrées avec une clé de récupération conservée séparément.
-
-SQLCipher ne s'applique plus au client PWA. Au MVP, la base centrale s’appuie sur le chiffrement du volume Windows, les ACL et les sauvegardes chiffrées. SQLCipher ne sera réévalué que si le threat model montre que cette protection est insuffisante.
-
-## Rôle de Google Drive
-
-Drive conserve des archives versionnées et chiffrées du hub :
-
-- sauvegardes quotidiennes si Internet est disponible ;
-- rétention indicative : 7 quotidiennes, 4 hebdomadaires, 12 mensuelles ;
-- manifeste contenant version du schéma, date et checksum ;
-- test de restauration périodique ;
-- aucune clé de déchiffrement stockée avec l'archive ;
-- aucune écriture directe des téléphones dans le fichier Drive.
-
-Une restauration Drive vers un nouvel appareil passe toujours par le hub.
-
-## Stratégie de mise au point
-
-### Environnement unique initial
-
-| Élément | Cible |
-|---|---|
-| serveur | PC Windows familial |
-| navigateur PC | navigateur moderne pour administration et diagnostic |
-| client mobile | Samsung Galaxy A17 |
-| réseau | Wi-Fi du foyer |
-| mode offline | mode avion, Wi-Fi coupé et hub arrêté |
-| iPhone | hors recette MVP, testé ultérieurement |
-
-### Boucle UX
-
-Chaque fonctionnalité est d'abord validée sur le téléphone :
-
-1. action réalisable au pouce ;
-2. formulaire sans champ superflu ;
-3. tâche créée en moins de dix secondes ;
-4. dépense créée en moins de quinze secondes ;
-5. information importante visible sans ouvrir plus de deux niveaux ;
-6. état offline compréhensible sans message technique ;
-7. aucun blocage si le hub ou Ollama est indisponible.
-
-### Matrice offline obligatoire
-
-| Scénario | Résultat attendu |
-|---|---|
-| Wi-Fi actif, hub actif | synchronisation normale |
-| Wi-Fi actif, hub arrêté | lecture/écriture locale, outbox conservée |
-| Wi-Fi coupé | application démarre, fonctions Maison disponibles |
-| mode avion puis redémarrage téléphone | cache et données toujours présents |
-| fermeture forcée de la PWA | aucune mutation validée perdue |
-| hub redémarré avec outbox en attente | reprise idempotente |
-| même opération renvoyée deux fois | un seul effet serveur |
-| changement de version de la PWA | migration du cache et des données sans perte |
-| stockage refusé ou quota dépassé | message clair, aucune fausse confirmation d'écriture |
-
-### Tests automatisés
-
-- règles budget et dates en tests unitaires ;
-- validation de schéma des payloads ;
-- tests d'idempotence de l'API ;
-- tests de migration de la base centrale et du stockage Web ;
-- tests d'intégration avec coupure réseau simulée ;
-- tests de service worker et mise à jour de version ;
-- parcours de tâche, course et dépense en test navigateur ;
-- sauvegarde puis restauration sur une base vide.
-
-### Journal de recette manuelle
-
-Pour chaque session sur le Galaxy A17, noter :
-
-- version Friday ;
-- état du PC et du réseau ;
-- heure de dernière synchronisation ;
-- opérations créées offline ;
-- temps des saisies principales ;
-- défaut UX observé ;
-- résultat après reconnexion.
-
-## Campagne iPhone en cours
-
-L'iPhone utilise la même PWA après stabilisation du MVP Android. Mise à jour, appairage, authentification, redémarrage offline, convergence à deux appareils et suppression de l’auto-zoom des champs ont été confirmés physiquement le 18 août 2026. Cette campagne ne nécessite pas de build natif ; seule l’observation d’usage prolongée reste ouverte.
-
-À vérifier plus tard :
-
-- installation depuis Safari sur l'écran d'accueil ;
-- certificat HTTPS local ;
-- persistance du stockage ;
-- lancement PC éteint et mode avion ;
-- migrations de service worker ;
-- synchronisation au retour au premier plan ;
-- Web Push ;
-- ergonomie sur la taille d'écran de l'iPhone 11 Pro Max ;
-- absence de divergence avec les données du Galaxy A17.
-
-La prise en charge iPhone n'est déclarée terminée qu'après cette recette réelle. Aucun comportement iOS ne sera affirmé uniquement depuis un simulateur ou un navigateur desktop.
-
-## Roadmap révisée
-
-### P0 — Spike PWA/offline : environ 1,5 à 3 heures agentiques
-
-- HTTPS local ;
-- installation écran d'accueil A17 ;
-- service worker ;
-- stockage local chiffré ;
-- outbox minimale ;
-- appairage ;
-- test PC arrêté, Wi-Fi coupé et mode avion.
-
-Porte de sortie : une tâche créée offline survit à un redémarrage du téléphone et converge une seule fois après retour du hub.
-
-### P1 — Friday Maison : environ 3 à 6 heures agentiques
-
-- navigation Aujourd'hui/Agenda/Courses/Veille ;
-- tâches ;
-- courses ;
-- budget défini ;
-- comptes et profil ;
-- synchronisation et conflits ;
-- cache Calendar ;
-- UX tactile.
-
-Porte de sortie technique : scénarios automatisés et recette A17 sans perte ni doublon. Une observation quotidienne de sept jours est recommandée pour la confiance UX, mais n’empêche pas de construire P2 après validation des risques critiques.
-
-### P2 — Veille et assistant : environ 2 à 4 heures agentiques
-
-- thèmes par profil ;
-- RSS/Atom ;
-- déduplication et digest ;
-- assistant avec propositions confirmées ;
-- mode Ollama indisponible.
-
-### P3 — Sauvegarde et durcissement : environ 1 à 3 heures agentiques
-
-- sauvegarde Drive chiffrée ;
-- restauration ;
-- notifications Web Push lorsque le hub est disponible ;
-- migrations et mise à jour PWA ;
-- tests de coupure et sécurité ;
-- documentation d'exploitation.
-
-La campagne iPhone est un lot ultérieur distinct. La cible de construction du MVP PWA PC + Galaxy A17 est d’environ **8 à 16 heures de travail agentique cumulé**. Cette fourchette n’est pas un engagement de délai : installations, erreurs réelles, validations physiques et intégrations externes peuvent l’allonger. Les périodes d’observation de 7/14 jours sont séparées du développement.
-
-## Critères de go/no-go après le spike
-
-Passer au MVP PWA seulement si :
-
-- Friday s'installe depuis le PC sur l'écran d'accueil du Galaxy A17 ;
-- elle se lance deux fois de suite en mode avion ;
-- les données locales survivent au redémarrage ;
-- une mutation offline converge sans doublon ;
-- le stockage chiffré reste assez rapide pour une saisie instantanée ;
-- la mise à jour du service worker ne casse pas la base locale ;
-- l'installation du certificat est acceptable pour un usage familial.
-
-Si un de ces points échoue sans correction simple, réévaluer un client Android natif avant de construire les domaines métier.
+# Friday — décisions produit actives
+
+Statut documentaire : actif. Consolidation : 6 septembre 2026.
+
+Cette référence conserve les décisions encore actives du MVP PWA et l'extension
+Maison autorisée. Les promesses remplacées et estimations initiales sont dans
+l'[archive des décisions](archives/etats-techniques/09-decision-finale-pwa-mvp.md).
+L'[état 27](27-etat-canonique-app-robot-2026-08-25.md) décrit les livraisons ; le
+[document 10](10-feuille-de-route-technique-implementation.md) régit l'exécution.
+
+## Produit et navigation
+
+Friday est une PWA familiale auto-hébergée, installable sur PC, Android et iPhone.
+Le Hub cible Windows ; aucune application Flutter ni aucun build Apple n'est prévu.
+Le foyer comporte deux adultes. Agenda, Maison et Budget sont partagés ; Chat,
+Veille et brouillons IA sont privés par profil.
+
+Sept destinations : Aujourd'hui, Agenda, Maison, Budget, Chat, Veille, Robot.
+Maison remplace Courses dans la navigation et ouvre Courses par défaut ; Menus et
+Réserve complètent cet espace. Les rappels applicatifs ne constituent pas une
+garantie de notification système lorsque Friday et le Hub sont indisponibles.
+
+## Usages et simplicité
+
+- Tâches : titre requis ; date, heure, responsable, note et récurrence facultatifs.
+- Courses : libellé, quantité libre et état acheté ; classement par rayon et photo
+  facultatifs, avec aperçu et confirmation. La liste reste utilisable sans IA.
+- Maison : catalogue versionné, préparations distinctes des repas midi/soir,
+  portions et restes, réserve souple, seuils et bilans explicites d'achats/préparation.
+  Les menus s'affichent dans Agenda sans créer des tâches. La recette couvre les deux téléphones.
+- Budget : distinguer réel, prévisionnel, enveloppes, provisions et épargne réellement
+  versée. Calculs déterministes en centimes ; une attribution ne rend pas une dépense privée.
+- Chat : trois modes visibles Friday, Local et Recherche Web ; historique privé et
+  archive séparée. L'activation autorisée ne signifie pas que la qualité est validée.
+- Veille : dossiers, sources et fréquence par profil, collecte et synthèses sourcées.
+- Robot : prototype expérimental décrit par la décision 30 et le runbook, avec consentement visible.
+
+Le [guide utilisateur](guides/utilisation-friday.md) décrit les gestes et états dégradés.
+
+## Architecture et modèle offline
+
+SQLite sur le PC est canonique. Les appareils conservent une copie Dexie/IndexedDB
+chiffrée et une outbox. Les écritures métier suivent la même voie en ligne et offline :
+validation, transaction locale, synchronisation idempotente, traitement explicite des conflits.
+Un succès local n'est jamais annoncé avant écriture effective.
+
+Le Hub et la PWA utilisent une origine HTTPS stable sur le LAN. Ollama reste sur
+localhost et ne bloque jamais Maison, Budget ou sync. Le Chat ne possède aucune
+mutation métier ni commande d'actionneur. Les propositions Menus deviennent partagées
+uniquement après correction et enregistrement explicites.
+
+La lecture offline dépend d'une première installation/synchronisation réussie et des
+données effectivement en cache. Chat, IA, collecte Web et Robot ne deviennent pas des
+actions offline parce que la PWA elle-même peut s'ouvrir sans réseau.
+
+## Intégrations et décisions différées
+
+Google Calendar n'est pas implanté ; le calendrier Maison Google décrit dans le MVP
+initial n'est pas la source de l'Agenda actuel. Toute intégration doit être discutée
+avant réalisation. Drive sert seulement à de futures sauvegardes chiffrées, jamais
+au runtime ni à la synchronisation. La restauration portable reste à implanter.
+
+Tailscale reste en pause ; aucune publication Internet du Hub, redirection NAT ou
+Funnel n'est autorisée par cette documentation. Pas de banque connectée, RAG, domotique
+ou changement de matériel sans reprise produit explicite.
+
+La cible future Robot reste régie par l'[ADR-014](adr/014-agent-physique-otto-diy-oeil-friday.md),
+avec plafond livré 700 €. Elle ne doit pas être attribuée à l'AlphaBot2 réel.
+Pas de surveillance secrète, reconnaissance faciale ou mémoire durable des personnes.
+
+## Validation produit
+
+Conserver les preuves réelles A17/iPhone existantes à leurs dates. Les nouvelles
+capacités Maison et les recettes Robot demandent leurs propres observations ; aucun
+test desktop ne les remplace. Les périodes de 7/14 jours sont de l'observation.
+Le prochain lot App est choisi par l'utilisateur, sans reprendre automatiquement une
+ancienne roadmap. La licence du dépôt reste une décision différée du propriétaire.

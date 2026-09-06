@@ -1,6 +1,8 @@
 # Runbook Maison — Courses, Menus et Réserve
 
-Date : 5 septembre 2026. Déployé sur l’origine A17 ; recette des deux téléphones
+Statut documentaire : actif.
+
+Révision : 6 septembre 2026, après la livraison de 12 h 04. Déployé sur l’origine A17 ; recette des deux téléphones
 encore ouverte, distincte des contrôles automatisés et du déploiement serveur.
 
 ## Décision produit
@@ -65,8 +67,8 @@ automatiques restent hors de cette version.
 | Ordonnanceur global                                   | `apps/hub/src/inference/inference-scheduler.ts`            |
 | Propositions privées                                  | `apps/hub/src/maison/menu-ai-service.ts`, `menu-plugin.ts` |
 
-Migration SQLite **45**, après vérification de l’état réel 44 ; Dexie **9**,
-après 8. `maison_records` stocke les objets validés avec révision et suppression
+Maison a introduit la migration SQLite **45** et Dexie **9**. La version
+globale courante est SQLite **47** / Dexie **9** ; voir le [document 27](../27-etat-canonique-app-robot-2026-08-25.md). `maison_records` stocke les objets validés avec révision et suppression
 logique. Les mouvements et reçus sont immuables ; les corrections créent des
 mouvements supplémentaires. Les recettes sont versionnées. Les index uniques
 protègent version de recette, contribution aux courses et cycle d’achat rangé.
@@ -140,16 +142,9 @@ isolé et utilise une base de test ; le runtime réel n’est pas redémarré.
 Le scénario `Maison covers a two-day preparation, shopping, reserve and offline
 catalogue` produit `output/playwright/maison-recettes-mobile.png`.
 
-Bilan final du 5 septembre : `pnpm verify` réussi, **448 tests hors navigateur
-et 29 scénarios Playwright**, format/lint/typage/builds réussis. La recette mobile
-automatisée inclut les régressions photo manuscrite, classement, mode En course,
-achats hors ligne, Agenda, Chat et Veille. La capture mobile a été inspectée.
-Les deux modes de génération ont ensuite abouti avec Ollama réel sur une base
-isolée : une proposition locale non vérifiée et une proposition Web partielle
-avec cinq sources. Les quantités non établies restent inconnues, et aucune
-recette du foyer n’est créée par ces tests. Rapport :
-`D:\FridayData\evaluations\maison-delivery-20260905\report.json`.
-Ce contrôle fonctionnel ne valide ni la qualité culinaire, ni les téléphones.
+Les résultats chiffrés sont dans les rapports de [livraison Maison](../audits/2026-09-05-livraison-maison.md), de [modularisation](../audits/2026-09-06-deploiement-modularisation.md) et du [complément de 12 h 04](../audits/2026-09-06-complement-cinq-modules.md).
+Les contrôles Ollama isolés du 5 septembre ne valident ni la qualité culinaire,
+ni les téléphones, ni la campagne qualitative Chat. L'[ancien runbook](../archives/etats-techniques/maison-menus-reserve.md) conserve les détails datés.
 
 Le schéma envoyé au décodeur Ollama conserve la structure et les enums, mais
 omet les bornes numériques et de longueur que sa grammaire ne sait pas compiler.
@@ -171,36 +166,14 @@ La source est ouverte en lecture seule. Ces fichiers restent sur le PC sous
 `D:\FridayData`, ne doivent pas être publiés et ne constituent pas une sauvegarde
 portable chiffrée de l’authentification.
 
-Preuve du 5 septembre :
-`D:\FridayData\backups\maison-migration-BZMsFL\report.json` : migration 44 → 45,
-intégrité `ok`, données de toutes les tables antérieures inchangées.
-La base canonique est désormais en 45, avec intégrité vérifiée après livraison.
+La preuve historique de migration 44 → 45 est conservée dans le [rapport Maison](../audits/2026-09-05-livraison-maison.md). Pour le runtime actuel et les sauvegardes de référence, suivre le [document 27](../27-etat-canonique-app-robot-2026-08-25.md) et le dernier rapport de livraison.
 
-La livraison combinée Maison/Chat a été autorisée par l’utilisateur après la
-suspension initiale ; la gate qualitative du Chat reste refusée. Pour une
-prochaine livraison, refaire une sauvegarde immédiatement avant le déploiement,
-conserver les artefacts précédents et supprimer les éventuelles variables de
-sortie isolée de la session :
-
-```powershell
-Remove-Item Env:FRIDAY_WEB_OUT_DIR -ErrorAction SilentlyContinue
-Remove-Item Env:FRIDAY_WEB_ROOT -ErrorAction SilentlyContinue
-infra/windows/Start-FridayRecipe.ps1 -NoBrowser -ExitAfterHealthCheck -RestartExisting -KeepHubRunning
-```
-
-Le déploiement du 5 septembre a terminé avec code 0. Les health checks local et
-LAN, le schéma 45, l’intégrité et la correspondance du HTML servi avec le build
-sont consignés dans `D:\FridayData\evaluations\maison-delivery-20260905\deployment.json`.
-Le [rapport de livraison](../audits/2026-09-05-livraison-maison.md) précise les
-artefacts de retour arrière et leurs limites.
-
-Ce lanceur concerne le runtime familial : ne pas l’utiliser pour une simple
-prévisualisation isolée. Si la migration doit être annulée, arrêter les écritures,
-conserver d’abord une copie de la base 45 et des outbox mobiles, remettre ensemble
-la sauvegarde préalable et les artefacts précédents. Ne pas restaurer par-dessus
-des opérations mobiles en attente. Les données Maison créées après le snapshot
-exigent une reprise explicite ; aucun effacement d’IndexedDB n’est une procédure
-de retour arrière. Conserver le secret d’authentification existant hors Git.
+Avant une livraison runtime autorisée, refaire une sauvegarde cohérente et conserver
+les artefacts précédents. Le lanceur familial décrit dans le [runbook Windows](../../infra/windows/README.md) ne sert pas à une vérification documentaire.
+Pour un retour arrière, arrêter les écritures, conserver la base actuelle et les outbox,
+puis reprendre ensemble sauvegarde, secret d'authentification et artefacts compatibles.
+Les opérations postérieures au snapshot exigent une reprise explicite. Ne jamais
+restaurer par-dessus des opérations mobiles en attente ni effacer IndexedDB pour les résoudre.
 
 ## Recette réelle restante
 
@@ -227,17 +200,6 @@ L'admission Menus compte tous les jobs actifs en SQL, indépendamment des 40 job
 affichés. Après un retour à un ancien Hub, une incompatibilité Maison est
 revalidée avant de laisser passer les écritures des domaines supportés ; les
 commandes Maison restent en attente. Voir le [bilan](../audits/2026-09-06-implementation-qualite-et-modularisation.md).
-SQLite 45 est la migration historique Maison ; la version globale actuelle est 47.
-
-Déploiement de la modularisation confirmé le 6 septembre à 10 h 33 : voir le
-[bilan de livraison](../audits/2026-09-06-deploiement-modularisation.md).
-La version globale reste SQLite 47 / Dexie 9 ; la recette téléphones reste ouverte.
-
-## Complément du 6 septembre 2026 — 12 h 04
-
-Le complément des cinq modules est déployé, SQLite 47 / Dexie 9. Les états
-React restent attachés à l'application et les commandes/sync Maison sont
-inchangées. Les parcours mobiles automatisés, dont les brouillons conservés
-en navigation/offline, passent. La recette des deux téléphones reste distincte.
-
-Voir le [bilan de livraison](../audits/2026-09-06-complement-cinq-modules.md).
+Le [complément livré à 12 h 04](../audits/2026-09-06-complement-cinq-modules.md) conserve les états React attachés à l'application et les contrats de commandes/sync Maison.
+Les parcours mobiles automatisés couvrent les brouillons conservés en navigation/offline.
+La recette réelle des deux téléphones reste ouverte.

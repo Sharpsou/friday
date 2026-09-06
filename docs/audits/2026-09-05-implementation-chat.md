@@ -1,5 +1,7 @@
 # Stabilisation du Chat et synthèse — 5 septembre 2026
 
+Statut documentaire : archive.
+
 Statut : **code implanté, 430 tests réussis, 120 réponses revues ; gate
 qualitative refusée, aucun redémarrage du Hub pour ce lot**.
 

@@ -1,5 +1,7 @@
 # ADR-004 — SQLite better-sqlite3, WAL et migrations numérotées
 
+Statut documentaire : reference.
+
 Date : 8 août 2026
 Statut : accepté
 

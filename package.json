@@ -20,7 +20,8 @@
     "test:robot": "python -m unittest discover -s robot/tests -p \"test_*.py\"",
     "test:e2e": "playwright test",
     "typecheck": "pnpm -r typecheck && tsc -p tsconfig.e2e.json --noEmit",
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "docs:check": "node --test scripts/docs-check.test.mjs && node scripts/docs-check.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -31,6 +32,9 @@
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.3",
     "globals": "17.9.0",
+    "mdast-util-from-markdown": "2.0.3",
+    "mdast-util-gfm": "3.1.0",
+    "micromark-extension-gfm": "3.0.0",
     "prettier": "3.9.6",
     "typescript": "6.0.3",
     "typescript-eslint": "8.66.0",

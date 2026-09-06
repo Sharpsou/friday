@@ -1,11 +1,13 @@
 # ADR-012 — Budget partagé, enveloppes et prévisionnel
 
+Statut documentaire : reference.
+
 Date : 9 août 2026
 Statut : accepté et implémenté, seed réel et recette physique en attente
 
 ## Décision
 
-`Budget` est la cinquième destination principale, entre `Courses` et `Veille`. Les deux adultes voient et modifient le même budget. Une attribution `Maison` ou profil sert aux filtres et synthèses, jamais aux permissions.
+`Budget` est une destination principale ; dans la navigation actuelle, il suit Maison et précède Chat. Les deux adultes voient et modifient le même budget. Une attribution `Maison` ou profil sert aux filtres et synthèses, jamais aux permissions.
 
 Le modèle sépare cinq objets synchronisés : mouvements réels, modèles récurrents, enveloppes, dépenses futures et paramètres mensuels d'épargne. Tous empruntent l'outbox offline-first existante. Les totaux sont calculés en centimes entiers par des fonctions pures du domaine ; Ollama, les banques, l'OCR et la liste de courses n'interviennent pas.
 

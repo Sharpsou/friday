@@ -1,5 +1,7 @@
 # Certificats du pilote
 
+Statut documentaire : actif.
+
 La recette HTTPS du Galaxy A17 est active sur `https://192.168.1.14:8443`.
 
 Fichiers installés hors dépôt :

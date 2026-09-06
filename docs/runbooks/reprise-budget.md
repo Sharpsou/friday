@@ -1,5 +1,7 @@
 # Runbook — reprise initiale du budget
 
+Statut documentaire : actif.
+
 Ce runbook traite des données financières réelles. Ne jamais copier les classeurs ni le JSON normalisé dans le dépôt, Drive ou les logs.
 
 ## Porte de sécurité obligatoire
@@ -10,7 +12,7 @@ Exécuter les contrôles dans une console PowerShell administrateur :
 2. créer `D:\FridayData` si nécessaire ;
 3. désactiver l'héritage ACL et n'accorder l'accès qu'au compte Windows qui exécute Friday, à `SYSTEM` et au groupe local `Administrateurs` ;
 4. relire les ACL effectives ; arrêter au moindre principal supplémentaire ;
-5. arrêter le hub et sauvegarder `friday.sqlite`, ainsi que ses fichiers WAL/SHM s'ils existent, avec la procédure de sauvegarde canonique.
+5. disposer d'un snapshot SQLite cohérent et d'une restauration de contrôle prouvée, avec secret/configuration protégés. Ne pas copier un WAL actif. La sauvegarde portable produit n'est pas encore implantée : une simple référence à son runbook cible ne ferme pas cette porte.
 
 La situation observée le 9 août 2026 ne passe pas cette porte : l'état BitLocker demande une élévation et `D:\FridayData` hérite notamment d'un droit de modification pour `Authenticated Users`. Aucun seed réel ne doit être lancé avant correction et nouvelle vérification.
 

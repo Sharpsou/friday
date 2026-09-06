@@ -1,5 +1,9 @@
 # Recette Galaxy A17 — classement des courses par rayon
 
+> Cette recette conserve ses observations datées et ses lignes encore ouvertes. Pour le logiciel actuel, consulter le [document 27](../27-etat-canonique-app-robot-2026-08-25.md) ; ne pas déduire une nouvelle validation physique de cette mise à jour documentaire.
+
+Statut documentaire : recette.
+
 Date : 9 août 2026
 
 Statut : **checkpoint physique ouvert**

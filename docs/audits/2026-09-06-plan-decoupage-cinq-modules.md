@@ -1,5 +1,7 @@
 # Friday — plan de découpage des cinq derniers gros modules
 
+Statut documentaire : archive.
+
 Date : 6 septembre 2026. Plan accepté par l'utilisateur, exécution demandée.
 Ce document conserve la référence et les contrôles nécessaires à une reprise
 autonome. Le bilan d'exécution distinct donne les résultats réellement obtenus.

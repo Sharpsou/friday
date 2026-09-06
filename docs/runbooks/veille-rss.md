@@ -1,8 +1,8 @@
 # Exploitation de la Veille RSS
 
-La Veille utilise maintenant l'orchestration décrite dans
-`docs/17-etat-veille-orchestree.md`. Les diagnostics RSS ci-dessous restent
-applicables.
+Statut documentaire : actif.
+
+La Veille organise des dossiers privés avec thèmes, sources, cadence, concepts et synthèses. Le premier run crée une référence ; les suivants distinguent nouveauté, complément, confirmation et contradiction. RSS/Atom reste prioritaire ; la découverte et le complément Tavily sont bornés et partagent le budget Web Hub. Les concepts suivis, secondaires ou masqués sont privés au profil. L'ordonnanceur commun sérialise les cinq usages IA. L'ancien checkpoint 17 conserve l'historique, pas l'autorité courante.
 
 ## Diagnostic
 

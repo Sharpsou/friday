@@ -1,5 +1,7 @@
 # Livraison Maison — 5 septembre 2026
 
+Statut documentaire : archive.
+
 Maison est livré sur `https://192.168.1.14:8443`, avec Courses ouvert par défaut,
 Menus, Réserve et affichage des repas dans Aujourd’hui/Agenda. Le candidat
 contient aussi les changements Chat présents dans le workspace. La demande

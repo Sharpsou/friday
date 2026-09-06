@@ -1,5 +1,7 @@
 # Harnais Chat : candidat local du 5 septembre 2026
 
+Statut documentaire : archive.
+
 > **Décision utilisateur du 5 septembre au soir :** campagne longue arrêtée.
 > La reprise active simplifie le dossier transmis au rédacteur, conserve les
 > originaux et autorise jusqu’à trois corrections contrôlées. Au plus cinq

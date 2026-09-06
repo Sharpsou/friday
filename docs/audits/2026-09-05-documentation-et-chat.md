@@ -1,5 +1,7 @@
 # Audit Friday — documentation et fonctionnement du Chat
 
+Statut documentaire : archive.
+
 Date : 5 septembre 2026. Révision examinée : `362bf80`, branche `main`.
 
 ## Conclusion

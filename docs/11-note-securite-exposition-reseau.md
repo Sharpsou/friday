@@ -1,5 +1,7 @@
 # Note informative — sécurité et exposition réseau
 
+Statut documentaire : actif.
+
 Date du constat initial : 8 août 2026
 
 Révision : 10 août 2026
@@ -18,7 +20,7 @@ Friday ne doit toujours pas être publié directement sur Internet. L’[ADR-013
 
 - refus d’une écoute LAN sans certificat et clé TLS ;
 - règle Friday prévue pour `TCP 8443`, profil privé et `LocalSubnet` ;
-- cookies `HttpOnly`, `Secure` et `SameSite=Strict` ;
+- cookies `HttpOnly`, `Secure` en HTTPS et `SameSite=Strict` ;
 - inscription publique fermée, bootstrap impossible après initialisation du foyer ;
 - push/pull authentifiés et liés au `deviceId`, au profil et au foyer ;
 - révocation serveur des appareils et journal des événements sensibles ;
@@ -27,6 +29,8 @@ Friday ne doit toujours pas être publié directement sur Internet. L’[ADR-013
 - aucune clé privée ou secret runtime versionné.
 
 ## Risques encore ouverts
+
+Les constats système ci-dessous sont datés du contrôle initial ; cette refonte ne réinspecte ni ne modifie le pare-feu, BitLocker ou les ACL du foyer.
 
 ### SEC-01 — règles Windows génériques de Node.js
 

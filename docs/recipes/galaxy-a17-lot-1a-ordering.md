@@ -1,5 +1,9 @@
 # Recette Lot 1A — ordre chronologique des tâches
 
+> Cette recette conserve ses observations datées et ses lignes encore ouvertes. Pour le logiciel actuel, consulter le [document 27](../27-etat-canonique-app-robot-2026-08-25.md) ; ne pas déduire une nouvelle validation physique de cette mise à jour documentaire.
+
+Statut documentaire : recette.
+
 - Statut : **candidat automatisé validé — recette A17 à réaliser**
 - Appareil : Samsung Galaxy A17
 - Exigences : `FR-TASK-01`, `UX-03`

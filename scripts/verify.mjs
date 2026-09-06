@@ -13,6 +13,7 @@ const env = {
 };
 for (const command of [
   'format:check',
+  'docs:check',
   'lint',
   'typecheck',
   'architecture',

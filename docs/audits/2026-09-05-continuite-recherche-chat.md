@@ -1,5 +1,7 @@
 # Continuité des recherches Chat
 
+Statut documentaire : archive.
+
 Le suivi « Donne moi les liens de podcast que tu as trouvé » du 5 septembre
 a expiré en audit après cinq minutes (`CHAT_DEADLINE_EXCEEDED`). La formulation
 ne déclenchait pas la résolution de contexte ; les URL précédentes n’étaient

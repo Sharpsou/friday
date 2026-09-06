@@ -1,5 +1,9 @@
 # Recette Lot 1A — authentification fermée et appairage
 
+> Cette recette conserve ses observations datées et ses lignes encore ouvertes. Pour le logiciel actuel, consulter le [document 27](../27-etat-canonique-app-robot-2026-08-25.md) ; ne pas déduire une nouvelle validation physique de cette mise à jour documentaire.
+
+Statut documentaire : recette.
+
 - Statut : **candidat automatisé validé — propriétaire initialisé, appairage/révocation physiques à réaliser**
 - Appareil principal : Samsung Galaxy A17
 - Second appareil : téléphone de l'autre adulte, ou second navigateur réel pour la recette initiale

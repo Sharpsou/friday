@@ -1,5 +1,7 @@
 # Registre des skills Friday
 
+Statut documentaire : reference.
+
 Date de validation initiale : 8 août 2026
 
 Les commits sont épinglés à l'installation. Les résultats skills.sh sont des signaux d'audit, pas une garantie de sécurité.

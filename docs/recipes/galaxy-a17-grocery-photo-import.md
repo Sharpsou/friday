@@ -1,5 +1,9 @@
 # Recette Galaxy A17 — import photo de courses
 
+> Cette recette conserve ses observations datées et ses lignes encore ouvertes. Pour le logiciel actuel, consulter le [document 27](../27-etat-canonique-app-robot-2026-08-25.md) ; ne pas déduire une nouvelle validation physique de cette mise à jour documentaire.
+
+Statut documentaire : recette.
+
 Statut : à confirmer physiquement
 
 1. Ouvrir Friday sur le Wi-Fi Maison, vérifier `Connecté`, puis aller dans

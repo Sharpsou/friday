@@ -1,8 +1,10 @@
 # ADR-005 — Authentification fermée et appairage
 
+Statut documentaire : reference.
+
 Date : 9 août 2026
 
-Statut : accepté, candidat automatisé à recetter sur appareils réels
+Statut : décision acceptée ; preuves de recette datées dans les recettes et état courant dans le document 27
 
 ## Contexte
 
@@ -40,7 +42,7 @@ Une déconnexion demandée hors ligne efface immédiatement le profil local et p
 
 ## Conséquences
 
-Le foyer n'a aucune adresse e-mail à saisir, aucune dépendance à Gmail et aucune dépendance à Internet pour se connecter. L'initialisation doit être effectuée par le propriétaire sur le LAN avant qu'un tiers présent sur ce LAN ne puisse revendiquer un hub vide. Au MVP, un seul appareil actif est lié à chaque adulte ; le propriétaire peut remplacer l'appareil révoqué du second adulte. Une perte ou une réinitialisation des deux appareils nécessite encore une procédure opérateur à définir.
+Le foyer n'a aucune adresse e-mail à saisir, aucune dépendance à Gmail et aucune dépendance à Internet pour se connecter. L'initialisation doit être effectuée par le propriétaire sur le LAN avant qu'un tiers présent sur ce LAN ne puisse revendiquer un hub vide. Le parcours initial lie un appareil par adulte ; les appareils supplémentaires suivent le parcours de demande et d’approbation propriétaire. Le propriétaire peut révoquer et remplacer les appareils. Une perte ou une réinitialisation des deux appareils nécessite encore une procédure opérateur à définir.
 
 Les identifiants de profils historiques sont conservés afin que les tâches créées avant l'authentification restent attribuées correctement après migration.
 
@@ -48,7 +50,7 @@ Les identifiants de profils historiques sont conservés afin que les tâches cr�
 
 - modèle de menace : `docs/friday-threat-model.md` ;
 - migration SQLite et service : `apps/hub/src/db/database.ts`, `apps/hub/src/auth/` ;
-- garde des routes et contrôle d'identité : `apps/hub/src/app.ts` ;
+- garde des routes et contrôle d'identité : `apps/hub/src/http/auth-routes.ts` et `route-support.ts` ;
 - écrans et cache de session hors ligne : `apps/web/src/auth/` ;
 - tests d'intégration : fermeture de l'inscription, origine approuvée, cookie, appairage à usage unique, attribution au second profil et révocation ;
 - scénario Chrome mobile à deux contextes ; recette physique décrite dans `docs/recipes/galaxy-a17-lot-1a-auth.md`.

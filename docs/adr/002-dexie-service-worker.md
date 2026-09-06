@@ -1,5 +1,7 @@
 # ADR-002 — Dexie/IndexedDB et service worker injectManifest
 
+Statut documentaire : reference.
+
 Date : 8 août 2026
 Statut : accepté — porte A17 du Lot 0B validée
 

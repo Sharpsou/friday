@@ -1,5 +1,9 @@
 # Friday — document fondateur de l’agent physique domestique
 
+Statut documentaire : vision.
+
+> Vision future, pas description de l’AlphaBot2 livré ni autorisation d’achat ou d’extension. Les interdictions actives de reconnaissance faciale, surveillance secrète et mémoire durable des personnes restent applicables. Le document 27 et le runbook Robot décrivent le matériel et les capacités actuels.
+
 Date : 23 août 2026
 
 Statut : **vision fondatrice acceptée ; prototype zéro AlphaBot2-Pi contrôlé ;
@@ -12,10 +16,10 @@ supervisées sans achat, sans LiDAR, sans pince et sans puissance de calcul IA
 embarquée. Il ne déclenche ni achat ni intégration au runtime Maison.
 L’[ADR-014](adr/014-agent-physique-otto-diy-oeil-friday.md) enregistre la
 décision d’architecture cible correspondante.
-Le [plan d’implémentation AlphaBot2-Pi](20-plan-implementation-robot-friday-alphabot2.md)
+Le [plan d’implémentation AlphaBot2-Pi](archives/checkpoints-robot/20-plan-implementation-robot-friday-alphabot2.md)
 détaille le placement Pi/PC, les modèles candidats, l’onglet `Robot`, les tests
 et les gates du prototype zéro.
-Le [journal d’implémentation du 24 août](21-journal-implementation-alphabot2-2026-08-24.md)
+Le [journal d’implémentation du 24 août](archives/checkpoints-robot/21-journal-implementation-alphabot2-2026-08-24.md)
 fait autorité pour l’état réel après réinstallation et les essais physiques.
 
 Il constitue la **source détaillée unique** du projet robotique. L’ADR-014

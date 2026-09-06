@@ -1,5 +1,7 @@
 # Runbook — Robot Friday AlphaBot2-Pi
 
+Statut documentaire : actif.
+
 Lire d’abord [l’état canonique](../27-etat-canonique-app-robot-2026-08-25.md)
 et [la décision d’autonomie visuelle](../30-decision-autonomie-topologique-visuelle.md).
 Les checkpoints 22–29 décrivent l’ancien prototype et ne pilotent plus le

@@ -1,60 +1,51 @@
 # Friday — reprise rapide
 
-Date : 6 septembre 2026. Point d'entrée courant ; les rapports datés conservent
-les preuves historiques de chaque livraison.
+Statut documentaire : actif. Révision : 6 septembre 2026.
 
-## État courant
+## Point de départ
 
-Dernière livraison : **6 septembre 2026 à 12 h 04 (Paris)** sur
-`https://192.168.1.14:8443`, **SQLite 47 / Dexie 9**. Les cinq derniers gros
-fichiers sont découpés et le complément est déployé sur demande utilisateur.
-`pnpm verify` passe avec **557 tests**, format, lint, typage, architecture et
-builds. Santé locale/LAN, intégrité SQLite et empreintes des fichiers servis
-sont vérifiées. Voir le [bilan du complément](audits/2026-09-06-complement-cinq-modules.md)
-et le [plan exécuté](audits/2026-09-06-plan-decoupage-cinq-modules.md).
+Référence de la refonte documentaire : `894a50d`, sur `main`, dépôt propre et
+aligné sur `origin/main` lors de l'ouverture du lot. Réinspecter `git status -sb`
+et `git log -5 --oneline` à chaque reprise ; préserver les changements apparus depuis.
+Les rapports plus anciens décrivant un workspace non commité restent des preuves datées.
 
-Un correctif distinct empêche les continuations Robot tardives après arrêt ou
-annulation, y compris lors d'un panorama. Les preuves sont simulées ; aucune
-recette physique n'a été effectuée et le Pi n'était pas joignable lors du GET
-d'état. Son runtime Python est inchangé. Les recettes téléphones restent
-ouvertes. La gate qualitative Chat reste refusée ; aucun prompt, modèle,
-numéro de migration ou format chiffré n'est changé. Les mentions historiques
-plus bas décrivent leurs dates respectives.
+La dernière livraison runtime attestée est celle du **6 septembre à 16 h 30**,
+sur `https://192.168.1.14:8443` : **SQLite 47 / Dexie 9**. Maison comprend Courses,
+Menus et Réserve. Le Chat et les deux lots de modularisation sont livrés.
+Voir l'[état canonique](27-etat-canonique-app-robot-2026-08-25.md) et le
+[rapport de republication](audits/2026-09-06-refonte-documentaire.md#publication-autorisée).
 
-La PWA propose Aujourd'hui, Agenda, Maison (Courses, Menus, Réserve), Budget,
-Chat, Veille et Robot. Maison et Budget restent partagés et offline-first ;
-Chat, Veille et brouillons IA sont privés par profil. SQLite est canonique,
-Dexie est chiffré et les écritures passent par l'outbox.
+Le Chat est activé sur décision utilisateur, pipeline `unified`, rollback `axes`.
+Sa **gate qualitative reste refusée** et la campagne longue a été arrêtée.
+Ne pas relancer une commande de campagne historique automatiquement.
+La recette Maison A17/iPhone et les recettes Robot restent ouvertes ; la livraison
+serveur ne prouve pas la mise à jour des téléphones ni le comportement physique.
 
-Le Chat v2 reste activé par décision utilisateur. Pipeline actif `unified`,
-retour possible `axes` ; l'ancienne API Assistant est une archive en lecture
-seule. La mémoire de recherche est privée par conversation ; une ancienne
-réponse apporte du contexte, pas une preuve. Les générations et embeddings
-Ollama passent par l'ordonnanceur commun aux cinq usages.
+## Ordre de reprise
 
-**La gate qualitative Chat reste refusée.** La campagne longue a été arrêtée
-le 5 septembre ; aucune commande de campagne historique ne doit être relancée
-automatiquement. Lire [32](32-fondation-reconstruction-chat.md), le
-[bilan de simplification](audits/2026-09-05-simplification-harnais-chat.md) et le
-[runbook Chat](runbooks/assistant-gemma.md).
+1. [AGENTS](../AGENTS.md), puis ce handoff.
+2. [27 — état courant](27-etat-canonique-app-robot-2026-08-25.md).
+3. [09 — décisions produit](09-decision-finale-pwa-mvp.md).
+4. [10 — méthode et gates](10-feuille-de-route-technique-implementation.md).
+5. Le runbook du domaine depuis l'[index](README.md) ; pour Chat, lire ensuite [32](32-fondation-reconstruction-chat.md).
 
-## Reprise et limites
+Pour trouver le code après découpage, utiliser la [carte des responsabilités](guides/architecture-developpement.md).
+`pnpm verify` conserve la PWA de production et utilise `.verification/web` ;
+suivre l'[environnement de vérification](runbooks/development.md).
 
-1. Lire `AGENTS.md`, ce handoff, le document 27, les décisions 09 et la feuille
-   de route 10, puis le runbook du domaine.
-2. Inspecter le Git existant et préserver tous les changements locaux. Le
-   commit seul ne représente pas le code livré ni le travail du 6 septembre.
-3. `pnpm verify` impose `.verification/web` pour le build et le serveur E2E.
-   Le runbook [développement](runbooks/development.md) donne l'environnement
-   isolé et les contrôles d'architecture.
-4. La recette réelle A17/iPhone de Maison et la recette physique veille/réveil
-   Robot restent ouvertes. Les tests simulés ne les remplacent pas.
+## Prochain checkpoint et protections
 
-Données et secrets restent hors Git sous `D:\FridayData`. Ne jamais modifier
+Le prochain lot App relève d'une décision utilisateur. Calendar reste une option
+à discuter. La documentation ne réautorise ni campagne IA, ni Tailscale, ni données
+Budget réelles, ni achat, ni action physique.
+
+Le Robot possède un correctif d'annulation des continuations tardives, testé en
+simulation. Lire son [runbook](runbooks/robot-alphabot2.md) et observer sans mouvement.
+Le Chat n'a aucune mutation métier ni commande d'actionneur.
+
+Données et secrets : `D:\FridayData`, hors Git. Ne jamais modifier
 `D:\prog\Home_mind` ; `jarvis`, `budget` et `modulo` restent en lecture seule.
-Origine stable : `https://192.168.1.14:8443`.
-
-Google Calendar n'est pas implanté. Tailscale, Budget réel, achats et actions
-physiques restent derrière leurs décisions documentées. Le Chat ne possède
-aucune mutation métier ni commande d'actionneur. Pour Robot, lire d'abord le
-[runbook AlphaBot2](runbooks/robot-alphabot2.md) et observer sans mouvement.
+Le [bilan documentaire](audits/2026-09-06-refonte-documentaire.md) suit ce lot sans
+confondre la refonte, la republication du service et les recettes encore ouvertes.
+Le guide Budget Markdown est actuel ; la correction et le rendu du Word daté restent
+à terminer quand le moteur documentaire sera disponible, comme indiqué dans ce bilan.

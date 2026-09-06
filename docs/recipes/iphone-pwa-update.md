@@ -1,5 +1,9 @@
 # Recette iPhone — mise à jour de la PWA
 
+> Cette recette conserve ses observations datées et ses lignes encore ouvertes. Pour le logiciel actuel, consulter le [document 27](../27-etat-canonique-app-robot-2026-08-25.md) ; ne pas déduire une nouvelle validation physique de cette mise à jour documentaire.
+
+Statut documentaire : recette.
+
 Date : 18 août 2026
 
 Statut : **recette physique validée**. L'utilisateur confirme le 9 août 2026 que l'iPhone a bien reçu une mise à jour, puis le 18 août l’appairage du second adulte, l’authentification, le redémarrage offline, la convergence à deux appareils et l’absence d’auto-zoom dans Chrome iOS au focus des champs Tâche et Course. Le zoom manuel reste disponible.

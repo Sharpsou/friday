@@ -1,5 +1,7 @@
 # ADR-008 — Sauvegarde portable chiffrée et restauration contrôlée
 
+Statut documentaire : plan.
+
 Date : 9 août 2026
 
 Statut : accepté comme conception ; implantation non commencée

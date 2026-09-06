@@ -1,5 +1,7 @@
 # ADR-003 — journal d'opérations, idempotence et conflits
 
+Statut documentaire : reference.
+
 Date : 8 août 2026
 Statut : accepté
 
@@ -20,7 +22,7 @@ La PWA écrit toujours localement puis pousse une enveloppe versionnée. SQLite 
 
 ## Conséquences
 
-Le protocole est plus explicite mais testable. L'horloge du client n'arbitre rien. Les opérations budget futures seront append-only.
+Le protocole est plus explicite mais testable. L'horloge du client n'arbitre rien. Le Budget conserve les corrections et suppressions auditées décrites dans l’ADR-012 ; le journal des opérations permet leur idempotence.
 
 ## Preuve
 

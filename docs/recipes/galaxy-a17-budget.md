@@ -1,5 +1,9 @@
 # Recette Galaxy A17 — budget partagé
 
+> Cette recette conserve ses observations datées et ses lignes encore ouvertes. Pour le logiciel actuel, consulter le [document 27](../27-etat-canonique-app-robot-2026-08-25.md) ; ne pas déduire une nouvelle validation physique de cette mise à jour documentaire.
+
+Statut documentaire : recette.
+
 Statut : à exécuter physiquement. Les tests Chrome mobile ne valent pas preuve A17.
 
 ## Préconditions

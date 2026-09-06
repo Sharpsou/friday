@@ -1,5 +1,7 @@
 # ADR produit — autonomie topologique visuelle et habitudes procédurales
 
+Statut documentaire : actif.
+
 Date : 26 août 2026.
 Statut : **implanté et déployé ; recette physique ouverte**
 

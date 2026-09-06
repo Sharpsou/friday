@@ -1,5 +1,9 @@
 # Exploitation Windows
 
+Statut documentaire : actif.
+
+Ces procédures décrivent le foyer de référence. Pour un autre PC, commencer par le [guide Windows](../../docs/guides/installation-windows.md). Les chemins privés et adresses des helpers Pi doivent être adaptés explicitement ; ils ne constituent pas un installateur universel.
+
 ## Raccourci de recette P0
 
 Installer ou actualiser le raccourci du Bureau :

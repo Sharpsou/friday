@@ -1,3 +1,5 @@
 # Configuration partagée
 
-Ce package recevra uniquement les configurations réellement communes. Les configurations racine restent la source de vérité pendant le Lot 0.
+Statut documentaire : actif.
+
+Ce package recevra uniquement les configurations réellement communes. Ce package reste réservé ; les configurations racine et propres aux packages sont les sources actuelles. Voir la [carte d’architecture](../../docs/guides/architecture-developpement.md).

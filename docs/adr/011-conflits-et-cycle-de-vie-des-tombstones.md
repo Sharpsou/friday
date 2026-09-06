@@ -1,8 +1,14 @@
 # ADR-011 — Conflits explicites et cycle de vie des tombstones
 
+Statut documentaire : plan.
+
 Date : 9 août 2026
 
 Statut : accepté comme filet de sécurité ; implémentation reportée sur signal d'usage
+
+## État de cette conception
+
+La comparaison générale et la purge ci-dessous restent des cibles. La résolution des bilans composites Maison est livrée séparément ; elle ne ferme pas cette ADR pour tous les domaines. Voir le [runbook Maison](../runbooks/maison-menus-reserve.md).
 
 ## Contexte
 

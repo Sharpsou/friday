@@ -1,5 +1,9 @@
 # Recette Lot 1A — terminer et rouvrir une tâche
 
+> Cette recette conserve ses observations datées et ses lignes encore ouvertes. Pour le logiciel actuel, consulter le [document 27](../27-etat-canonique-app-robot-2026-08-25.md) ; ne pas déduire une nouvelle validation physique de cette mise à jour documentaire.
+
+Statut documentaire : recette.
+
 - Statut : **validé sur le Galaxy A17 le 8 août 2026**
 - Appareil : Samsung Galaxy A17
 - Exigences : `FR-TASK-02`, `NFR-OFF-02`, `NFR-SYNC-01`, `NFR-SYNC-02`

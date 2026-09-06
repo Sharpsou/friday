@@ -1,5 +1,7 @@
 # Complément de modularisation — cinq fichiers découpés
 
+Statut documentaire : archive.
+
 Date : 6 septembre 2026. **Déployé à 12 h 04 (Paris)** sur
 [l'origine A17](https://192.168.1.14:8443), après la demande d'implémenter le
 [plan de reprise](2026-09-06-plan-decoupage-cinq-modules.md).

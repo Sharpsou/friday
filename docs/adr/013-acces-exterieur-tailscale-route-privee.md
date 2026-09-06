@@ -1,5 +1,7 @@
 # ADR-013 — accès extérieur privé par route Tailscale `/32`
 
+Statut documentaire : plan.
+
 Date : 10 août 2026
 
 Statut : **accepté, mise en œuvre en pause**

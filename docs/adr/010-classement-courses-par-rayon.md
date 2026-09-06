@@ -1,8 +1,10 @@
 # ADR-010 — Classement facultatif des courses par rayon
 
+Statut documentaire : reference.
+
 Date : 9 août 2026
 
-Statut : accepté, candidat automatisé à recetter sur appareil réel
+Statut : décision acceptée et code livré ; recette physique suivie séparément
 
 ## Contexte
 
@@ -86,7 +88,7 @@ Les règles apprises sont volontairement exactes après normalisation. Friday ne
 
 ## Preuve
 
-- contrats et taxonomie : `packages/contracts/src/index.ts` ;
+- contrats et taxonomie : `packages/contracts/src/groceries.ts` ;
 - migrations et service persistant : `apps/hub/src/db/database.ts` et `apps/hub/src/groceries/` ;
 - cache et interface : `apps/web/src/GroceryClassification.tsx`, `apps/web/src/use-grocery-classification.ts` et `apps/web/src/db/grocery-classification-repository.ts` ;
 - tests unitaires/intégration : reprise après redémarrage, annulation sans résultat partiel, idempotence, correction apprise, chiffrement du cache et fusion entre profils ;

@@ -1,5 +1,7 @@
 # Friday — instructions de reprise pour les agents
 
+Statut documentaire : actif.
+
 Ce fichier s’applique à tout `D:\prog\friday`.
 
 ## Lecture obligatoire
@@ -14,8 +16,7 @@ Lire dans cet ordre avant toute action :
 5. le runbook du domaine concerné.
 
 `docs/README.md` classe l’ensemble documentaire. Ne pas utiliser les documents
-historiques 01–08 ou les anciens checkpoints Robot pour contredire le document
-27.
+historiques 01–08 ou les anciens checkpoints Robot pour contredire le document 27.
 
 ## Workspace et sources
 
@@ -23,7 +24,7 @@ historiques 01–08 ou les anciens checkpoints Robot pour contredire le document
   Fastify/SQLite, Dexie, contrats Zod et tests automatisés.
 - Dépôt Git existant sur `main`, remote
   `https://github.com/Sharpsou/friday.git`. Ne pas réinitialiser ou recréer.
-- Contrôle global : `pnpm verify`.
+- Contrôle global : `pnpm verify`, incluant `pnpm docs:check` et `pnpm architecture`.
 - Données et secrets hors Git sous `D:\FridayData`.
 - Origine stable A17 : `https://192.168.1.14:8443`.
 - `D:\prog\Home_mind` ne doit jamais être édité, nettoyé, déplacé ou
@@ -54,6 +55,7 @@ historiques 01–08 ou les anciens checkpoints Robot pour contredire le document
 ## État technique courant
 
 - Navigation : Aujourd’hui, Agenda, Maison, Budget, Chat, Veille, Robot.
+- Référence Git de la refonte documentaire : `894a50d` ; les lots du 6 septembre sont désormais commités dans cette référence. Réinspecter le worktree à chaque reprise.
 - SQLite 47 ; Dexie 9. Maison livré : Courses + Menus + Réserve et
   ordonnanceur IA commun. Voir `docs/runbooks/maison-menus-reserve.md` et le
   document 27 ; la recette réelle des deux téléphones reste ouverte.

@@ -1,5 +1,7 @@
 # Exploiter le classement des courses
 
+Statut documentaire : actif.
+
 Ce runbook couvre le classement facultatif par rayon. Il ne remplace pas la recette physique [Galaxy A17](../recipes/galaxy-a17-lot-1a-grocery-classification.md).
 
 ## Fonctionnement attendu

@@ -1,5 +1,7 @@
 # Taxonomie des courses `retail-fr-v1`
 
+Statut documentaire : reference.
+
 Cette référence décrit l'ordre d'affichage générique et les identifiants acceptés par les contrats. La source exécutable reste `GROCERY_TAXONOMY` dans `packages/contracts/src/index.ts`.
 
 Un rayon n'est valide qu'avec sa famille. Un même identifiant de rayon, par exemple `storage`, peut donc exister dans plusieurs familles. Les libellés sont destinés à l'interface ; les identifiants servent au stockage et aux API.

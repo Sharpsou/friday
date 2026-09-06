@@ -1,5 +1,7 @@
 # Simplification du harnais Chat — 5 septembre 2026
 
+Statut documentaire : archive.
+
 Statut : **simplification implémentée et vérifiée automatiquement ; non déployée**.
 
 ## Décision utilisateur et périmètre

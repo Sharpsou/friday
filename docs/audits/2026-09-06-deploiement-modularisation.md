@@ -1,5 +1,7 @@
 # Déploiement de la modularisation Friday — 6 septembre 2026
 
+Statut documentaire : archive.
+
 Livraison autorisée par l'utilisateur : « Déploye tout et dis moi ce que tu as fait et pas fait ».
 Terminée à **10 h 33 (Paris)** sur [l'origine A17](https://192.168.1.14:8443).
 
